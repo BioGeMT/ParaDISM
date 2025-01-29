@@ -43,7 +43,7 @@ Required dependencies:
 
 ### Basic Command
 ```bash
-./master.sh -r1 <forward_reads.fq> -r2 <reverse_reads.fq> -ref <reference.fasta> [-out <fastq,bam>]
+./mapper.sh -r1 <forward_reads.fq> -r2 <reverse_reads.fq> -ref <reference.fasta> [-out <fastq,bam>]
 ```
 
 ### Arguments
