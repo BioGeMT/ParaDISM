@@ -112,12 +112,13 @@ def map_insertions(insertions: List[Tuple], start_msa_pos: int, end_msa_pos: int
     return map_insertions_dp(insertions, valid_gaps, max_scenarios)
 
 def get_row_key(row_data):
-    """Create a unique key for a row to identify duplicates"""
+    # Create a unique key for a row to identify duplicates
+
     return (row_data[0], row_data[1], row_data[2], row_data[3])
 
 def write_merged_scenario(output_dir: str, current_read: str, scenario_num: int,
                          scenario_rows: List, sequence_bases: Dict, gene_names: List) -> None:
-    """Write individual scenario removing duplicates"""
+    # Write individual scenario removing duplicates
     base_read_name = current_read.rstrip('+-')
     read_dir = f"{output_dir}/{base_read_name}"
     os.makedirs(read_dir, exist_ok=True)
@@ -153,7 +154,7 @@ def process_read_mappings(read_map_filepath: str, sequence_positions: Dict,
     reads_processed = 0
     
     with open(read_map_filepath, 'r') as input_file:
-        next(input_file)  # Skip header
+        next(input_file) 
         
         current_read = None
         current_ref_gene = None
