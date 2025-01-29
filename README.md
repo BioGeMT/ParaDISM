@@ -5,7 +5,7 @@ This pipeline performs unique read mapping, and generates gene-specific outputs 
 ## Prerequisites
 
 ### Environment Setup
-The pipeline requires specific dependencies that can be installed using the provided `mapper_env.yml` file:
+To create a conda environment with all the required dependencies run the following:
 
 ```bash
 conda env create -f mapper_env.yml
