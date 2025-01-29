@@ -33,8 +33,8 @@ Required dependencies:
 │   ├── read_2_gene.py
 │   ├── reads_2_msa.py
 │   ├── ref_2_msa.py
-│   └── run_refine.py
-├── master.sh
+│   └── refine.py
+├── mapper.sh
 ├── mapper_env.yml
 └── README.md
 ```
@@ -70,14 +70,14 @@ Required dependencies:
 
 ```
 output/
-├── ref_seq_msa.aln                  # MAFFT MSA output
-├── PKD_index*                       # Bowtie2 index files
-├── mapped_reads.sam                 # Initial Bowtie2 alignment
+├── ref_seq_msa.aln                 # MAFFT MSA output
+├── PKD_index*                      # Bowtie2 index files
+├── mapped_reads.sam                # Initial Bowtie2 alignment
 ├── ref_seq_msa.tsv                 # Reference to MSA mapping
 ├── mapped_reads.tsv                # Read to reference mapping
 ├── reads/                          # Read to MSA mapping files
 ├── results/                        # Refinement results for each read
-├── mappings.tsv                    # Unique mapping results
-├── mapped_fastq/                   # Gene-specific FASTQ files (if requested)
-└── bam_files/                      # Gene-specific BAM files (if requested)
+├── unique_mappings.tsv             # Unique mapping results
+├── unique_mappings_fastq_files/    # Gene-specific FASTQ files (if requested)
+└── unique_mappings_bam_files/      # Gene-specific BAM files (if requested)
 ```
