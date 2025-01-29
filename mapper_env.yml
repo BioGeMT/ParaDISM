@@ -1,0 +1,14 @@
+name: mapper_env
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pysam
+  - biopython
+  - mafft
+  - bowtie2
+  - pandas
+  - minimap2
+  - samtools
