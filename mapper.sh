@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPTS_DIR="./scripts"
-OUTPUT_DIR="./output"
+OUTPUT_DIR="./output_new"
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
@@ -104,14 +104,8 @@ python3 "$SCRIPTS_DIR/ref_2_msa.py" --reference_fasta "$REF" --msa_file "$OUTPUT
 echo "Mapping reads to reference sequences..."
 python3 "$SCRIPTS_DIR/read_2_gene.py" --sam "$OUTPUT_DIR/mapped_reads.sam" --output "$OUTPUT_DIR/mapped_reads.tsv"
 
-echo "Mapping reads to MSA..."
-python3 "$SCRIPTS_DIR/reads_2_msa.py" --read_map "$OUTPUT_DIR/mapped_reads.tsv" --msa "$OUTPUT_DIR/ref_seq_msa.tsv" --output_dir "$OUTPUT_DIR/reads"
-
-echo "Running refinement..."
-python3 "$SCRIPTS_DIR/refine.py" --reads_dir "$OUTPUT_DIR/reads/" --output_dir "$OUTPUT_DIR/results/"
-
-echo "Finding unique mappings..."
-python3 "$SCRIPTS_DIR/find_mappings.py" --input_folder "$OUTPUT_DIR/results/" --output_file "$OUTPUT_DIR/unique_mappings.tsv"
+echo "Mapping reads..."
+python3 "$SCRIPTS_DIR/mapper_algo.py" --read_map "$OUTPUT_DIR/mapped_reads.tsv" --msa "$OUTPUT_DIR/ref_seq_msa.tsv" --output_file "$OUTPUT_DIR/unique_mappings.tsv"
 
 # Conditional execution of output steps
 if [[ $FASTQ_OUT -eq 1 ]]; then
