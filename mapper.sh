@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SCRIPTS_DIR="./scripts"
-OUTPUT_DIR="./output_new"
+OUTPUT_DIR="./output"
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
