@@ -21,7 +21,6 @@ Required dependencies:
 - pandas
 - minimap2
 - samtools
-
 ## Directory Structure
 
 ```
@@ -35,11 +34,15 @@ Required dependencies:
 │   ├── ref_2_msa.py
 │   └── refine.py
 ├── mapper.sh
+├── simulated_r1.fq
+├── simulated_r2.fq
 ├── mapper_env.yml
 └── README.md
 ```
 
 ## Usage
+
+First run the read simulator notebook to generate simulated paired reads. This produces two fq files.
 
 ### Basic Command
 ```bash
