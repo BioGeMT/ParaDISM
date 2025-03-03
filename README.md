@@ -19,7 +19,6 @@ Required dependencies:
 - mafft
 - bowtie2
 - pandas
-- minimap2
 - samtools
 ## Directory Structure
 
@@ -46,17 +45,16 @@ First run the read simulator notebook to generate simulated paired reads. This p
 
 ### Basic Command
 ```bash
-./mapper.sh -r1 <forward_reads.fq> -r2 <reverse_reads.fq> -ref <reference.fasta> [-out <fastq,bam>]
+./mapper.sh -r1 <forward_reads.fq> -r2 <reverse_reads.fq> -ref <reference.fasta>
 ```
 
 ### Arguments
 - `-r1`: Forward reads FASTQ file (required)
 - `-r2`: Reverse reads FASTQ file (required)
 - `-ref`: Reference sequences in FASTA format (required)
-- `-out`: Output format(s), comma-separated (optional)
-  - `fastq`: Generate gene-specific FASTQ files
-  - `bam`: Generate gene-specific BAM files
-  - Default: both formats if not specified
+
+  
+
 
 ## Pipeline Steps
 
@@ -67,7 +65,7 @@ First run the read simulator notebook to generate simulated paired reads. This p
 5. **MSA Integration**: Maps reads to MSA coordinates
 6. **Refinement**: Refines read mappings
 7. **Unique Mapping**: Identifies uniquely mapped reads
-8. **Output Generation**: Creates gene-specific files in requested format
+8. **Output Generation**: Creates gene-specific files in fastq and bam formats
 
 ## Output Structure
 
@@ -81,6 +79,6 @@ output/
 ├── reads/                          # Read to MSA mapping files
 ├── results/                        # Refinement results for each read
 ├── unique_mappings.tsv             # Unique mapping results
-├── unique_mappings_fastq_files/    # Gene-specific FASTQ files (if requested)
-└── unique_mappings_bam_files/      # Gene-specific BAM files (if requested)
+├── fastq/                          # Gene-specific FASTQ files (if requested)
+└── bam/                            # Gene-specific BAM files (if requested)
 ```
