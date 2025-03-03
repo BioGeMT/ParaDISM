@@ -10,5 +10,4 @@ dependencies:
   - mafft
   - bowtie2
   - pandas
-  - minimap2
   - samtools
