@@ -8,7 +8,7 @@ import os
 import argparse
 
 
-COLORS = ['#C71585', '#1E90FF']  # Medium Violet Red for Mapper, Bright Blue for Bowtie2
+COLORS = ['#C71585', '#1E90FF']  
 
 
 plt.rcParams.update({
@@ -113,11 +113,10 @@ def process_files(tsv_file, fastq_file, sam_file, output_folder, output_prefix):
         plt.ylabel('Origin Genes', fontweight='bold')
         ax.set_yticklabels(ax.get_yticklabels(), fontproperties=bold_props)
         
-        # X-axis (top, no tilt)
+    
         ax.xaxis.tick_top()
-        # Smaller font for Mapper gene names
         if suffix == 'tsv':
-            mapper_props = FontProperties(weight='bold', size=14)  # Smaller font for Mapper
+            mapper_props = FontProperties(weight='bold', size=14)  
             ax.set_xticklabels(ax.get_xticklabels(), fontproperties=mapper_props, rotation=0)
         else:
             ax.set_xticklabels(ax.get_xticklabels(), fontproperties=bold_props, rotation=0)
@@ -174,7 +173,6 @@ def process_files(tsv_file, fastq_file, sam_file, output_folder, output_prefix):
     plt.xticks(x_adjusted, display_genes, fontsize=13)
     plt.yticks(fontsize=20)
     plt.ylabel('Accuracy', fontsize=18, fontweight='bold')
-    # Adjust the y-axis limits based on your data
     plt.ylim(min(min(tsv_accuracies), min(sam_accuracies)) * 0.95, 1.0)
     plt.grid(True, axis='y', linestyle='--', alpha=0.7)
     plt.legend(fontsize=18, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2)
