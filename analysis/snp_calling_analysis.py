@@ -6,7 +6,7 @@ import os
 import numpy as np
 from matplotlib.font_manager import FontProperties
 
-COLORS = ['#FF8C00', '#008080']  # Dark Orange for Method1/Mapper, Teal for Method2/Bowtie2
+COLORS = ['#FF8C00', '#008080']  
 
 plt.rcParams.update({
     'font.size': 20,
@@ -186,25 +186,20 @@ def create_bar_plot(metrics, method1_vals, method2_vals, title, output_file):
     group_spacing = 0.15
     x_adjusted = np.linspace(0, len(metrics) * (bar_width + group_spacing), len(metrics))
     
-    # Create bars
     plt.bar(x_adjusted - bar_spacing/2, method1_vals, width=bar_width, label='Mapper', color=COLORS[0])
     plt.bar(x_adjusted + bar_spacing/2, method2_vals, width=bar_width, label='Bowtie2', color=COLORS[1])
     
-    # Set up axes and labels
     plt.xticks(x_adjusted, metrics, fontsize=15)
     plt.yticks(fontsize=20)
     plt.grid(True, axis='y', linestyle='--', alpha=0.7)
     
-    # Add value annotations on top of bars
     for i, (v1, v2) in enumerate(zip(method1_vals, method2_vals)):
         plt.text(x_adjusted[i] - bar_spacing/2, v1 + 0.03, f"{v1:.2f}", ha="center", fontsize=14)
         plt.text(x_adjusted[i] + bar_spacing/2, v2 + 0.03, f"{v2:.2f}", ha="center", fontsize=14)
     
-    # Add legend and title with consistent styling
     plt.legend(fontsize=18, loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2)
     plt.title(title, fontsize=22, fontweight='bold')
     
-    # Set y-axis range from 0 to 1.1 to give more space at the top
     plt.ylim(0, 1.1)
     
     # Adjust margins and layout
