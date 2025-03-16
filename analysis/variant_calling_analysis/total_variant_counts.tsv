@@ -1,0 +1,8 @@
+Gene	Ground Truth Variants	Mapper Variants	Bowtie2 Variants
+PKD1	47	47	52
+PKD1P1	30	12	16
+PKD1P2	22	17	13
+PKD1P3	24	17	17
+PKD1P4	22	15	15
+PKD1P5	38	28	30
+PKD1P6	35	35	34
