@@ -1,6 +1,6 @@
 # PKD1 Read Mapping Pipeline
 
-This pipeline performs unique read mapping, and generates gene-specific outputs in FASTQ and/or BAM format. It processes paired-end sequencing data against reference sequences.
+This pipeline performs unique read mapping, and generates gene-specific outputs in FASTQ and BAM formats. It processes paired-end sequencing data against reference sequences.
 
 ## Prerequisites
 
@@ -25,18 +25,16 @@ Required dependencies:
 ```
 .
 ├── scripts/
-│   ├── bam_output.py
-│   ├── find_mappings.py
-│   ├── fq_output.py
-│   ├── read_2_gene.py
-│   ├── reads_2_msa.py
+│   ├── output.py
+│   ├── read_2_gene.py 
 │   ├── ref_2_msa.py
-│   └── refine.py
+│   └── mapper_algo.py
+│      
 ├── mapper.sh
 ├── simulated_r1.fq
 ├── simulated_r2.fq
-├── mapper_env.yml
-└── README.md
+└── mapper_env.yml
+
 ```
 
 ## Usage
@@ -79,6 +77,6 @@ output/
 ├── reads/                          # Read to MSA mapping files
 ├── results/                        # Refinement results for each read
 ├── unique_mappings.tsv             # Unique mapping results
-├── fastq/                          # Gene-specific FASTQ files (if requested)
-└── bam/                            # Gene-specific BAM files (if requested)
+├── fastq/                          # Gene-specific FASTQ files 
+└── bam/                            # Gene-specific BAM files 
 ```

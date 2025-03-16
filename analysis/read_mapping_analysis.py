@@ -5,11 +5,12 @@ from sklearn.metrics import accuracy_score
 import numpy as np
 from matplotlib.font_manager import FontProperties
 import os
+import argparse
 
-# Define color palette
+
 COLORS = ['#C71585', '#1E90FF']  # Medium Violet Red for Mapper, Bright Blue for Bowtie2
 
-# Set default font sizes
+
 plt.rcParams.update({
     'font.size': 20,
     'axes.labelsize': 24,
@@ -25,7 +26,6 @@ def parse_fastq(fastq_file):
         for line in f:
             if line.startswith('@'):
                 parts = line.strip().split()
-                # Handle read name with uppercase R (Read0, Read1, etc.)
                 read_name = parts[0][1:]
                 gene_info = parts[1].split(';')[0]
                 read_to_origin[read_name] = gene_info
@@ -37,7 +37,6 @@ def parse_sam(sam_file):
         for line in f:
             if not line.startswith('@'):
                 parts = line.strip().split('\t')
-                # Handle read name with uppercase R (Read0, Read1, etc.)
                 read_name = parts[0]
                 mapped_gene = parts[2]
                 if mapped_gene != '*':
@@ -130,23 +129,33 @@ def process_files(tsv_file, fastq_file, sam_file, output_folder, output_prefix):
         plt.close()
     
     # Calculate accuracies - treating NONE as any other category
+    # Filter out 'NONE' from the list of genes for the plot
     all_genes = sorted(set(tsv_df['Origin_Gene'].unique()) | set(tsv_df['Mapped_Gene'].unique()) |
                       set(sam_df['Mapped_Gene'].unique()))
     
+    # Keep 'NONE' in calculations but remove it from display
+    display_genes = [gene for gene in all_genes if gene != 'NONE']
+    
     tsv_accuracies = []
     sam_accuracies = []
+    # Calculate accuracies for all genes (including NONE) for calculations
     for gene in all_genes:
         tsv_true = (tsv_df['Origin_Gene'] == gene).astype(int)
         tsv_pred = (tsv_df['Mapped_Gene'] == gene).astype(int)
-        tsv_accuracies.append(accuracy_score(tsv_true, tsv_pred) if len(tsv_true) > 0 else 0)
+        tsv_acc = accuracy_score(tsv_true, tsv_pred) if len(tsv_true) > 0 else 0
         
         sam_true = (sam_df['Origin_Gene'] == gene).astype(int)
         sam_pred = (sam_df['Mapped_Gene'] == gene).astype(int)
-        sam_accuracies.append(accuracy_score(sam_true, sam_pred) if len(sam_true) > 0 else 0)
+        sam_acc = accuracy_score(sam_true, sam_pred) if len(sam_true) > 0 else 0
+        
+        # Only add to displayed accuracies if not 'NONE'
+        if gene != 'NONE':
+            tsv_accuracies.append(tsv_acc)
+            sam_accuracies.append(sam_acc)
     
     tsv_total_acc = accuracy_score(tsv_df['Origin_Gene'], tsv_df['Mapped_Gene'])
     sam_total_acc = accuracy_score(sam_df['Origin_Gene'], sam_df['Mapped_Gene'])
-    all_genes.append('Total')
+    display_genes.append('Total')
     tsv_accuracies.append(tsv_total_acc)
     sam_accuracies.append(sam_total_acc)
     
@@ -157,12 +166,12 @@ def process_files(tsv_file, fastq_file, sam_file, output_folder, output_prefix):
     bar_width = 0.1
     bar_spacing = 0.12
     group_spacing = 0.15
-    x_adjusted = np.linspace(0, len(all_genes) * (bar_width + group_spacing), len(all_genes))
+    x_adjusted = np.linspace(0, len(display_genes) * (bar_width + group_spacing), len(display_genes))
     
     plt.bar(x_adjusted - bar_spacing/2, tsv_accuracies, width=bar_width, label='Mapper', color=COLORS[0])
     plt.bar(x_adjusted + bar_spacing/2, sam_accuracies, width=bar_width, label='Bowtie2', color=COLORS[1])
     
-    plt.xticks(x_adjusted, all_genes, fontsize=13)
+    plt.xticks(x_adjusted, display_genes, fontsize=13)
     plt.yticks(fontsize=20)
     plt.ylabel('Accuracy', fontsize=18, fontweight='bold')
     # Adjust the y-axis limits based on your data
@@ -177,7 +186,6 @@ def process_files(tsv_file, fastq_file, sam_file, output_folder, output_prefix):
     plt.close()
     
     # Additional plot: accuracy comparison for only reads that Mapper mapped (not NONE)
-    # Filter to only include reads where Mapper didn't return NONE
     mapped_reads_tsv = tsv_df[tsv_df['Mapped_Gene'] != 'NONE']
     
     # Get the corresponding reads from SAM data
@@ -241,18 +249,35 @@ def process_files(tsv_file, fastq_file, sam_file, output_folder, output_prefix):
     return generated_files
 
 def main():
-    tsv_file = '/Users/nucleotaid/dev/test/output/unique_mappings.tsv'
-    fastq_file = '/Users/nucleotaid/dev/test/simulated_r1.fq'
-    sam_file = '/Users/nucleotaid/dev/test/output/mapped_reads.sam'
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Analyze gene mapping performance comparing Mapper and Bowtie2.')
     
-    output_folder = 'variant_mapping_analysis'  # Change this to your desired output folder
-    output_prefix = 'read_mapping_results'
+    # Required arguments
+    parser.add_argument('-t', '--tsv', required=True, help='Path to the TSV file with uniquely mapped reads')
+    parser.add_argument('-f', '--fastq', required=True, help='Path to the FASTQ file with read origins')
+    parser.add_argument('-s', '--sam', required=True, help='Path to the SAM file with mapped reads')
     
-    generated_files = process_files(tsv_file, fastq_file, sam_file, output_folder, output_prefix)
+    # Optional arguments
+    parser.add_argument('-o', '--output-dir', default='read_mapping_analysis', 
+                        help='Output directory for analysis results (default: read_mapping_analysis)')
+    parser.add_argument('-p', '--prefix', default='read_mapping_results',
+                        help='Prefix for output files (default: read_mapping_results)')
     
-    print(f"Files generated in folder '{output_folder}':")
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Process files
+    generated_files = process_files(
+        args.tsv,
+        args.fastq,
+        args.sam,
+        args.output_dir,
+        args.prefix
+    )
+    
+    print(f"\nFiles generated in folder '{args.output_dir}':")
     for file_path in generated_files:
-        print(f"- {file_path}")
+        print(f"- {os.path.basename(file_path)}")
 
 if __name__ == "__main__":
     main()

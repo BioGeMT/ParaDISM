@@ -6,10 +6,8 @@ import os
 import numpy as np
 from matplotlib.font_manager import FontProperties
 
-# Define color palette
 COLORS = ['#FF8C00', '#008080']  # Dark Orange for Method1/Mapper, Teal for Method2/Bowtie2
 
-# Set default font sizes
 plt.rcParams.update({
     'font.size': 20,
     'axes.labelsize': 24,
@@ -20,12 +18,11 @@ plt.rcParams.update({
 })
 
 def soft_normalize_variant(pos, ref, alt):
-    """
-    Soft normalize a variant by trimming common prefixes and suffixes (keeping one base)
-    without iterative left alignment.
-    """
+    
+    #Soft normalize a variant by trimming common prefixes and suffixes (keeping one base) without left alignment.
+    
     pos = int(pos)
-    # For SNPs, no normalization is needed.
+    # For SNPs no normalization 
     if len(ref) == 1 and len(alt) == 1:
         return pos, ref, alt
 
@@ -53,10 +50,10 @@ def soft_normalize_variant(pos, ref, alt):
     return pos, ref, alt
 
 def parse_vcf(filename):
-    """
-    Parse a VCF file and return a dictionary grouping variants by gene.
-    (Assumes the gene is given in the CHROM column.)
-    """
+    
+    #Parse a VCF file and return a dictionary grouping variants by gene.
+    #(Assumes the gene is given in the CHROM column.)
+    
     records_by_gene = {}
     total_variants_by_gene = {}
     headers = None
@@ -121,10 +118,10 @@ def parse_vcf(filename):
     return records_by_gene, total_variants_by_gene
 
 def merge_method1_vcfs(file_list):
-    """
-    Given a list of VCF files (each for one gene) for Method 1,
-    merge their parsed dictionaries into a single dictionary grouped by gene.
-    """
+    
+    #Given a list of VCF files (each for one gene) for Method 1,
+    #merge their parsed dictionaries into a single dictionary grouped by gene.
+    
     merged = {}
     total_by_gene = {}
     
@@ -165,9 +162,9 @@ def compute_confusion_matrix(gt_variants, method_variants):
     return TP, FP, FN, total_variants
 
 def aggregate_metrics(gt_dict, method_dict):
-    """
-    Aggregate confusion matrix counts over all genes.
-    """
+    
+    #Aggregate confusion matrix counts over all genes.
+    
     agg_TP = agg_FP = agg_FN = total_variants = 0
     for gene, gt_variants in gt_dict.items():
         method_variants = method_dict.get(gene, {})
@@ -179,9 +176,9 @@ def aggregate_metrics(gt_dict, method_dict):
     return agg_TP, agg_FP, agg_FN, total_variants
 
 def write_tsv(filename, header, rows):
-    """
-    Write a TSV file with the given header and rows.
-    """
+    
+    #Write a TSV file with the given header and rows.
+    
     with open(filename, "w", newline="") as tsv_file:
         writer = csv.writer(tsv_file, delimiter="\t")
         writer.writerow(header)
@@ -189,9 +186,9 @@ def write_tsv(filename, header, rows):
             writer.writerow(row)
 
 def create_bar_plot(metrics, method1_vals, method2_vals, title, output_file):
-    """
-    Create a grouped bar plot comparing method1 and method2 for the given metrics.
-    """
+    
+    #Create a grouped bar plot comparing method1 and method2 for the given metrics.
+    
     plt.rcParams.update({'font.size': 18, 'font.weight': 'bold', 'axes.titlesize': 22})
     plt.figure(figsize=(10, 6), dpi=300)
     

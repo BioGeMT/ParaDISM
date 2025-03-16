@@ -11,3 +11,6 @@ dependencies:
   - bowtie2
   - pandas
   - samtools
+  - scipy
+  - numpy
+  - freebayes
