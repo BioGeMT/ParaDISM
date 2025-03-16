@@ -83,22 +83,11 @@ def parse_vcf(filename):
             ref = parts[ref_index]
             alt = parts[alt_index]
             
-            # Check if we need to consider genotype
-            is_called_variant = True
-            if format_index != -1 and len(parts) > format_index + 1:
-                format_fields = parts[format_index].split(":")
-                sample_fields = parts[format_index + 1].split(":")
-                if "GT" in format_fields:
-                    gt_index = format_fields.index("GT")
-                    genotype = sample_fields[gt_index]
-                    is_called_variant = genotype != "0/0"
-            
-            # Only count actual variants (not 0/0) in the total
-            if is_called_variant:
-                if gene not in total_variants_by_gene:
-                    total_variants_by_gene[gene] = 0
-                total_variants_by_gene[gene] += 1
-                total_variants += 1
+            # Count all variants, including reference (0/0) calls
+            if gene not in total_variants_by_gene:
+                total_variants_by_gene[gene] = 0
+            total_variants_by_gene[gene] += 1
+            total_variants += 1
             
             # Normalize the variant
             norm_pos, norm_ref, norm_alt = soft_normalize_variant(pos, ref, alt)
@@ -107,11 +96,10 @@ def parse_vcf(filename):
             if gene not in records_by_gene:
                 records_by_gene[gene] = {}
             
-            # Only store actual variants (not 0/0)
-            if is_called_variant:
-                records_by_gene[gene][key] = True
+            # Store all variants including reference (0/0) calls
+            records_by_gene[gene][key] = True
     
-    print(f"File {filename}: {total_lines} total lines, {total_variants} actual variants processed")
+    print(f"File {filename}: {total_lines} total lines, {total_variants} variants processed")
     for gene, count in total_variants_by_gene.items():
         print(f"  Gene {gene}: {count} variants")
         
