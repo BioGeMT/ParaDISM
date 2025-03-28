@@ -76,16 +76,11 @@ def process_files(tsv_path, r1_path, r2_path, output_dir):
     return processed_genes
 
 def create_bam_files(genes, ref_fasta, fastq_dir, output_dir):
-    """
-    Create BAM files from gene-specific FASTQ files using bowtie2.
-    """
-    # Read reference FASTA
     ref_db = {}
     for record in SeqIO.parse(ref_fasta, "fasta"):
-        gene_name = record.id.split()[0]  # Use first part of header as gene name
+        gene_name = record.id.split()[0]
         ref_db[gene_name] = str(record.seq)
 
-    # Process each gene
     for gene in genes:
         if gene not in ref_db:
             print(f"Skipping {gene}: no reference sequence found")
@@ -93,51 +88,57 @@ def create_bam_files(genes, ref_fasta, fastq_dir, output_dir):
 
         print(f"Processing {gene} for alignment...")
         fastq_file = os.path.join(fastq_dir, f"{gene}.fq")
-
-        # Create temporary reference FASTA for the gene
         tmp_ref = os.path.join(output_dir, f"{gene}_ref.fa")
-        with open(tmp_ref, "w") as f:
-            f.write(f">{gene}\n{ref_db[gene]}\n")
-
-        # Paths for alignment outputs
         bt2_index_base = os.path.join(output_dir, f"{gene}_index")
         sam_path = os.path.join(output_dir, f"{gene}.sam")
         bam_path = os.path.join(output_dir, f"{gene}.bam")
         sorted_bam = os.path.join(output_dir, f"{gene}.sorted.bam")
 
-        # Build bowtie2 index for the reference
+        # Verify files exist
+        if not os.path.exists(fastq_file):
+            print(f"Error: FASTQ file {fastq_file} does not exist")
+            continue
+        if not os.path.exists(tmp_ref):
+            with open(tmp_ref, "w") as f:
+                f.write(f">{gene}\n{ref_db[gene]}\n")
+        else:
+            print(f"Warning: {tmp_ref} already exists, overwriting")
+
+        # Build index
         build_cmd = f"bowtie2-build {tmp_ref} {bt2_index_base}"
-        print(f"Building bowtie2 index for {gene}...")
+        print(f"Building bowtie2 index: {build_cmd}")
         try:
-            subprocess.run(build_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = subprocess.run(build_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            print(result.stdout)
         except subprocess.CalledProcessError as e:
-            print(f"Error building bowtie2 index for {gene}")
+            print(f"Error building index for {gene}: {e.stderr}")
             continue
 
-        # Run bowtie2 alignment
+        # Align with bowtie2
+        bowtie_cmd = f"bowtie2 --very-sensitive --end-to-end --interleaved {fastq_file} -x {bt2_index_base} -S {sam_path}"
+        print(f"Running alignment: {bowtie_cmd}")
         try:
-            print(f"Running alignment for {gene}...")
-            bowtie_cmd = f"bowtie2 --very-sensitive --end-to-end -x {bt2_index_base} -U {fastq_file} -S {sam_path}"
-            subprocess.run(bowtie_cmd, shell=True, check=True)
+            result = subprocess.run(bowtie_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            print(result.stdout)
+            if result.stderr:
+                print(f"bowtie2 stderr: {result.stderr}")
         except subprocess.CalledProcessError as e:
-            print(f"Error in bowtie2 alignment for {gene}")
+            print(f"Error in bowtie2 alignment for {gene}: {e.stderr}")
             continue
 
-        # Convert SAM to sorted BAM
+        # Convert to BAM
         try:
             subprocess.run(f"samtools view -b {sam_path} > {bam_path}", shell=True, check=True)
             subprocess.run(f"samtools sort -o {sorted_bam} {bam_path}", shell=True, check=True)
             subprocess.run(f"samtools index {sorted_bam}", shell=True, check=True)
         except subprocess.CalledProcessError as e:
-            print(f"Error in SAM/BAM conversion for {gene}")
+            print(f"Error in SAM/BAM conversion for {gene}: {e}")
             continue
 
-        # Cleanup temporary files
+        # Cleanup
         os.remove(tmp_ref)
         os.remove(sam_path)
         os.remove(bam_path)
-        
-        # Remove bowtie2 index files
         for ext in ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2', '.rev.2.bt2']:
             index_file = f"{bt2_index_base}{ext}"
             if os.path.exists(index_file):
