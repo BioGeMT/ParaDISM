@@ -215,7 +215,7 @@ def process_read_mappings(read_map_filepath: str, sequence_positions: Dict,
             scenarios_to_process = []
 
             if insertion_buffer:
-                if last_ref_pos is not None:
+                if last_ref_pos is not None and current_ref_gene is not None:
                     ref_pos_int = int(last_ref_pos)
                     current_msa_pos = sequence_positions[current_ref_gene][ref_pos_int]
                     all_positions = sorted(sequence_positions[current_ref_gene].keys())

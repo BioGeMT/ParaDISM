@@ -24,7 +24,7 @@ def process_files(tsv_path, r1_path, r2_path, output_dir):
             read_name = parts[0]
             gene = parts[1] if len(parts) > 1 else "NONE"
             if gene != "NONE":
-                gene_mapping[read_name] = gene
+                gene_mapping[read_name]  = gene
 
     # Load FASTQ records into dictionaries for quick lookup
     r1_records = SeqIO.to_dict(SeqIO.parse(r1_path, "fastq"))
