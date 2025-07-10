@@ -63,10 +63,10 @@ echo "Processing MSA..."
 mafft --auto "$REF" > "$OUTPUT_DIR/ref_seq_msa.aln"
 
 echo "Building Bowtie2 index..."
-bowtie2-build "$REF" "$OUTPUT_DIR/GNAQ_index"
+bowtie2-build "$REF" "$OUTPUT_DIR/PKD1_index"
 
 echo "Aligning reads..."
-bowtie2 -x "$OUTPUT_DIR/GNAQ_index" -1 "$R1" -2 "$R2" -S "$OUTPUT_DIR/mapped_reads.sam"
+bowtie2 -x "$OUTPUT_DIR/PKD1_index" -1 "$R1" -2 "$R2" -S "$OUTPUT_DIR/mapped_reads.sam"
 
 echo "Mapping reference sequences to MSA..."
 python "$SCRIPTS_DIR/ref_2_msa.py" --reference_fasta "$REF" --msa_file "$OUTPUT_DIR/ref_seq_msa.aln" --output "$OUTPUT_DIR/ref_seq_msa.tsv"
