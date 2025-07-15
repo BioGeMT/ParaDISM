@@ -13,4 +13,6 @@ dependencies:
   - samtools
   - scipy
   - numpy
+  - scikit-learn
   - freebayes
+  - matplotlib
