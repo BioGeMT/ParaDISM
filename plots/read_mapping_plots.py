@@ -18,7 +18,7 @@ plt.rcParams.update({
 
 def load_confusion_matrix(error_rate, method):
     rate_str = str(error_rate).replace('.', '_')
-    file_path = f"error_rate_results/err_{rate_str}/analysis/read_mapping_err_{rate_str}_{method}_confusion_matrix.tsv"
+    file_path = f"error_rate_results/err_{rate_str}/analysis/read_mapping_{rate_str}_{method}_confusion_matrix.tsv"
     
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -105,7 +105,7 @@ def create_multiclass_plot(error_rate):
         })
     
     create_horizontal_plot(combined_results, "Read Mapping Performance", 
-                          f"multiclass_read_mapping_{str(error_rate).replace('.', '_')}.png")
+                          f"plots/multiclass_read_mapping_{str(error_rate).replace('.', '_')}.png")
     save_tsv_output(combined_results, error_rate)
     
     print(f"\n=== MULTICLASS RESULTS FOR ERROR RATE {error_rate} ===")
@@ -146,12 +146,12 @@ def create_horizontal_plot(results, title, filename):
 
 def save_tsv_output(results, error_rate):
     df = pd.DataFrame(results)
-    filename = f"multiclass_read_mapping_{str(error_rate).replace('.', '_')}.tsv"
+    filename = f"plots/multiclass_read_mapping_{str(error_rate).replace('.', '_')}.tsv"
     df.to_csv(filename, sep='\t', index=False)
     print(f"Created TSV: {filename}")
 
 def main():
-    error_rates = [0.001, 0.005]
+    error_rates = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.010]
     for rate in error_rates:
         create_multiclass_plot(rate)
 

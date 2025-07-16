@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import glob
+from sklearn.metrics import precision_score, recall_score
 
 def extract_variant_calling_precision():
     error_rates = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.010]
@@ -14,24 +15,53 @@ def extract_variant_calling_precision():
     
     for rate in error_rates:
         rate_str = f"{rate:.3f}".replace('.', '_')
-        file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/comprehensive_variant_metrics.tsv"
+        file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/variant_calling_confusion_matrix.tsv"
         
         if os.path.exists(file_path):
             try:
                 df = pd.read_csv(file_path, sep='\t')
-                aggregated_row = df[df['Gene'] == 'AGGREGATED']
                 
-                if not aggregated_row.empty:
-                    method1_prec = aggregated_row['Method1_Precision'].iloc[0]
-                    method2_prec = aggregated_row['Method2_Precision'].iloc[0]
+                # Create y_true and y_pred arrays for sklearn
+                y_true_method1 = []
+                y_pred_method1 = []
+                y_true_method2 = []
+                y_pred_method2 = []
+                
+                for _, row in df.iterrows():
+                    gene = row['Gene']
                     
-                    error_rate_list.append(rate)
-                    method1_precision.append(method1_prec)
-                    method2_precision.append(method2_prec)
+                    # Method 1 - Add TP as correct predictions
+                    y_true_method1.extend([gene] * int(row['Method1_TP']))
+                    y_pred_method1.extend([gene] * int(row['Method1_TP']))
                     
-                    print(f"Error rate {rate}: Method1 Precision = {method1_prec:.4f}, Method2 Precision = {method2_prec:.4f}")
-                else:
-                    print(f"Warning: No AGGREGATED row found in {file_path}")
+                    # Method 1 - Add FP as incorrect predictions (predicted as this gene but actually other)
+                    y_true_method1.extend(['OTHER'] * int(row['Method1_FP']))
+                    y_pred_method1.extend([gene] * int(row['Method1_FP']))
+                    
+                    # Method 1 - Add FN as missed predictions (actually this gene but predicted as other)
+                    y_true_method1.extend([gene] * int(row['Method1_FN']))
+                    y_pred_method1.extend(['OTHER'] * int(row['Method1_FN']))
+                    
+                    # Method 2 - Same logic
+                    y_true_method2.extend([gene] * int(row['Method2_TP']))
+                    y_pred_method2.extend([gene] * int(row['Method2_TP']))
+                    
+                    y_true_method2.extend(['OTHER'] * int(row['Method2_FP']))
+                    y_pred_method2.extend([gene] * int(row['Method2_FP']))
+                    
+                    y_true_method2.extend([gene] * int(row['Method2_FN']))
+                    y_pred_method2.extend(['OTHER'] * int(row['Method2_FN']))
+                
+                # Calculate precision using sklearn
+                genes = df['Gene'].unique().tolist()
+                method1_prec = precision_score(y_true_method1, y_pred_method1, labels=genes, average='weighted', zero_division=0)
+                method2_prec = precision_score(y_true_method2, y_pred_method2, labels=genes, average='weighted', zero_division=0)
+                
+                error_rate_list.append(rate)
+                method1_precision.append(method1_prec)
+                method2_precision.append(method2_prec)
+                
+                print(f"Error rate {rate}: Method1 Precision = {method1_prec:.4f}, Method2 Precision = {method2_prec:.4f}")
                     
             except Exception as e:
                 print(f"Error reading {file_path}: {e}")
@@ -89,7 +119,7 @@ def create_variant_calling_precision_plot():
     
     plt.tight_layout()
     
-    output_file = 'variant_calling_precision_vs_error_rate.png'
+    output_file = 'plots/variant_calling_precision_vs_error_rate.png'
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Variant calling precision plot saved: {output_file}")
     

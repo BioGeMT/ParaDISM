@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from sklearn.metrics import precision_score, recall_score
 
 COLORS = ['#FF8C00', '#008080']  
 
@@ -17,7 +18,7 @@ plt.rcParams.update({
 
 def load_variant_metrics(error_rate):
     rate_str = f"{error_rate:.3f}".replace('.', '_')
-    file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/comprehensive_variant_metrics.tsv"
+    file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/variant_calling_confusion_matrix.tsv"
     
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -28,50 +29,83 @@ def load_variant_metrics(error_rate):
 def calculate_variant_metrics(df):
     results = []
     
-    gene_rows = df[df['Gene'] != 'AGGREGATED'].copy()
+    # Create y_true and y_pred arrays for sklearn
+    y_true_method1 = []
+    y_pred_method1 = []
+    y_true_method2 = []
+    y_pred_method2 = []
     
-    for _, row in gene_rows.iterrows():
-        # for variant calling, specificity = 1 - (FP / total_predicted) = precision
-        tp1 = row['Method1_TP']
-        fp1 = row['Method1_FP']
-        total_predicted1 = tp1 + fp1
-        specificity1 = 1.0 - (fp1 / total_predicted1) if total_predicted1 > 0 else 1.0
+    for _, row in df.iterrows():
+        gene = row['Gene']
         
-        tp2 = row['Method2_TP']
-        fp2 = row['Method2_FP']
-        total_predicted2 = tp2 + fp2
-        specificity2 = 1.0 - (fp2 / total_predicted2) if total_predicted2 > 0 else 1.0
+        # Method 1 - Add TP as correct predictions
+        y_true_method1.extend([gene] * int(row['Method1_TP']))
+        y_pred_method1.extend([gene] * int(row['Method1_TP']))
+        
+        # Method 1 - Add FP as incorrect predictions
+        y_true_method1.extend(['OTHER'] * int(row['Method1_FP']))
+        y_pred_method1.extend([gene] * int(row['Method1_FP']))
+        
+        # Method 1 - Add FN as missed predictions
+        y_true_method1.extend([gene] * int(row['Method1_FN']))
+        y_pred_method1.extend(['OTHER'] * int(row['Method1_FN']))
+        
+        # Method 2 - Same logic
+        y_true_method2.extend([gene] * int(row['Method2_TP']))
+        y_pred_method2.extend([gene] * int(row['Method2_TP']))
+        
+        y_true_method2.extend(['OTHER'] * int(row['Method2_FP']))
+        y_pred_method2.extend([gene] * int(row['Method2_FP']))
+        
+        y_true_method2.extend([gene] * int(row['Method2_FN']))
+        y_pred_method2.extend(['OTHER'] * int(row['Method2_FN']))
+    
+    genes = df['Gene'].unique().tolist()
+    
+    # Calculate per-gene metrics
+    for gene in genes:
+        # Create binary classification for this gene
+        y_true_gene_m1 = [1 if x == gene else 0 for x in y_true_method1]
+        y_pred_gene_m1 = [1 if x == gene else 0 for x in y_pred_method1]
+        
+        y_true_gene_m2 = [1 if x == gene else 0 for x in y_true_method2]
+        y_pred_gene_m2 = [1 if x == gene else 0 for x in y_pred_method2]
+        
+        precision1 = precision_score(y_true_gene_m1, y_pred_gene_m1, zero_division=0)
+        recall1 = recall_score(y_true_gene_m1, y_pred_gene_m1, zero_division=0)
+        specificity1 = precision1  # For variant calling, specificity ≈ precision
+        
+        precision2 = precision_score(y_true_gene_m2, y_pred_gene_m2, zero_division=0)
+        recall2 = recall_score(y_true_gene_m2, y_pred_gene_m2, zero_division=0)
+        specificity2 = precision2  # For variant calling, specificity ≈ precision
         
         results.append({
-            'Gene': row['Gene'],
-            'Precision': row['Method1_Precision'],
-            'Recall': row['Method1_Recall'],
+            'Gene': gene,
+            'Precision': precision1,
+            'Recall': recall1,
             'Specificity': specificity1,
-            'Precision_Bowtie2': row['Method2_Precision'],
-            'Recall_Bowtie2': row['Method2_Recall'],
+            'Precision_Bowtie2': precision2,
+            'Recall_Bowtie2': recall2,
             'Specificity_Bowtie2': specificity2
         })
     
-    agg_row = df[df['Gene'] == 'AGGREGATED'].iloc[0]
+    # Calculate overall metrics using weighted average
+    overall_precision1 = precision_score(y_true_method1, y_pred_method1, labels=genes, average='weighted', zero_division=0)
+    overall_recall1 = recall_score(y_true_method1, y_pred_method1, labels=genes, average='weighted', zero_division=0)
+    overall_specificity1 = overall_precision1
     
-    tp1_overall = agg_row['Method1_TP']
-    fp1_overall = agg_row['Method1_FP']
-    total_predicted1_overall = tp1_overall + fp1_overall
-    specificity1_overall = 1.0 - (fp1_overall / total_predicted1_overall) if total_predicted1_overall > 0 else 1.0
-    
-    tp2_overall = agg_row['Method2_TP']
-    fp2_overall = agg_row['Method2_FP']
-    total_predicted2_overall = tp2_overall + fp2_overall
-    specificity2_overall = 1.0 - (fp2_overall / total_predicted2_overall) if total_predicted2_overall > 0 else 1.0
+    overall_precision2 = precision_score(y_true_method2, y_pred_method2, labels=genes, average='weighted', zero_division=0)
+    overall_recall2 = recall_score(y_true_method2, y_pred_method2, labels=genes, average='weighted', zero_division=0)
+    overall_specificity2 = overall_precision2
     
     results.append({
         'Gene': 'Overall',
-        'Precision': agg_row['Method1_Precision'],
-        'Recall': agg_row['Method1_Recall'],
-        'Specificity': specificity1_overall,
-        'Precision_Bowtie2': agg_row['Method2_Precision'],
-        'Recall_Bowtie2': agg_row['Method2_Recall'],
-        'Specificity_Bowtie2': specificity2_overall
+        'Precision': overall_precision1,
+        'Recall': overall_recall1,
+        'Specificity': overall_specificity1,
+        'Precision_Bowtie2': overall_precision2,
+        'Recall_Bowtie2': overall_recall2,
+        'Specificity_Bowtie2': overall_specificity2
     })
     
     return results
@@ -100,7 +134,7 @@ def create_variant_plot(error_rate):
         })
     
     create_horizontal_plot(combined_results, f"Variant Calling Performance - Error Rate {error_rate*100:.1f}%", 
-                          f"variant_calling_{str(error_rate).replace('.', '_')}.png")
+                          f"plots/variant_calling_{str(error_rate).replace('.', '_')}.png")
     save_tsv_output(combined_results, error_rate)
     
     print(f"\n=== VARIANT CALLING RESULTS FOR ERROR RATE {error_rate} ===")
@@ -141,12 +175,12 @@ def create_horizontal_plot(results, title, filename):
 
 def save_tsv_output(results, error_rate):
     df = pd.DataFrame(results)
-    filename = f"variant_calling_{str(error_rate).replace('.', '_')}.tsv"
+    filename = f"plots/variant_calling_{str(error_rate).replace('.', '_')}.tsv"
     df.to_csv(filename, sep='\t', index=False)
     print(f"Created TSV: {filename}")
 
 def main():
-    error_rates = [0.001, 0.005, 0.010]
+    error_rates = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.010]
     for rate in error_rates:
         create_variant_plot(rate)
 

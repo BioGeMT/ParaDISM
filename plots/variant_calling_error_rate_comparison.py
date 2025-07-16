@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from sklearn.metrics import precision_score, recall_score
 
 COLORS = ['#FF8C00', '#008080']  
 
@@ -17,7 +18,7 @@ plt.rcParams.update({
 
 def load_variant_metrics(error_rate):
     rate_str = f"{error_rate:.3f}".replace('.', '_')
-    file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/comprehensive_variant_metrics.tsv"
+    file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/variant_calling_confusion_matrix.tsv"
     
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -33,27 +34,55 @@ def extract_overall_metrics(error_rates):
         if df is None:
             continue
             
-        # Get aggregated row
-        agg_row = df[df['Gene'] == 'AGGREGATED'].iloc[0]
+        # Create y_true and y_pred arrays for sklearn
+        y_true_method1 = []
+        y_pred_method1 = []
+        y_true_method2 = []
+        y_pred_method2 = []
         
-        # Calculate specificity for both methods
-        tp1 = agg_row['Method1_TP']
-        fp1 = agg_row['Method1_FP']
-        total_predicted1 = tp1 + fp1
-        specificity1 = 1.0 - (fp1 / total_predicted1) if total_predicted1 > 0 else 1.0
+        for _, row in df.iterrows():
+            gene = row['Gene']
+            
+            # Method 1 - Add TP as correct predictions
+            y_true_method1.extend([gene] * int(row['Method1_TP']))
+            y_pred_method1.extend([gene] * int(row['Method1_TP']))
+            
+            # Method 1 - Add FP as incorrect predictions
+            y_true_method1.extend(['OTHER'] * int(row['Method1_FP']))
+            y_pred_method1.extend([gene] * int(row['Method1_FP']))
+            
+            # Method 1 - Add FN as missed predictions
+            y_true_method1.extend([gene] * int(row['Method1_FN']))
+            y_pred_method1.extend(['OTHER'] * int(row['Method1_FN']))
+            
+            # Method 2 - Same logic
+            y_true_method2.extend([gene] * int(row['Method2_TP']))
+            y_pred_method2.extend([gene] * int(row['Method2_TP']))
+            
+            y_true_method2.extend(['OTHER'] * int(row['Method2_FP']))
+            y_pred_method2.extend([gene] * int(row['Method2_FP']))
+            
+            y_true_method2.extend([gene] * int(row['Method2_FN']))
+            y_pred_method2.extend(['OTHER'] * int(row['Method2_FN']))
         
-        tp2 = agg_row['Method2_TP']
-        fp2 = agg_row['Method2_FP']
-        total_predicted2 = tp2 + fp2
-        specificity2 = 1.0 - (fp2 / total_predicted2) if total_predicted2 > 0 else 1.0
+        genes = df['Gene'].unique().tolist()
+        
+        # Calculate overall metrics using weighted average
+        precision1 = precision_score(y_true_method1, y_pred_method1, labels=genes, average='weighted', zero_division=0)
+        recall1 = recall_score(y_true_method1, y_pred_method1, labels=genes, average='weighted', zero_division=0)
+        specificity1 = precision1  # For variant calling, specificity ≈ precision
+        
+        precision2 = precision_score(y_true_method2, y_pred_method2, labels=genes, average='weighted', zero_division=0)
+        recall2 = recall_score(y_true_method2, y_pred_method2, labels=genes, average='weighted', zero_division=0)
+        specificity2 = precision2  # For variant calling, specificity ≈ precision
         
         results.append({
             'Error_Rate': rate,
-            'Precision_Mapper': agg_row['Method1_Precision'],
-            'Recall_Mapper': agg_row['Method1_Recall'],
+            'Precision_Mapper': precision1,
+            'Recall_Mapper': recall1,
             'Specificity_Mapper': specificity1,
-            'Precision_Bowtie2': agg_row['Method2_Precision'],
-            'Recall_Bowtie2': agg_row['Method2_Recall'],
+            'Precision_Bowtie2': precision2,
+            'Recall_Bowtie2': recall2,
             'Specificity_Bowtie2': specificity2
         })
     
@@ -107,7 +136,7 @@ def create_error_rate_comparison_plot():
     plt.tight_layout()
     
     # Save plot
-    filename = "variant_calling_error_rate_comparison.png"
+    filename = "plots/variant_calling_error_rate_comparison.png"
     plt.savefig(filename, bbox_inches='tight', dpi=300)
     plt.close()
     

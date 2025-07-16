@@ -1,3 +1,0 @@
-Method	Total Variants	GT Variants	TP	FP	FN	Precision	Recall	Accuracy
-Mapper	29	24	11	18	13	0.379	0.458	0.262
-Bowtie2	87	24	18	69	6	0.207	0.750	0.194

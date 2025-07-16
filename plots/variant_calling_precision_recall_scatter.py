@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from sklearn.metrics import precision_score, recall_score
 
 COLORS = ['#FF8C00', '#008080']  
 
@@ -17,7 +18,7 @@ plt.rcParams.update({
 
 def load_variant_metrics(error_rate):
     rate_str = f"{error_rate:.3f}".replace('.', '_')
-    file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/comprehensive_variant_metrics.tsv"
+    file_path = f"error_rate_results/err_{rate_str}/analysis/variant_calling_analysis/variant_calling_confusion_matrix.tsv"
     
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
@@ -34,13 +35,63 @@ def create_precision_recall_scatter(error_rate):
     
     print(f"\n=== Processing Variant Calling Precision vs Recall Scatter - Error Rate {error_rate} ===")
     
-    gene_rows = df[df['Gene'] != 'AGGREGATED'].copy()
+    # Create y_true and y_pred arrays for sklearn
+    y_true_method1 = []
+    y_pred_method1 = []
+    y_true_method2 = []
+    y_pred_method2 = []
     
-    genes = gene_rows['Gene'].tolist()
-    mapper_precision = gene_rows['Method1_Precision'].tolist()
-    mapper_recall = gene_rows['Method1_Recall'].tolist()
-    bowtie2_precision = gene_rows['Method2_Precision'].tolist()
-    bowtie2_recall = gene_rows['Method2_Recall'].tolist()
+    for _, row in df.iterrows():
+        gene = row['Gene']
+        
+        # Method 1 - Add TP as correct predictions
+        y_true_method1.extend([gene] * int(row['Method1_TP']))
+        y_pred_method1.extend([gene] * int(row['Method1_TP']))
+        
+        # Method 1 - Add FP as incorrect predictions
+        y_true_method1.extend(['OTHER'] * int(row['Method1_FP']))
+        y_pred_method1.extend([gene] * int(row['Method1_FP']))
+        
+        # Method 1 - Add FN as missed predictions
+        y_true_method1.extend([gene] * int(row['Method1_FN']))
+        y_pred_method1.extend(['OTHER'] * int(row['Method1_FN']))
+        
+        # Method 2 - Same logic
+        y_true_method2.extend([gene] * int(row['Method2_TP']))
+        y_pred_method2.extend([gene] * int(row['Method2_TP']))
+        
+        y_true_method2.extend(['OTHER'] * int(row['Method2_FP']))
+        y_pred_method2.extend([gene] * int(row['Method2_FP']))
+        
+        y_true_method2.extend([gene] * int(row['Method2_FN']))
+        y_pred_method2.extend(['OTHER'] * int(row['Method2_FN']))
+    
+    genes = df['Gene'].unique().tolist()
+    
+    mapper_precision = []
+    mapper_recall = []
+    bowtie2_precision = []
+    bowtie2_recall = []
+    
+    # Calculate per-gene metrics
+    for gene in genes:
+        # Create binary classification for this gene
+        y_true_gene_m1 = [1 if x == gene else 0 for x in y_true_method1]
+        y_pred_gene_m1 = [1 if x == gene else 0 for x in y_pred_method1]
+        
+        y_true_gene_m2 = [1 if x == gene else 0 for x in y_true_method2]
+        y_pred_gene_m2 = [1 if x == gene else 0 for x in y_pred_method2]
+        
+        precision1 = precision_score(y_true_gene_m1, y_pred_gene_m1, zero_division=0)
+        recall1 = recall_score(y_true_gene_m1, y_pred_gene_m1, zero_division=0)
+        
+        precision2 = precision_score(y_true_gene_m2, y_pred_gene_m2, zero_division=0)
+        recall2 = recall_score(y_true_gene_m2, y_pred_gene_m2, zero_division=0)
+        
+        mapper_precision.append(precision1)
+        mapper_recall.append(recall1)
+        bowtie2_precision.append(precision2)
+        bowtie2_recall.append(recall2)
     
     plt.figure(figsize=(10, 8), dpi=300)
     
@@ -69,7 +120,7 @@ def create_precision_recall_scatter(error_rate):
     
     plt.tight_layout()
     
-    filename = f"variant_calling_precision_recall_scatter_{f'{error_rate:.3f}'.replace('.', '_')}.png"
+    filename = f"plots/variant_calling_precision_recall_scatter_{f'{error_rate:.3f}'.replace('.', '_')}.png"
     plt.savefig(filename, bbox_inches='tight', dpi=300)
     plt.close()
     
@@ -82,7 +133,7 @@ def create_precision_recall_scatter(error_rate):
         print(f"{gene:<12} | {mapper_precision[i]:.3f}/{mapper_recall[i]:.3f} | {bowtie2_precision[i]:.3f}/{bowtie2_recall[i]:.3f}")
 
 def main():
-    error_rates = [0.001, 0.005, 0.010]
+    error_rates = [0.001, 0.005]
     for rate in error_rates:
         create_precision_recall_scatter(rate)
 
