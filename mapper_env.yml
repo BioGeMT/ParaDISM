@@ -16,3 +16,5 @@ dependencies:
   - scikit-learn
   - freebayes
   - matplotlib
+  - bcftools
+

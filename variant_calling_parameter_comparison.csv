@@ -1,0 +1,11 @@
+Function,FreeBayes Parameter,bcftools Equivalent,Value Used,Description
+Base Quality Filter,--min-base-quality (-q),mpileup --min-BQ,13,Filter bases below quality 13
+Mapping Quality Filter,--min-mapping-quality (-m),mpileup --min-MQ,20,Filter reads with mapping quality < 20
+Minimum Supporting Reads,--min-alternate-count (-C),filter '(INFO/DP4[2]+INFO/DP4[3])<5',5,Require ≥5 ALT reads; bcftools uses DP4 ALT fwd+rev; FreeBayes enforces via flag
+Minimum Total Coverage,--min-coverage,filter 'sum(INFO/DP4)<8',8,Require ≥8 total depth; bcftools uses sum(INFO/DP4); FreeBayes enforces via flag
+Minimum Allele Frequency,--min-alternate-fraction (-F),filter '(INFO/DP4[2]+INFO/DP4[3])/sum(INFO/DP4)<0.2',0.2,Require VAF ≥20%; bcftools uses DP4 ratio; FreeBayes enforces via flag
+Quality Score Threshold,not applied,not applied,n/a,No explicit QUAL cutoff applied in either pipeline
+SNP-only,-i -X -u,view -v snps,SNPs only,Restrict calls to SNPs only in both pipelines
+Normalization,bcftools norm (post FreeBayes),bcftools norm,N/A,Standardize variant representation
+Compression,VCF piped to bcftools -Oz,vcf.gz pipeline (-Oz),N/A,Compressed intermediate files
+Pipeline Steps,freebayes | norm,mpileup | call | norm | view | filter (no QUAL),N/A,Processing workflow

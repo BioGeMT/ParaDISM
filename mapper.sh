@@ -1,7 +1,7 @@
 #!/bin/bash
 
-SCRIPTS_DIR="./scripts"
-OUTPUT_DIR="./output"
+SCRIPTS_DIR="${SCRIPTS_DIR:-./scripts}"
+OUTPUT_DIR="${OUTPUT_DIR:-.}"
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
@@ -75,7 +75,7 @@ echo "Mapping reads to reference sequences..."
 python "$SCRIPTS_DIR/read_2_gene.py" --sam "$OUTPUT_DIR/mapped_reads.sam" --output "$OUTPUT_DIR/mapped_reads.tsv"
 
 echo "Mapping reads..."
-python "$SCRIPTS_DIR/mapper_algo.py" --read_map "$OUTPUT_DIR/mapped_reads.tsv" --msa "$OUTPUT_DIR/ref_seq_msa.tsv" --output_file "$OUTPUT_DIR/unique_mappings.tsv"
+python "$SCRIPTS_DIR/mapper_algo_snp_only.py" --read_map "$OUTPUT_DIR/mapped_reads.tsv" --msa "$OUTPUT_DIR/ref_seq_msa.tsv" --output_file "$OUTPUT_DIR/unique_mappings.tsv"
 
 echo "Writing files..."
 python "$SCRIPTS_DIR/output.py" --tsv "$OUTPUT_DIR//unique_mappings.tsv" --r1 "$R1" --r2 "$R2" --ref "$REF" --fastq-dir "$OUTPUT_DIR/fastq" --bam-dir "$OUTPUT_DIR/bam"

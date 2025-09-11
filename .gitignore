@@ -1,0 +1,16 @@
+sim_reads/
+*.png
+*.tsv
+__pycache__
+error_rate_results
+*.md
+*.fai
+output_consensus_005
+*.fa
+all_genes*
+simulated*
+ref.fa
+BCFTOOLS*
+FREEBAYES*
+READ_MAPPING*
+VARIANT_CALL*
