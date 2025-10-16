@@ -55,6 +55,7 @@ Run without arguments to launch interactive mode with guided prompts:
 The interactive mode will guide you through:
 - Selecting read files (R1 and R2)
 - Choosing a reference sequence
+- Option to use an existing SAM file (skips alignment)
 - Picking an aligner (Bowtie2, BWA-MEM2, or minimap2)
 - Setting thread count
 - Configuring minimap2 profile (if applicable)
@@ -68,6 +69,7 @@ The interactive mode will guide you through:
 - `--read1`: Forward reads FASTQ file (required)
 - `--read2`: Reverse reads FASTQ file (required)
 - `--reference`: Reference sequences in FASTA format (required)
+- `--sam`: Pre-existing SAM/BAM alignment file (optional, skips alignment step)
 - `--aligner`: Alignment tool to use: `bowtie2` (default), `bwa-mem2`, or `minimap2`
 - `--threads`: Number of threads for alignment (default: 4)
 - `--minimap2-profile`: Profile for minimap2: `short` (default), `pacbio`, or `nanopore`
@@ -93,6 +95,18 @@ The interactive mode will guide you through:
 ```bash
 ./mapper.sh --read1 pacbio_r1.fq --read2 pacbio_r2.fq --reference ref.fa --aligner minimap2 --minimap2-profile pacbio --threads 16
 ```
+
+**Using your own alignment (skip alignment step):**
+```bash
+./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa --sam my_custom_alignment.sam
+```
+Note: When `--sam` is provided, the alignment step is skipped and `--aligner`, `--threads`, and `--minimap2-profile` options are ignored.
+
+**SAM File Requirements:**
+Your SAM file must include:
+- Valid SAM header
+- Aligned reads (not all unmapped)
+- MD tags (use `samtools calmd` if missing)
 
   
 

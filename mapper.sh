@@ -22,6 +22,7 @@ echo "Starting pipeline..."
 R1=""
 R2=""
 REF=""
+SAM=""
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -48,6 +49,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       REF="$2"
+      shift 2
+      ;;
+    --sam)
+      if [[ -z "$2" ]]; then
+        echo "ERROR: --sam requires a filename argument"
+        exit 1
+      fi
+      SAM="$2"
       shift 2
       ;;
     --aligner)
@@ -77,7 +86,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --*)
       echo "ERROR: Unknown option '$1'"
-      echo "Valid options: --read1, --read2, --reference, --aligner, --threads, --minimap2-profile"
+      echo "Valid options: --read1, --read2, --reference, --sam, --aligner, --threads, --minimap2-profile"
       exit 1
       ;;
     *)
@@ -89,81 +98,124 @@ done
 
 # Validate required arguments
 if [[ -z "$R1" || -z "$R2" || -z "$REF" ]]; then
-  echo "Usage: $0 --read1 <READ1> --read2 <READ2> --reference <REFERENCE> [--aligner <bowtie2|bwa-mem2|minimap2>] [--threads <N>] [--minimap2-profile <short|pacbio|nanopore>]"
+  echo "Usage: $0 --read1 <READ1> --read2 <READ2> --reference <REFERENCE> [--sam <SAM_FILE>] [--aligner <bowtie2|bwa-mem2|minimap2>] [--threads <N>] [--minimap2-profile <short|pacbio|nanopore>]"
   echo "ERROR: Missing required arguments (--read1, --read2, or --reference)."
   exit 1
 fi
 
-case "${ALIGNER,,}" in
-  bowtie2|bwa-mem2|minimap2)
-    ALIGNER="${ALIGNER,,}"
-    ;;
-  *)
-    echo "ERROR: Unsupported aligner '$ALIGNER'. Choose from bowtie2, bwa-mem2, minimap2."
+# Check if SAM file is provided
+if [[ -n "$SAM" ]]; then
+  if [[ ! -f "$SAM" ]]; then
+    echo "ERROR: SAM file not found: $SAM"
     exit 1
-    ;;
-esac
+  fi
 
-if ! [[ "$THREADS" =~ ^[0-9]+$ ]] || [[ "$THREADS" -lt 1 ]]; then
-  echo "ERROR: --threads must be a positive integer."
-  exit 1
+  echo "Validating SAM file..."
+
+  # Check if SAM file has valid header
+  if ! samtools view -H "$SAM" &>/dev/null; then
+    echo "ERROR: Invalid SAM file or missing header"
+    exit 1
+  fi
+
+  # Check if SAM file has aligned reads
+  ALIGNED_COUNT=$(samtools view -c -F 4 "$SAM" 2>/dev/null || echo "0")
+  if [[ "$ALIGNED_COUNT" -eq 0 ]]; then
+    echo "ERROR: SAM file contains no aligned reads"
+    exit 1
+  fi
+
+  # Check if SAM file has MD tag (required for get_reference_sequence())
+  HAS_MD=$(samtools view "$SAM" 2>/dev/null | head -n 100 | grep -c "MD:Z:" || echo "0")
+  if [[ "$HAS_MD" -eq 0 ]]; then
+    echo "ERROR: SAM file is missing required MD tag"
+    exit 1
+  fi
+
+  echo "SAM validation passed ($ALIGNED_COUNT aligned reads)"
+  echo "Using provided SAM file: $SAM"
+  echo "Note: --aligner, --threads, and --minimap2-profile options will be ignored."
 fi
 
-MINIMAP2_PROFILE="${MINIMAP2_PROFILE,,}"
-if [[ "$ALIGNER" == "minimap2" ]]; then
-  case "$MINIMAP2_PROFILE" in
-    short|pacbio|nanopore)
+# Validate aligner options only if SAM is not provided
+if [[ -z "$SAM" ]]; then
+  case "${ALIGNER,,}" in
+    bowtie2|bwa-mem2|minimap2)
+      ALIGNER="${ALIGNER,,}"
       ;;
     *)
-      echo "ERROR: Unsupported --minimap2-profile '$MINIMAP2_PROFILE'. Choose short, pacbio, or nanopore."
+      echo "ERROR: Unsupported aligner '$ALIGNER'. Choose from bowtie2, bwa-mem2, minimap2."
       exit 1
       ;;
   esac
-elif [[ "$MINIMAP2_PROFILE_SET" -eq 1 ]]; then
-  echo "WARNING: --minimap2-profile is ignored when --aligner is not minimap2."
+
+  if ! [[ "$THREADS" =~ ^[0-9]+$ ]] || [[ "$THREADS" -lt 1 ]]; then
+    echo "ERROR: --threads must be a positive integer."
+    exit 1
+  fi
+
+  MINIMAP2_PROFILE="${MINIMAP2_PROFILE,,}"
+  if [[ "$ALIGNER" == "minimap2" ]]; then
+    case "$MINIMAP2_PROFILE" in
+      short|pacbio|nanopore)
+        ;;
+      *)
+        echo "ERROR: Unsupported --minimap2-profile '$MINIMAP2_PROFILE'. Choose short, pacbio, or nanopore."
+        exit 1
+        ;;
+    esac
+  elif [[ "$MINIMAP2_PROFILE_SET" -eq 1 ]]; then
+    echo "WARNING: --minimap2-profile is ignored when --aligner is not minimap2."
+  fi
 fi
 
 echo "Processing MSA..."
 mafft --auto "$REF" > "$OUTPUT_DIR/ref_seq_msa.aln"
 
-case "$ALIGNER" in
-  bowtie2)
-    echo "Building Bowtie2 index..."
-    bowtie2-build "$REF" "$OUTPUT_DIR/PKD1_index"
+# Perform alignment or use provided SAM file
+if [[ -n "$SAM" ]]; then
+  echo "Copying provided SAM file to output directory..."
+  cp "$SAM" "$OUTPUT_DIR/mapped_reads.sam"
+else
+  case "$ALIGNER" in
+    bowtie2)
+      echo "Building Bowtie2 index..."
+      bowtie2-build "$REF" "$OUTPUT_DIR/PKD1_index"
 
-    echo "Aligning reads with Bowtie2..."
-    bowtie2 -p "$THREADS" -x "$OUTPUT_DIR/PKD1_index" -1 "$R1" -2 "$R2" -S "$OUTPUT_DIR/mapped_reads.sam"
-    ;;
-  bwa-mem2)
-    echo "Building BWA-MEM2 index..."
-    bwa-mem2 index -p "$OUTPUT_DIR/PKD1_index" "$REF"
+      echo "Aligning reads with Bowtie2..."
+      bowtie2 -p "$THREADS" -x "$OUTPUT_DIR/PKD1_index" -1 "$R1" -2 "$R2" -S "$OUTPUT_DIR/mapped_reads.sam"
+      ;;
+    bwa-mem2)
+      echo "Building BWA-MEM2 index..."
+      bwa-mem2 index -p "$OUTPUT_DIR/PKD1_index" "$REF"
 
-    echo "Aligning reads with BWA-MEM2..."
-    bwa-mem2 mem -t "$THREADS" "$OUTPUT_DIR/PKD1_index" "$R1" "$R2" > "$OUTPUT_DIR/mapped_reads.sam"
-    ;;
-  minimap2)
-    case "$MINIMAP2_PROFILE" in
-      short)
-        MINIMAP2_INDEX_PRESET="sr"
-        MINIMAP2_ALIGN_PRESET="sr"
-        ;;
-      pacbio)
-        MINIMAP2_INDEX_PRESET="map-pb"
-        MINIMAP2_ALIGN_PRESET="map-pb"
-        ;;
-      nanopore)
-        MINIMAP2_INDEX_PRESET="map-ont"
-        MINIMAP2_ALIGN_PRESET="map-ont"
-        ;;
-    esac
+      echo "Aligning reads with BWA-MEM2..."
+      bwa-mem2 mem -t "$THREADS" "$OUTPUT_DIR/PKD1_index" "$R1" "$R2" > "$OUTPUT_DIR/mapped_reads.sam"
+      ;;
+    minimap2)
+      case "$MINIMAP2_PROFILE" in
+        short)
+          MINIMAP2_INDEX_PRESET="sr"
+          MINIMAP2_ALIGN_PRESET="sr"
+          ;;
+        pacbio)
+          MINIMAP2_INDEX_PRESET="map-pb"
+          MINIMAP2_ALIGN_PRESET="map-pb"
+          ;;
+        nanopore)
+          MINIMAP2_INDEX_PRESET="map-ont"
+          MINIMAP2_ALIGN_PRESET="map-ont"
+          ;;
+      esac
 
-    echo "Building minimap2 ($MINIMAP2_PROFILE) index..."
-    minimap2 -x "$MINIMAP2_INDEX_PRESET" -d "$OUTPUT_DIR/PKD1_index.mmi" "$REF"
+      echo "Building minimap2 ($MINIMAP2_PROFILE) index..."
+      minimap2 -x "$MINIMAP2_INDEX_PRESET" -d "$OUTPUT_DIR/PKD1_index.mmi" "$REF"
 
-    echo "Aligning reads with minimap2 ($MINIMAP2_PROFILE)..."
-    minimap2 -ax "$MINIMAP2_ALIGN_PRESET" --MD -t "$THREADS" "$OUTPUT_DIR/PKD1_index.mmi" "$R1" "$R2" > "$OUTPUT_DIR/mapped_reads.sam"
-    ;;
-esac
+      echo "Aligning reads with minimap2 ($MINIMAP2_PROFILE)..."
+      minimap2 -ax "$MINIMAP2_ALIGN_PRESET" --MD -t "$THREADS" "$OUTPUT_DIR/PKD1_index.mmi" "$R1" "$R2" > "$OUTPUT_DIR/mapped_reads.sam"
+      ;;
+  esac
+fi
 
 echo "Mapping reference sequences to MSA..."
 python "$SCRIPTS_DIR/ref_2_msa.py" --reference_fasta "$REF" --msa_file "$OUTPUT_DIR/ref_seq_msa.aln" --output "$OUTPUT_DIR/ref_seq_msa.tsv"

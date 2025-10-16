@@ -82,18 +82,18 @@ EOF
 
 # Print section header
 print_section() {
-    echo ""
-    echo -e "${BOLD}${CYAN}▶ $1${RESET}"
-    echo ""
+    echo "" >&2
+    echo -e "${BOLD}${CYAN}▶ $1${RESET}" >&2
+    echo "" >&2
 }
 
-# Smart file finder - looks for files with r1/r2/ref in name
+# Smart file finder - looks for files with r1/r2/ref/sam in name
 find_smart_file() {
-    local search_term=$1  # "r1", "r2", or "ref"
-    local extension=$2     # "*.fq" or "*.fa"
+    local search_term=$1  # "r1", "r2", "ref", or "sam"
+    local extension=$2     # "*.fq", "*.fa", or "*.sam"
 
-    # Case-insensitive search for files containing search term
-    mapfile -t candidates < <(find . -maxdepth 3 -iname "*${search_term}*${extension#\*}" -type f 2>/dev/null | sort)
+    # Case-insensitive search for files containing search term (current directory only)
+    mapfile -t candidates < <(find . -maxdepth 1 -iname "*${search_term}*${extension#\*}" -type f 2>/dev/null | sort)
 
     if [ ${#candidates[@]} -eq 1 ]; then
         # Found exactly one match
@@ -110,7 +110,8 @@ list_files() {
     local pattern=$1
     local description=$2
 
-    mapfile -t files < <(find . -maxdepth 3 -name "$pattern" -type f 2>/dev/null | sort)
+    # Search current directory only
+    mapfile -t files < <(find . -maxdepth 1 -name "$pattern" -type f 2>/dev/null | sort)
 
     if [ ${#files[@]} -eq 0 ]; then
         echo -e "${YELLOW}No $description found${RESET}" >&2
@@ -133,8 +134,8 @@ list_files() {
 
 # Select file with smart detection
 select_file_smart() {
-    local search_term=$1   # "r1", "r2", or "ref"
-    local pattern=$2       # "*.fq" or "*.fa"
+    local search_term=$1   # "r1", "r2", "ref", or "sam"
+    local pattern=$2       # "*.fq", "*.fa", or "*.sam"
     local description=$3   # User-friendly name
 
     # Try smart detection first
@@ -161,8 +162,8 @@ select_file_smart() {
         done
     fi
 
-    # Smart detection failed or user said no - show full list
-    mapfile -t files < <(find . -maxdepth 3 -name "$pattern" -type f 2>/dev/null | sort)
+    # Smart detection failed or user said no - show full list (current directory only)
+    mapfile -t files < <(find . -maxdepth 1 -name "$pattern" -type f 2>/dev/null | sort)
 
     if [ ${#files[@]} -eq 0 ]; then
         echo -e "${RED}No $description found!${RESET}" >&2
@@ -177,7 +178,7 @@ select_file_smart() {
 
     while true; do
         if [ $max_num -eq 1 ]; then
-            read -p "$(echo -e ${GREEN}Select 1 or ENTER for default: ${RESET})" choice </dev/tty
+            read -p "$(echo -e ${GREEN}Press ENTER to select: ${RESET})" choice </dev/tty
         else
             read -p "$(echo -e ${GREEN}Select 1-$max_num or ENTER for first: ${RESET})" choice </dev/tty
         fi
@@ -199,8 +200,6 @@ select_file_smart() {
 select_aligner() {
     print_section "Select Read Aligner"
 
-    echo -e "${BOLD}Available aligners:${RESET}" >&2
-    echo "" >&2
     echo -e "  ${CYAN} 1${RESET} │ ${GREEN}Bowtie2${RESET}      ${DIM}(Default, good for short reads)${RESET}" >&2
     echo -e "  ${CYAN} 2${RESET} │ ${GREEN}BWA-MEM2${RESET}     ${DIM}(Fast alternative for short reads)${RESET}" >&2
     echo -e "  ${CYAN} 3${RESET} │ ${GREEN}Minimap2${RESET}     ${DIM}(Versatile, supports long reads)${RESET}" >&2
@@ -220,9 +219,7 @@ select_aligner() {
                 ;;
             3)
                 # Ask for minimap2 profile
-                echo "" >&2
-                echo -e "${BOLD}Select Minimap2 profile:${RESET}" >&2
-                echo "" >&2
+                print_section "Select Minimap2 Profile"
                 echo -e "  ${CYAN} 1${RESET} │ ${GREEN}short${RESET}     ${DIM}(Illumina paired-end)${RESET}" >&2
                 echo -e "  ${CYAN} 2${RESET} │ ${GREEN}pacbio${RESET}    ${DIM}(PacBio HiFi/CLR)${RESET}" >&2
                 echo -e "  ${CYAN} 3${RESET} │ ${GREEN}nanopore${RESET}  ${DIM}(Oxford Nanopore)${RESET}" >&2
@@ -265,7 +262,6 @@ select_threads() {
     local default_threads=4
     local max_threads=$(nproc)
 
-    echo "" >&2
     read -p "$(echo -e ${GREEN}Number of threads [1-$max_threads] or press ENTER for $default_threads: ${RESET})" threads </dev/tty
 
     if [ -z "$threads" ]; then
@@ -281,6 +277,29 @@ select_threads() {
         echo $default_threads
         return 0
     fi
+}
+
+# Ask if user wants to use existing SAM file
+ask_use_sam() {
+    echo "" >&2
+
+    while true; do
+        read -p "$(echo -e ${GREEN}Do you have an existing SAM alignment file? [y/N]: ${RESET})" choice </dev/tty
+
+        case "$choice" in
+            ""|[Nn]|[Nn][Oo])
+                echo ""
+                return 0
+                ;;
+            [Yy]|[Yy][Ee][Ss])
+                echo "sam"
+                return 0
+                ;;
+            *)
+                echo -e "${YELLOW}Please answer y or n${RESET}" >&2
+                ;;
+        esac
+    done
 }
 
 # Main script
@@ -305,18 +324,29 @@ main() {
     [ -z "$REF" ] && exit 1
     echo -e "${GREEN}✓${RESET} Selected Reference: ${BOLD}$REF${RESET}"
 
-    # Select Aligner
-    ALIGNER=$(select_aligner)
-    if [ "$ALIGNER" = "minimap2" ]; then
-        echo -e "${GREEN}✓${RESET} Selected Aligner: ${BOLD}$ALIGNER ($MINIMAP2_PROFILE)${RESET}"
-    else
-        echo -e "${GREEN}✓${RESET} Selected Aligner: ${BOLD}$ALIGNER${RESET}"
-    fi
+    # Ask about SAM file
+    USE_SAM=$(ask_use_sam)
 
-    # Select Threads
-    print_section "Configure Resources"
-    THREADS=$(select_threads)
-    echo -e "${GREEN}✓${RESET} Using threads: ${BOLD}$THREADS${RESET}"
+    if [ "$USE_SAM" = "sam" ]; then
+        # Select existing SAM file
+        print_section "Select SAM File"
+        SAM=$(select_file_smart "sam" "*.sam" "SAM file")
+        [ -z "$SAM" ] && exit 1
+        echo -e "${GREEN}✓${RESET} Selected SAM: ${BOLD}$SAM${RESET}"
+    else
+        # Select Aligner (print_section is inside select_aligner)
+        ALIGNER=$(select_aligner)
+        if [ "$ALIGNER" = "minimap2" ]; then
+            echo -e "${GREEN}✓${RESET} Selected Aligner: ${BOLD}$ALIGNER ($MINIMAP2_PROFILE)${RESET}"
+        else
+            echo -e "${GREEN}✓${RESET} Selected Aligner: ${BOLD}$ALIGNER${RESET}"
+        fi
+
+        # Select Threads
+        print_section "Configure Resources"
+        THREADS=$(select_threads)
+        echo -e "${GREEN}✓${RESET} Using threads: ${BOLD}$THREADS${RESET}"
+    fi
 
     # Confirm and run
     echo ""
@@ -331,22 +361,21 @@ main() {
     print_section "Running Pipeline"
 
     # Build mapper.sh arguments
-    MAPPER_ARGS="--read1 $R1 --read2 $R2 --reference $REF --aligner $ALIGNER --threads $THREADS"
-    if [ "$ALIGNER" = "minimap2" ]; then
-        MAPPER_ARGS="$MAPPER_ARGS --minimap2-profile $MINIMAP2_PROFILE"
+    MAPPER_ARGS="--read1 $R1 --read2 $R2 --reference $REF"
+
+    if [ "$USE_SAM" = "sam" ]; then
+        MAPPER_ARGS="$MAPPER_ARGS --sam $SAM"
+    else
+        MAPPER_ARGS="$MAPPER_ARGS --aligner $ALIGNER --threads $THREADS"
+        if [ "$ALIGNER" = "minimap2" ]; then
+            MAPPER_ARGS="$MAPPER_ARGS --minimap2-profile $MINIMAP2_PROFILE"
+        fi
     fi
 
     echo -e "${DIM}Output directory: ./output${RESET}"
     echo ""
 
-    # Execute with spinners
-    if ! run_with_spinner "Creating multiple sequence alignment" \
-        bash -c "mafft --auto '$REF' > ./output/ref_seq_msa.aln 2>&1"; then
-        exit 1
-    fi
-
-    # Run the rest of the pipeline
-    echo ""
+    # Run the pipeline (it handles MSA and everything else)
     echo -e "${CYAN}Running mapper pipeline...${RESET}"
     ./mapper.sh $MAPPER_ARGS
 
