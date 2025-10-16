@@ -100,13 +100,12 @@ The interactive mode will guide you through:
 ## Pipeline Steps
 
 1. **MSA Generation**: Uses MAFFT to create multiple sequence alignment of reference sequences
-2. **Read Mapping**: Aligns reads to references using Bowtie2
-3. **Reference to MSA Mapping**: Maps reference sequences to MSA positions
-4. **Read to Gene Mapping**: Processes SAM alignments to map reads to genes
-5. **MSA Integration**: Maps reads to MSA coordinates
-6. **Refinement**: Refines read mappings
-7. **Unique Mapping**: Identifies uniquely mapped reads
-8. **Output Generation**: Creates gene-specific files in fastq and bam formats
+2. **Reference Indexing**: Builds index for the selected aligner (Bowtie2, BWA-MEM2, or minimap2)
+3. **Read Alignment**: Aligns paired-end reads to reference sequences using the selected aligner
+4. **Reference to MSA Mapping**: Maps reference sequences to MSA positions using BioPython
+5. **Read to Gene Mapping**: Processes SAM alignments to extract read-to-gene mappings using pysam
+6. **Unique Mapping Algorithm**: Identifies uniquely mapped reads using dynamic programming (SNP-optimized)
+7. **Output Generation**: Creates gene-specific FASTQ and BAM files from unique mappings
 
 ## Output Structure
 
