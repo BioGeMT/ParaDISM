@@ -1,1 +1,0 @@
-samtools view /home/dtzim01/PKD1_pipeline/output/bam/GNAQP1_mut.sorted.bam GNAQP1_mut:64-125 | awk '$4 <= 64 && ($4 + length($10) - 1) >= 125' | wc -l
