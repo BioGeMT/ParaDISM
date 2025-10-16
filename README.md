@@ -1,6 +1,6 @@
 # PKD1 Read Mapping Pipeline
 
-This pipeline performs unique read mapping, and generates gene-specific outputs in FASTQ and BAM formats. It processes paired-end sequencing data against reference sequences.
+This pipeline performs unique read mapping and generates gene-specific outputs in FASTQ and BAM formats. It processes paired-end sequencing data against reference sequences using multiple alignment algorithms.
 
 ## Prerequisites
 
@@ -17,20 +17,24 @@ Required dependencies:
 - pysam
 - biopython
 - mafft
-- bowtie2
+- bowtie2 (default aligner)
+- bwa-mem2 (optional)
+- minimap2 (optional)
 - pandas
 - samtools
+
 ## Directory Structure
 
 ```
 .
 ├── scripts/
 │   ├── output.py
-│   ├── read_2_gene.py 
+│   ├── read_2_gene.py
 │   ├── ref_2_msa.py
-│   └── mapper_algo.py
-│      
+│   └── mapper_algo_snp_only.py
+│
 ├── mapper.sh
+├── mapper_interactive.sh
 ├── simulated_r1.fq
 ├── simulated_r2.fq
 └── mapper_env.yml
@@ -41,15 +45,54 @@ Required dependencies:
 
 First run the read simulator notebook to generate simulated paired reads. This produces two fq files.
 
-### Basic Command
+### Interactive Mode (Recommended)
+Run without arguments to launch interactive mode with guided prompts:
+
 ```bash
-./mapper.sh -r1 <forward_reads.fq> -r2 <reverse_reads.fq> -ref <reference.fasta>
+./mapper.sh
+```
+
+The interactive mode will guide you through:
+- Selecting read files (R1 and R2)
+- Choosing a reference sequence
+- Picking an aligner (Bowtie2, BWA-MEM2, or minimap2)
+- Setting thread count
+- Configuring minimap2 profile (if applicable)
+
+### Command-Line Mode
+```bash
+./mapper.sh --read1 <forward_reads.fq> --read2 <reverse_reads.fq> --reference <reference.fasta> [OPTIONS]
 ```
 
 ### Arguments
-- `-r1`: Forward reads FASTQ file (required)
-- `-r2`: Reverse reads FASTQ file (required)
-- `-ref`: Reference sequences in FASTA format (required)
+- `--read1`: Forward reads FASTQ file (required)
+- `--read2`: Reverse reads FASTQ file (required)
+- `--reference`: Reference sequences in FASTA format (required)
+- `--aligner`: Alignment tool to use: `bowtie2` (default), `bwa-mem2`, or `minimap2`
+- `--threads`: Number of threads for alignment (default: 4)
+- `--minimap2-profile`: Profile for minimap2: `short` (default), `pacbio`, or `nanopore`
+
+### Examples
+
+**Using default Bowtie2 aligner:**
+```bash
+./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa
+```
+
+**Using BWA-MEM2 with 8 threads:**
+```bash
+./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa --aligner bwa-mem2 --threads 8
+```
+
+**Using minimap2 for short reads:**
+```bash
+./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa --aligner minimap2 --minimap2-profile short
+```
+
+**Using minimap2 for PacBio data:**
+```bash
+./mapper.sh --read1 pacbio_r1.fq --read2 pacbio_r2.fq --reference ref.fa --aligner minimap2 --minimap2-profile pacbio --threads 16
+```
 
   
 
