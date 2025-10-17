@@ -11,3 +11,4 @@ all_genes*
 simulated*
 ref.fa
 analysis/
+output/
