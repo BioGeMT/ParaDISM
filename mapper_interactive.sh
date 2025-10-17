@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Interactive PKD1 Mapper Pipeline
-# Provides a user-friendly interface for running the mapper with spinners and clean output
+# Provides a user-friendly interface for running the mapper with clean output
 
 set -euo pipefail
 
@@ -14,56 +14,6 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
-
-# Spinner characters
-SPINNER_CHARS='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-
-# Function to show spinner while command runs
-spinner() {
-    local pid=$1
-    local message=$2
-    local spin_i=0
-
-    echo -ne "${CYAN}${message}${RESET}"
-
-    while kill -0 $pid 2>/dev/null; do
-        local char=${SPINNER_CHARS:spin_i++%${#SPINNER_CHARS}:1}
-        echo -ne "\r${CYAN}${char} ${message}${RESET}"
-        sleep 0.1
-    done
-
-    wait $pid
-    local exit_code=$?
-
-    if [ $exit_code -eq 0 ]; then
-        echo -e "\r${GREEN}✓${RESET} ${message}${DIM}...done${RESET}"
-    else
-        echo -e "\r${RED}✗${RESET} ${message}${DIM}...failed${RESET}"
-        return $exit_code
-    fi
-}
-
-# Function to run command with spinner
-run_with_spinner() {
-    local message=$1
-    shift
-    local log_file=$(mktemp)
-
-    # Run command in background, redirect output to log
-    "$@" > "$log_file" 2>&1 &
-    local pid=$!
-
-    # Show spinner
-    if ! spinner $pid "$message"; then
-        echo -e "${RED}Error occurred. Log:${RESET}"
-        tail -20 "$log_file"
-        rm -f "$log_file"
-        return 1
-    fi
-
-    rm -f "$log_file"
-    return 0
-}
 
 # Print header
 print_header() {
@@ -130,6 +80,68 @@ list_files() {
         printf "  ${CYAN}%${num_width}d${RESET} │ ${GREEN}%-50s${RESET} ${DIM}(%s)${RESET}\n" "$num" "$file" "$size" >&2
     done
     echo "" >&2
+}
+
+# Select file without smart detection (just show all matching pattern)
+select_file_simple() {
+    local pattern=$1       # "*.fa", "*.sam", etc.
+    local description=$2   # User-friendly name
+
+    # Show full list (current directory only)
+    mapfile -t files < <(find . -maxdepth 1 -name "$pattern" -type f 2>/dev/null | sort)
+
+    if [ ${#files[@]} -eq 0 ]; then
+        echo -e "${RED}No $description found!${RESET}" >&2
+        read -p "$(echo -e ${GREEN}Enter path manually: ${RESET})" custom_path </dev/tty
+        echo "$custom_path"
+        return 0
+    fi
+
+    # If exactly one file, auto-suggest it
+    if [ ${#files[@]} -eq 1 ]; then
+        local smart_file="${files[0]}"
+        local size=$(du -h "$smart_file" 2>/dev/null | cut -f1)
+        echo -e "${BOLD}Found:${RESET} ${GREEN}${smart_file}${RESET} ${DIM}(${size})${RESET}" >&2
+
+        while true; do
+            read -p "$(echo -e ${GREEN}Is this your $description? [Y/n]: ${RESET})" confirm </dev/tty
+            case "$confirm" in
+                ""|[Yy]|[Yy][Ee][Ss])
+                    echo "$smart_file"
+                    return 0
+                    ;;
+                [Nn]|[Nn][Oo])
+                    echo -e "${RED}No other $description found!${RESET}" >&2
+                    read -p "$(echo -e ${GREEN}Enter path manually: ${RESET})" custom_path </dev/tty
+                    echo "$custom_path"
+                    return 0
+                    ;;
+                *)
+                    echo -e "${YELLOW}Please answer y or n${RESET}" >&2
+                    ;;
+            esac
+        done
+    fi
+
+    # Multiple files - show numbered list
+    list_files "$pattern" "$description"
+
+    local max_num=${#files[@]}
+
+    while true; do
+        read -p "$(echo -e ${GREEN}Select 1-$max_num or ENTER for first: ${RESET})" choice </dev/tty
+
+        if [ -z "$choice" ]; then
+            choice=1
+        fi
+
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$max_num" ]; then
+            echo "${files[$((choice - 1))]}"
+            return 0
+        fi
+
+        echo -e "${RED}Invalid selection. Enter 1-$max_num${RESET}" >&2
+    done
 }
 
 # Select file with smart detection
@@ -200,21 +212,21 @@ select_file_smart() {
 select_aligner() {
     print_section "Select Read Aligner"
 
-    echo -e "  ${CYAN} 1${RESET} │ ${GREEN}Bowtie2${RESET}      ${DIM}(Default, good for short reads)${RESET}" >&2
-    echo -e "  ${CYAN} 2${RESET} │ ${GREEN}BWA-MEM2${RESET}     ${DIM}(Fast alternative for short reads)${RESET}" >&2
+    echo -e "  ${CYAN} 1${RESET} │ ${GREEN}BWA-MEM2${RESET}     ${DIM}(Default, fast for short reads)${RESET}" >&2
+    echo -e "  ${CYAN} 2${RESET} │ ${GREEN}Bowtie2${RESET}      ${DIM}(Alternative for short reads)${RESET}" >&2
     echo -e "  ${CYAN} 3${RESET} │ ${GREEN}Minimap2${RESET}     ${DIM}(Versatile, supports long reads)${RESET}" >&2
     echo "" >&2
 
     while true; do
-        read -p "$(echo -e ${GREEN}Select aligner [1-3] or press ENTER for Bowtie2: ${RESET})" choice </dev/tty
+        read -p "$(echo -e ${GREEN}Select aligner [1-3] or press ENTER for BWA-MEM2: ${RESET})" choice </dev/tty
 
         case "$choice" in
             ""|1)
-                echo "bowtie2"
+                echo "bwa-mem2"
                 return 0
                 ;;
             2)
-                echo "bwa-mem2"
+                echo "bowtie2"
                 return 0
                 ;;
             3)
@@ -320,7 +332,7 @@ main() {
 
     # Select Reference
     print_section "Select Reference"
-    REF=$(select_file_smart "ref" "*.fa" "reference file")
+    REF=$(select_file_simple "*.fa" "reference file")
     [ -z "$REF" ] && exit 1
     echo -e "${GREEN}✓${RESET} Selected Reference: ${BOLD}$REF${RESET}"
 
@@ -377,7 +389,8 @@ main() {
 
     # Run the pipeline (it handles MSA and everything else)
     echo -e "${CYAN}Running mapper pipeline...${RESET}"
-    ./mapper.sh $MAPPER_ARGS
+    echo ""
+    MAPPER_CALLED_FROM_INTERACTIVE=1 ./mapper.sh $MAPPER_ARGS
 
     # Success
     echo ""

@@ -113,10 +113,21 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
                                    sequence_bases: Dict, gene_names: List, output_file: str,
                                    batch_size: int = 10000) -> None:
     """Process read mappings for SNP-only analysis (no insertions)"""
-    
+
+    # First pass: count total unique read pairs
+    total_reads = 0
+    seen_bases = set()
+    with open(read_map_filepath, 'r') as f:
+        next(f)  # Skip header
+        for line in f:
+            read_name = line.split('\t')[0].rstrip('+-')
+            if read_name not in seen_bases:
+                seen_bases.add(read_name)
+                total_reads += 1
+
     with open(output_file, 'w') as out_f:
         out_f.write('Read_Name\tUniquely_Mapped\n')
-        
+
         current_read_base = None
         reads_processed = 0
         
@@ -156,17 +167,17 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
                 out_f.write(f'{current_read_base}\t{unique_gene}\n')
                 del read_scenarios[current_read_base]
                 reads_processed += 1
-                
+
                 if reads_processed % 100 == 0:
-                    sys.stdout.write(f"\rReads processed: {reads_processed}")
+                    sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}/{total_reads:,}")
                     sys.stdout.flush()
-                
+
                 if reads_processed % batch_size == 0:
                     gc.collect()
 
         with open(read_map_filepath, 'r') as input_file:
             next(input_file)  # Skip header
-            
+
             for line in input_file:
                 fields = line.strip().split('\t')
                 read_name = fields[0]
@@ -201,8 +212,8 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
             if current_read is not None:
                 process_buffer()
                 process_current_read()
-                
-            sys.stdout.write(f"\rReads processed: {reads_processed}\n")
+
+            sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}/{total_reads:,}\n")
             sys.stdout.flush()
 
 def main():
@@ -231,8 +242,8 @@ def main():
 if __name__ == '__main__':
     import time
     start_time = time.perf_counter()
-    
+
     main()
-    
+
     end_time = time.perf_counter()
-    print(f"SNP-only mapper execution time: {end_time - start_time:.6f} seconds")
+    print(f"SNP-only mapper execution time: {end_time - start_time:.6f} seconds", file=sys.stderr)

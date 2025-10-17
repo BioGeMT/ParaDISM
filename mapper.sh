@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -e  # Exit on error
+trap 'tput cnorm; kill $(jobs -p) 2>/dev/null' EXIT  # Restore cursor and kill all background jobs on exit
+
 # If no arguments provided, launch interactive mode
 if [ $# -eq 0 ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +19,148 @@ MINIMAP2_PROFILE_SET=0
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-echo "Starting pipeline..."
+# Create log file with timestamp
+LOG_FILE="$OUTPUT_DIR/pipeline_$(date '+%Y%m%d_%H%M%S').log"
+
+# Spinner characters
+SPINNER_CHARS='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+# Colors
+CYAN='\033[0;36m'
+RED='\033[0;31m'
+RESET='\033[0m'
+
+# Function to show spinner while command runs
+spinner() {
+    local pid=$1
+    local message=$2
+    local spin_i=0
+
+    # Hide cursor
+    tput civis
+
+    # Print message with spinner
+    while kill -0 $pid 2>/dev/null; do
+        local char=${SPINNER_CHARS:spin_i++%${#SPINNER_CHARS}:1}
+        printf "\r%s %s" "$char" "$message"
+        sleep 0.1
+    done
+
+    wait $pid
+    local exit_code=$?
+
+    # Show cursor
+    tput cnorm
+
+    if [ $exit_code -eq 0 ]; then
+        printf "\r${CYAN}✓${RESET} ${CYAN}%s${RESET}\n" "$message"
+    else
+        printf "\r${RED}✗${RESET} ${RED}%s${RESET}\n" "$message"
+        return $exit_code
+    fi
+}
+
+# Function to run command with spinner
+run_with_spinner() {
+    local message=$1
+    shift
+
+    # Append to pipeline log with timestamp and separator
+    echo "" >> "$LOG_FILE"
+    echo "================================================" >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message" >> "$LOG_FILE"
+    echo "================================================" >> "$LOG_FILE"
+
+    # Run command in background, redirect output to log
+    # Use eval to properly handle shell redirections in the command
+    eval "$@" >> "$LOG_FILE" 2>&1 &
+    local pid=$!
+
+    # Show spinner
+    if ! spinner $pid "$message"; then
+        echo "Error occurred. Check log: $LOG_FILE"
+        echo "Last 20 lines:"
+        tail -20 "$LOG_FILE"
+        return 1
+    fi
+
+    return 0
+}
+
+# Function to show progress output with spinner and completion message
+run_with_progress() {
+    local message=$1
+    shift
+
+    {
+        echo ""
+        echo "================================================"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message"
+        echo "================================================"
+    } >> "$LOG_FILE"
+
+    tput civis
+
+    # Print initial two lines: spinner + blank line for counter/progress
+    printf "%s %s\n" "⠋" "$message"
+    echo ""
+
+    # Start spinner animation in background
+    local spin_i=0
+    (
+        while true; do
+            tput cuu 2  # Move cursor up 2 lines (to spinner line)
+            tput cr     # Move to beginning of line
+            local char=${SPINNER_CHARS:spin_i++%${#SPINNER_CHARS}:1}
+            printf "%s %s" "$char" "$message"
+            tput el     # Clear to end of line
+            tput cud 2  # Move cursor down 2 lines (back to progress/output line)
+            tput cr     # Move to beginning of line
+            sleep 0.1
+        done
+    ) &
+    local spinner_pid=$!
+
+    set +e
+    # Redirect stderr to log only, stdout goes to tee (screen + log)
+    "$@" 2>>"$LOG_FILE" | tee -a "$LOG_FILE"
+    local exit_code=${PIPESTATUS[0]}
+
+    # Stop spinner
+    kill -9 $spinner_pid 2>/dev/null
+    wait $spinner_pid 2>/dev/null
+
+    # Python script ends with newline, so we're now 1 line below counter line
+    # Need to move up 3 lines total to reach spinner line
+    tput cuu 3           # Move up 3 lines to spinner line
+    tput cr              # Go to beginning of line
+    if [ $exit_code -eq 0 ]; then
+        printf "${CYAN}✓${RESET} ${CYAN}%s${RESET}" "$message"
+    else
+        printf "${RED}✗${RESET} ${RED}%s${RESET}" "$message"
+    fi
+    tput el              # Clear to end of line (remove any leftover spinner chars)
+    echo ""              # Move to next line (counter line)
+    tput el              # Clear the counter/progress line
+    echo ""              # Move to next line (blank line from Python's \n)
+    tput el              # Clear this line too
+
+    if [ $exit_code -ne 0 ]; then
+        echo "Error occurred. Check log: $LOG_FILE"
+        tail -20 "$LOG_FILE"
+    fi
+
+    # Show cursor again
+    tput cnorm
+
+    set -e
+
+    if [ $exit_code -eq 0 ]; then
+        return 0
+    else
+        return $exit_code
+    fi
+}
 
 # Initialize variables
 R1=""
@@ -169,28 +313,26 @@ if [[ -z "$SAM" ]]; then
   fi
 fi
 
-echo "Processing MSA..."
-mafft --auto "$REF" > "$OUTPUT_DIR/ref_seq_msa.aln"
+# Print pipeline header only if not called from interactive script
+if [[ -z "$MAPPER_CALLED_FROM_INTERACTIVE" ]]; then
+  echo -e "${CYAN}Running mapper pipeline...${RESET}"
+  echo ""
+fi
+
+run_with_spinner "Processing MSA" "mafft --auto '$REF' > '$OUTPUT_DIR/ref_seq_msa.aln'"
 
 # Perform alignment or use provided SAM file
 if [[ -n "$SAM" ]]; then
-  echo "Copying provided SAM file to output directory..."
-  cp "$SAM" "$OUTPUT_DIR/mapped_reads.sam"
+  run_with_spinner "Copying provided SAM file" "cp '$SAM' '$OUTPUT_DIR/mapped_reads.sam'"
 else
   case "$ALIGNER" in
     bowtie2)
-      echo "Building Bowtie2 index..."
-      bowtie2-build "$REF" "$OUTPUT_DIR/PKD1_index"
-
-      echo "Aligning reads with Bowtie2..."
-      bowtie2 -p "$THREADS" -x "$OUTPUT_DIR/PKD1_index" -1 "$R1" -2 "$R2" -S "$OUTPUT_DIR/mapped_reads.sam"
+      run_with_spinner "Building Bowtie2 index" "bowtie2-build '$REF' '$OUTPUT_DIR/ref_index'"
+      run_with_spinner "Aligning reads with Bowtie2" "bowtie2 -p $THREADS -x '$OUTPUT_DIR/ref_index' -1 '$R1' -2 '$R2' -S '$OUTPUT_DIR/mapped_reads.sam'"
       ;;
     bwa-mem2)
-      echo "Building BWA-MEM2 index..."
-      bwa-mem2 index -p "$OUTPUT_DIR/PKD1_index" "$REF"
-
-      echo "Aligning reads with BWA-MEM2..."
-      bwa-mem2 mem -t "$THREADS" "$OUTPUT_DIR/PKD1_index" "$R1" "$R2" > "$OUTPUT_DIR/mapped_reads.sam"
+      run_with_spinner "Building BWA-MEM2 index" "bwa-mem2 index -p '$OUTPUT_DIR/ref_index' '$REF'"
+      run_with_spinner "Aligning reads with BWA-MEM2" "bwa-mem2 mem -t $THREADS '$OUTPUT_DIR/ref_index' '$R1' '$R2' > '$OUTPUT_DIR/mapped_reads.sam'"
       ;;
     minimap2)
       case "$MINIMAP2_PROFILE" in
@@ -208,25 +350,18 @@ else
           ;;
       esac
 
-      echo "Building minimap2 ($MINIMAP2_PROFILE) index..."
-      minimap2 -x "$MINIMAP2_INDEX_PRESET" -d "$OUTPUT_DIR/PKD1_index.mmi" "$REF"
-
-      echo "Aligning reads with minimap2 ($MINIMAP2_PROFILE)..."
-      minimap2 -ax "$MINIMAP2_ALIGN_PRESET" --MD -t "$THREADS" "$OUTPUT_DIR/PKD1_index.mmi" "$R1" "$R2" > "$OUTPUT_DIR/mapped_reads.sam"
+      run_with_spinner "Building minimap2 ($MINIMAP2_PROFILE) index" "minimap2 -x $MINIMAP2_INDEX_PRESET -d '$OUTPUT_DIR/ref_index.mmi' '$REF'"
+      run_with_spinner "Aligning reads with minimap2 ($MINIMAP2_PROFILE)" "minimap2 -ax $MINIMAP2_ALIGN_PRESET --MD -t $THREADS '$OUTPUT_DIR/ref_index.mmi' '$R1' '$R2' > '$OUTPUT_DIR/mapped_reads.sam'"
       ;;
   esac
 fi
 
-echo "Mapping reference sequences to MSA..."
-python "$SCRIPTS_DIR/ref_2_msa.py" --reference_fasta "$REF" --msa_file "$OUTPUT_DIR/ref_seq_msa.aln" --output "$OUTPUT_DIR/ref_seq_msa.tsv"
+run_with_spinner "Mapping reference sequences to MSA" "python '$SCRIPTS_DIR/ref_2_msa.py' --reference_fasta '$REF' --msa_file '$OUTPUT_DIR/ref_seq_msa.aln' --output '$OUTPUT_DIR/ref_seq_msa.tsv'"
 
-echo "Mapping reads to reference sequences..."
-python "$SCRIPTS_DIR/read_2_gene.py" --sam "$OUTPUT_DIR/mapped_reads.sam" --output "$OUTPUT_DIR/mapped_reads.tsv"
+run_with_progress "Mapping reads to reference sequences" python "$SCRIPTS_DIR/read_2_gene.py" --sam "$OUTPUT_DIR/mapped_reads.sam" --output "$OUTPUT_DIR/mapped_reads.tsv" --fastq "$R1"
 
-echo "Refining reads..."
-python "$SCRIPTS_DIR/mapper_algo_snp_only.py" --read_map "$OUTPUT_DIR/mapped_reads.tsv" --msa "$OUTPUT_DIR/ref_seq_msa.tsv" --output_file "$OUTPUT_DIR/unique_mappings.tsv"
+run_with_progress "Refining mapping" python "$SCRIPTS_DIR/mapper_algo_snp_only.py" --read_map "$OUTPUT_DIR/mapped_reads.tsv" --msa "$OUTPUT_DIR/ref_seq_msa.tsv" --output_file "$OUTPUT_DIR/unique_mappings.tsv"
 
-echo "Writing output files..."
-python "$SCRIPTS_DIR/output.py" --tsv "$OUTPUT_DIR/unique_mappings.tsv" --r1 "$R1" --r2 "$R2" --ref "$REF" --fastq-dir "$OUTPUT_DIR/fastq" --bam-dir "$OUTPUT_DIR/bam"
+run_with_progress "Writing output files" python "$SCRIPTS_DIR/output.py" --tsv "$OUTPUT_DIR/unique_mappings.tsv" --r1 "$R1" --r2 "$R2" --ref "$REF" --fastq-dir "$OUTPUT_DIR/fastq" --bam-dir "$OUTPUT_DIR/bam" --aligner "$ALIGNER" --threads "$THREADS" --minimap2-profile "$MINIMAP2_PROFILE"
 
 echo "Pipeline complete. Outputs saved to: $OUTPUT_DIR"
