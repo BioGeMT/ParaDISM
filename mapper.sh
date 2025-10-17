@@ -135,15 +135,17 @@ run_with_progress() {
     tput cuu 3           # Move up 3 lines to spinner line
     tput cr              # Go to beginning of line
     if [ $exit_code -eq 0 ]; then
-        printf "${CYAN}✓${RESET} ${CYAN}%s${RESET}" "$message"
+        printf "${CYAN}✓${RESET} ${CYAN}%s${RESET}\n" "$message"
     else
-        printf "${RED}✗${RESET} ${RED}%s${RESET}" "$message"
+        printf "${RED}✗${RESET} ${RED}%s${RESET}\n" "$message"
     fi
-    tput el              # Clear to end of line (remove any leftover spinner chars)
-    echo ""              # Move to next line (counter line)
+    # Now cursor is on counter line after the newline from printf
     tput el              # Clear the counter/progress line
-    echo ""              # Move to next line (blank line from Python's \n)
-    tput el              # Clear this line too
+    tput cud 1           # Move down to blank line
+    tput cr              # Go to beginning
+    tput el              # Clear the blank line
+    tput cuu 1           # Move back up to be ready for next command
+    tput cr              # Go to beginning
 
     if [ $exit_code -ne 0 ]; then
         echo "Error occurred. Check log: $LOG_FILE"
@@ -363,5 +365,12 @@ run_with_progress "Mapping reads to reference sequences" python "$SCRIPTS_DIR/re
 run_with_progress "Refining mapping" python "$SCRIPTS_DIR/mapper_algo_snp_only.py" --read_map "$OUTPUT_DIR/mapped_reads.tsv" --msa "$OUTPUT_DIR/ref_seq_msa.tsv" --output_file "$OUTPUT_DIR/unique_mappings.tsv"
 
 run_with_progress "Writing output files" python "$SCRIPTS_DIR/output.py" --tsv "$OUTPUT_DIR/unique_mappings.tsv" --r1 "$R1" --r2 "$R2" --ref "$REF" --fastq-dir "$OUTPUT_DIR/fastq" --bam-dir "$OUTPUT_DIR/bam" --aligner "$ALIGNER" --threads "$THREADS" --minimap2-profile "$MINIMAP2_PROFILE"
+
+# Cleanup intermediate files
+echo "Cleaning up intermediate files..."
+rm -f "$OUTPUT_DIR"/ref_index.*
+rm -f "$OUTPUT_DIR"/ref_seq_msa.aln
+rm -f "$OUTPUT_DIR"/ref_seq_msa.tsv
+rm -f "$OUTPUT_DIR"/mapped_reads.tsv
 
 echo "Pipeline complete. Outputs saved to: $OUTPUT_DIR"
