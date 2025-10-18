@@ -230,9 +230,17 @@ while [[ $# -gt 0 ]]; do
       MINIMAP2_PROFILE_SET=1
       shift 2
       ;;
+    --output-dir)
+      if [[ -z "$2" ]]; then
+        echo "ERROR: --output-dir requires a directory path argument"
+        exit 1
+      fi
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
     --*)
       echo "ERROR: Unknown option '$1'"
-      echo "Valid options: --read1, --read2, --reference, --sam, --aligner, --threads, --minimap2-profile"
+      echo "Valid options: --read1, --read2, --reference, --sam, --aligner, --threads, --minimap2-profile, --output-dir"
       exit 1
       ;;
     *)
@@ -244,7 +252,7 @@ done
 
 # Validate required arguments
 if [[ -z "$R1" || -z "$R2" || -z "$REF" ]]; then
-  echo "Usage: $0 --read1 <READ1> --read2 <READ2> --reference <REFERENCE> [--sam <SAM_FILE>] [--aligner <bowtie2|bwa-mem2|minimap2>] [--threads <N>] [--minimap2-profile <short|pacbio|nanopore>]"
+  echo "Usage: $0 --read1 <READ1> --read2 <READ2> --reference <REFERENCE> [--sam <SAM_FILE>] [--aligner <bowtie2|bwa-mem2|minimap2>] [--threads <N>] [--minimap2-profile <short|pacbio|nanopore>] [--output-dir <DIR>]"
   echo "ERROR: Missing required arguments (--read1, --read2, or --reference)."
   exit 1
 fi
