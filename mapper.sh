@@ -374,6 +374,9 @@ run_with_progress "Refining mapping" python "$SCRIPTS_DIR/mapper_algo_snp_only.p
 
 run_with_progress "Writing output files" python "$SCRIPTS_DIR/output.py" --tsv "$OUTPUT_DIR/unique_mappings.tsv" --r1 "$R1" --r2 "$R2" --ref "$REF" --fastq-dir "$OUTPUT_DIR/fastq" --bam-dir "$OUTPUT_DIR/bam" --aligner "$ALIGNER" --threads "$THREADS" --minimap2-profile "$MINIMAP2_PROFILE"
 
+# Brief delay to let output buffers flush
+sleep 0.2
+
 # Cleanup intermediate files
 echo "Cleaning up intermediate files..."
 rm -f "$OUTPUT_DIR"/ref_index.*
