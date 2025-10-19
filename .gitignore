@@ -5,6 +5,7 @@ __pycache__
 error_rate_results
 *.md
 *.fai
+*.fa
 output_consensus_005
 *.fa
 all_genes*

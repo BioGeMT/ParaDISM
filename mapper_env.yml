@@ -1,20 +1,16 @@
 name: mapper_env
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
-  - python=3.10
-  - pysam
-  - biopython
+  # Core runtime
+  - python=3.11
   - mafft
   - bowtie2
-  - pandas
+  - bwa-mem2
+  - minimap2
   - samtools
-  - scipy
-  - numpy
-  - scikit-learn
-  - freebayes
-  - matplotlib
-  - bcftools
-
+  - biopython
+  - pysam
+  - rich
