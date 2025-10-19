@@ -143,75 +143,154 @@ class PipelineExecutor:
         """Run command with progress output (for Python scripts)."""
         self.log(message)
 
-        # Print spinner line + blank line for progress
-        print(f"⠋ {message}", file=sys.stderr)
-        print("", file=sys.stderr)
-
-        # Start spinner in background
-        import threading
+        import codecs
+        import select
         import time
-        spinner_stop = threading.Event()
 
-        def spin():
-            i = 0
-            while not spinner_stop.is_set():
-                char = self.spinner_chars[i % len(self.spinner_chars)]
-                # Move up 2 lines, print spinner, move down 2 lines
-                print(f"\033[2A\r{char} {message}\033[2B\r", end="", file=sys.stderr)
-                sys.stderr.flush()
-                time.sleep(0.1)
-                i += 1
+        spinner_interval = 0.1
+        spinner_index = 0
+        last_refresh = 0.0
+        display_progress = ""
+        progress_fragment = ""
 
-        spinner_thread = threading.Thread(target=spin, daemon=True)
-        spinner_thread.start()
+        def render_frame(spinner_char, progress_line):
+            """Redraw spinner and progress lines without flooding the terminal."""
+            formatted_progress = f"  {progress_line}" if progress_line else ""
+            sys.stderr.write("\033[2A\r")
+            sys.stderr.write(f"{spinner_char} {message}\033[K\n")
+            if formatted_progress:
+                sys.stderr.write(f"{formatted_progress}\033[K\n")
+            else:
+                sys.stderr.write("\033[K\n")
+            sys.stderr.flush()
+
+        # Prepare screen space for spinner + progress
+        sys.stderr.write("\033[?25l")  # hide cursor
+        sys.stderr.write(f"{self.spinner_chars[0]} {message}\n\n")
+        sys.stderr.flush()
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        stdout_fd = process.stdout.fileno() if process.stdout else None
+        stderr_fd = process.stderr.fileno() if process.stderr else None
+        stdout_done = stdout_fd is None
+        stderr_done = stderr_fd is None
+
+        stdout_decoder = codecs.getincrementaldecoder("utf-8")() if not stdout_done else None
+        stderr_decoder = codecs.getincrementaldecoder("utf-8")() if not stderr_done else None
+
+        exit_code = None
 
         try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
+            with open(self.log_file, 'a') as log_handle:
+                while True:
+                    read_fds = []
+                    if not stdout_done:
+                        read_fds.append(stdout_fd)
+                    if not stderr_done:
+                        read_fds.append(stderr_fd)
+
+                    if read_fds:
+                        ready, _, _ = select.select(read_fds, [], [], spinner_interval)
+                    else:
+                        ready = []
+                        time.sleep(spinner_interval)
+
+                    now = time.time()
+                    if now - last_refresh >= spinner_interval:
+                        spinner_char = self.spinner_chars[spinner_index % len(self.spinner_chars)]
+                        spinner_index += 1
+                        render_frame(spinner_char, display_progress)
+                        last_refresh = now
+
+                    for fd in ready:
+                        if fd == stdout_fd and not stdout_done:
+                            chunk = os.read(stdout_fd, 4096)
+                            if not chunk:
+                                stdout_done = True
+                                remaining = stdout_decoder.decode(b"", final=True) if stdout_decoder else ""
+                                if remaining:
+                                    log_handle.write(remaining)
+                                    log_handle.flush()
+                                    for ch in remaining:
+                                        if ch in ("\r", "\n"):
+                                            if progress_fragment:
+                                                display_progress = progress_fragment
+                                            progress_fragment = ""
+                                        else:
+                                            progress_fragment += ch
+                                    if progress_fragment:
+                                        display_progress = progress_fragment
+                                        progress_fragment = ""
+                            else:
+                                text = stdout_decoder.decode(chunk)
+                                if text:
+                                    log_handle.write(text)
+                                    log_handle.flush()
+                                    for ch in text:
+                                        if ch in ("\r", "\n"):
+                                            if progress_fragment:
+                                                display_progress = progress_fragment
+                                            progress_fragment = ""
+                                        else:
+                                            progress_fragment += ch
+                                    if progress_fragment:
+                                        display_progress = progress_fragment
+                        elif fd == stderr_fd and not stderr_done:
+                            chunk = os.read(stderr_fd, 4096)
+                            if not chunk:
+                                stderr_done = True
+                                remaining = stderr_decoder.decode(b"", final=True) if stderr_decoder else ""
+                                if remaining:
+                                    log_handle.write(remaining)
+                                    log_handle.flush()
+                            else:
+                                text = stderr_decoder.decode(chunk)
+                                if text:
+                                    log_handle.write(text)
+                                    log_handle.flush()
+
+                    if process.poll() is not None and stdout_done and stderr_done:
+                        break
+
+            # Flush any trailing fragments into display
+            if progress_fragment:
+                display_progress = progress_fragment
+
+            exit_code = process.wait()
+
+            status_line = (
+                f"\033[0;36m✓\033[0m \033[0;36m{message}\033[0m"
+                if exit_code == 0
+                else f"\033[0;31m✗\033[0m \033[0;31m{message}\033[0m"
             )
 
-            # Read and display stdout
-            for line in process.stdout:
-                # Write to log
-                with open(self.log_file, 'a') as f:
-                    f.write(line)
-                # Display progress line (overwrites previous progress line)
-                print(line.rstrip(), file=sys.stderr)
+            formatted_progress_line = f"  {display_progress}" if exit_code != 0 and display_progress else ""
 
-            process.wait()
-
-            # Stop spinner
-            spinner_stop.set()
-            spinner_thread.join()
-
-            if process.returncode == 0:
-                # Move up 3 lines to spinner line, show checkmark, clear remaining lines
-                print(f"\033[3A\r\033[0;36m✓\033[0m \033[0;36m{message}\033[0m\033[K\n\033[K\n\033[K", end="", file=sys.stderr)
-                print("\033[2A\r", end="", file=sys.stderr)  # Move back up to be ready for next command
-                sys.stderr.flush()
+            sys.stderr.write("\033[2A\r")
+            sys.stderr.write(f"{status_line}\033[K\n")
+            if formatted_progress_line:
+                sys.stderr.write(f"{formatted_progress_line}\033[K\n")
             else:
-                print(f"\033[3A\r\033[0;31m✗\033[0m \033[0;31m{message}\033[0m\033[K\n\033[K\n\033[K", file=sys.stderr)
-                print("Error occurred. Check log: " + str(self.log_file), file=sys.stderr)
-                # Read stderr
-                stderr_content = process.stderr.read()
-                with open(self.log_file, 'a') as f:
-                    f.write(stderr_content)
-                print("Last 20 lines:", file=sys.stderr)
-                with open(self.log_file, 'r') as f:
-                    lines = f.readlines()
-                    for line in lines[-20:]:
-                        print("  " + line.rstrip(), file=sys.stderr)
-                sys.exit(1)
+                sys.stderr.write("\033[K")
+                sys.stderr.write("\r")
+            sys.stderr.flush()
 
-        except Exception as e:
-            spinner_stop.set()
-            spinner_thread.join()
-            print(f"\033[3A\r\033[0;31m✗\033[0m \033[0;31m{message}\033[0m\033[K", file=sys.stderr)
-            print(f"Error: {e}", file=sys.stderr)
+        finally:
+            sys.stderr.write("\033[?25h")  # show cursor
+            sys.stderr.flush()
+
+        if exit_code != 0:
+            print("Error occurred. Check log: " + str(self.log_file), file=sys.stderr)
+            print("Last 20 lines:", file=sys.stderr)
+            with open(self.log_file, 'r') as f:
+                lines = f.readlines()
+                for line in lines[-20:]:
+                    print("  " + line.rstrip(), file=sys.stderr)
             sys.exit(1)
 
     def run_pipeline(self, r1, r2, ref, aligner="bwa-mem2", threads=4,
@@ -340,12 +419,14 @@ class PipelineExecutor:
         time.sleep(0.2)
 
         # Cleanup intermediate files
-        print("\nCleaning up intermediate files...", file=sys.stderr)
+        self.log("Cleaning up intermediate files")
         for pattern in ["ref_index.*", "ref_seq_msa.aln", "ref_seq_msa.tsv", "mapped_reads.tsv"]:
             for f in self.output_dir.glob(pattern):
                 f.unlink()
 
-        print(f"Pipeline complete. Outputs saved to: {self.output_dir}\n", file=sys.stderr)
+        print("\033[0;36m✓\033[0m \033[0;36mCleaning up intermediate files\033[0m", file=sys.stderr)
+
+        print(f"\nPipeline complete. Outputs saved to: {self.output_dir}\n", file=sys.stderr)
 
 
 def interactive_mode():
