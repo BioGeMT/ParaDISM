@@ -1,138 +1,117 @@
-# PKD1 Read Mapping Pipeline
+# Homology Mapper Pipeline
 
-This pipeline performs unique read mapping and generates gene-specific outputs in FASTQ and BAM formats. It processes paired-end sequencing data against reference sequences using multiple alignment algorithms.
+Read-mapping and refinement workflow for highly homologous genomic regions. The pipeline aligns paired-end reads with MAFFT/Bowtie2/BWA-MEM2/Minimap2, maps alignments back to multiple-sequence alignments (MSAs), filters for uniquely supported reference sequences, and emits gene-specific FASTQ/BAM outputs.
 
 ## Prerequisites
 
 ### Environment Setup
-To create a conda environment with all the required dependencies run the following:
+To create a conda environment with all required dependencies, run:
 
 ```bash
 conda env create -f mapper_env.yml
 conda activate mapper_env
 ```
 
-Required dependencies:
-- Python 3.10
-- pysam
-- biopython
-- mafft
-- bowtie2 (default aligner)
-- bwa-mem2 (optional)
-- minimap2 (optional)
-- pandas
-- samtools
+Key packages installed by the environment:
+- Python 3.11
+- MAFFT, Bowtie2, BWA-MEM2, Minimap2, Samtools
+- Biopython, PySAM, Rich
 
 ## Directory Structure
 
 ```
 .
-├── scripts/
-│   ├── output.py
-│   ├── read_2_gene.py
-│   ├── ref_2_msa.py
-│   └── mapper_algo_snp_only.py
-│
-├── mapper.sh
-├── mapper_interactive.sh
-├── simulated_r1.fq
-├── simulated_r2.fq
-└── mapper_env.yml
-
+├── mapper.py
+├── mapper_env.yml
+├── src/
+│   ├── pipeline/
+│   │   ├── executor.py
+│   │   ├── mapper_algo.py
+│   │   ├── mapper_algo_snp_only.py
+│   │   ├── output.py
+│   │   ├── read_2_gene.py
+│   │   └── ref_2_msa.py
+│   ├── ui/
+│   │   ├── interactive.py
+│   │   └── ui_components.py
+│   └── utils/
+│       ├── file_scanner.py
+│       ├── logger.py
+│       ├── progress.py
+│       └── validators.py
+└── output/                        # Created after pipeline run
 ```
 
 ## Usage
 
-First run the read simulator notebook to generate simulated paired reads. This produces two fq files.
-
-### Interactive Mode (Recommended)
-Run without arguments to launch interactive mode with guided prompts:
+### Interactive Mode
+Run without arguments to launch the guided CLI:
 
 ```bash
-./mapper.sh
+python mapper.py
 ```
 
-The interactive mode will guide you through:
-- Selecting read files (R1 and R2)
-- Choosing a reference sequence
-- Option to use an existing SAM file (skips alignment)
-- Picking an aligner (Bowtie2, BWA-MEM2, or minimap2)
-- Setting thread count
-- Configuring minimap2 profile (if applicable)
+You’ll be prompted to:
+- Select FASTQ pairs (R1/R2)
+- Choose reference FASTA
+- Optionally reuse an existing SAM (skipping alignment)
+- Pick an aligner (`bowtie2`, `bwa-mem2`, `minimap2`)
+- Configure threads and minimap2 profile (if applicable)
 
-### Command-Line Mode
+### Argument-Driven Mode
 ```bash
-./mapper.sh --read1 <forward_reads.fq> --read2 <reverse_reads.fq> --reference <reference.fasta> [OPTIONS]
+python mapper.py --read1 <forward_reads.fq> \
+                 --read2 <reverse_reads.fq> \
+                 --reference <reference.fa> \
+                 [--aligner ALIGNER] \
+                 [--threads N] \
+                 [--minimap2-profile PROFILE] \
+                 [--sam existing.sam] \
+                 [--output-dir OUTPUT]
 ```
 
-### Arguments
-- `--read1`: Forward reads FASTQ file (required)
-- `--read2`: Reverse reads FASTQ file (required)
-- `--reference`: Reference sequences in FASTA format (required)
-- `--sam`: Pre-existing SAM/BAM alignment file (optional, skips alignment step)
-- `--aligner`: Alignment tool to use: `bowtie2` (default), `bwa-mem2`, or `minimap2`
-- `--threads`: Number of threads for alignment (default: 4)
-- `--minimap2-profile`: Profile for minimap2: `short` (default), `pacbio`, or `nanopore`
+Required:
+- `--read1`, `--read2`: Paired FASTQ files
+- `--reference`: Reference FASTA
 
-### Examples
+Optional:
+- `--aligner`: `bowtie2` (default), `bwa-mem2`, or `minimap2`
+- `--threads`: Number of alignment threads (default: 4)
+- `--minimap2-profile`: `short`, `pacbio`, or `nanopore` (required with minimap2)
+- `--sam`: Existing alignment (skips alignment stage)
+- `--output-dir`: Destination directory (default: `./output`)
 
-**Using default Bowtie2 aligner:**
-```bash
-./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa
-```
+### SAM Requirements
+When skipping alignment via `--sam`, ensure the SAM:
+- Contains a valid header
+- Has at least one mapped read
+- Includes MD tags (`samtools calmd` can add them)
 
-**Using BWA-MEM2 with 8 threads:**
-```bash
-./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa --aligner bwa-mem2 --threads 8
-```
+## Pipeline Outline
 
-**Using minimap2 for short reads:**
-```bash
-./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa --aligner minimap2 --minimap2-profile short
-```
+1. **MSA generation** – MAFFT builds reference MSAs.
+2. **Indexer** – Builds Bowtie2/BWA-MEM2/Minimap2 reference indexes.
+3. **Read alignment** – Selected aligner maps paired reads.
+4. **Reference→MSA mapping** – Captures reference base positions across the MSA.
+5. **Read→reference mapping** – Parses SAM alignments into per-base TSV (PySAM).
+6. **Unique mapping** – SNP-focused mapper identifies uniquely supported references.
+7. **Output creation** – Writes gene-specific FASTQ/BAM outputs.
 
-**Using minimap2 for PacBio data:**
-```bash
-./mapper.sh --read1 pacbio_r1.fq --read2 pacbio_r2.fq --reference ref.fa --aligner minimap2 --minimap2-profile pacbio --threads 16
-```
-
-**Using your own alignment (skip alignment step):**
-```bash
-./mapper.sh --read1 simulated_r1.fq --read2 simulated_r2.fq --reference ref.fa --sam my_custom_alignment.sam
-```
-Note: When `--sam` is provided, the alignment step is skipped and `--aligner`, `--threads`, and `--minimap2-profile` options are ignored.
-
-**SAM File Requirements:**
-Your SAM file must include:
-- Valid SAM header
-- Aligned reads (not all unmapped)
-- MD tags (use `samtools calmd` if missing)
-
-  
-
-
-## Pipeline Steps
-
-1. **MSA Generation**: Uses MAFFT to create multiple sequence alignment of reference sequences
-2. **Reference Indexing**: Builds index for the selected aligner (Bowtie2, BWA-MEM2, or minimap2)
-3. **Read Alignment**: Aligns paired-end reads to reference sequences using the selected aligner
-4. **Reference to MSA Mapping**: Maps reference sequences to MSA positions using BioPython
-5. **Read to Gene Mapping**: Processes SAM alignments to extract read-to-gene mappings using pysam
-6. **Unique Mapping Algorithm**: Identifies uniquely mapped reads using dynamic programming (SNP-optimized)
-7. **Output Generation**: Creates gene-specific FASTQ and BAM files from unique mappings
-
-## Output Structure
+## Output Layout
 
 ```
 output/
-├── ref_seq_msa.aln                 # MAFFT MSA output
-├── PKD_index*                      # Bowtie2 index files
-├── mapped_reads.sam                # Initial Bowtie2 alignment
-├── ref_seq_msa.tsv                 # Reference to MSA mapping
-├── mapped_reads.tsv                # Read to reference mapping
-├── reads/                          # Read to MSA mapping files
-├── results/                        # Refinement results for each read
-├── unique_mappings.tsv             # Unique mapping results
-├── fastq/                          # Gene-specific FASTQ files 
-└── bam/                            # Gene-specific BAM files 
+├── ref_seq_msa.aln                # MAFFT alignment
+├── ref_seq_msa.tsv                # Reference→MSA coordinate map
+├── mapped_reads.sam               # Aligner output (if generated)
+├── mapped_reads.tsv               # Read→reference TSV
+├── unique_mappings.tsv            # Final unique mapping table
+├── fastq/                         # Gene-specific FASTQs
+└── bam/                           # Gene-specific BAMs (+ .bai)
 ```
+
+## Development Tips
+
+- Run the pipeline from the repo root (`python mapper.py ...`).
+- To add new stages, place modules under `src/pipeline/` and import from `mapper.py`.
+- Keep the Conda spec (`mapper_env.yml`) in sync when adding binary dependencies.
