@@ -1,6 +1,6 @@
 # Homology Mapper Pipeline
 
-Read-mapping and refinement workflow for highly homologous genomic regions. The pipeline aligns paired-end reads with MAFFT/Bowtie2/BWA-MEM2/Minimap2, maps alignments back to multiple-sequence alignments (MSAs), filters for uniquely supported reference sequences, and emits gene-specific FASTQ/BAM outputs.
+Read-mapping and refinement workflow for highly homologous genomic regions. The pipeline aligns paired-end reads, maps alignments back to multiple-sequence alignments, refines the mapping for uniquely supported reads and reference sequences, and produces gene-specific FASTQ/BAM outputs.
 
 ## Prerequisites
 
@@ -10,36 +10,6 @@ To create a conda environment with all required dependencies, run:
 ```bash
 conda env create -f mapper_env.yml
 conda activate mapper_env
-```
-
-Key packages installed by the environment:
-- Python 3.11
-- MAFFT, Bowtie2, BWA-MEM2, Minimap2, Samtools
-- Biopython, PySAM, Rich
-
-## Directory Structure
-
-```
-.
-├── mapper.py
-├── mapper_env.yml
-├── src/
-│   ├── pipeline/
-│   │   ├── executor.py
-│   │   ├── mapper_algo.py
-│   │   ├── mapper_algo_snp_only.py
-│   │   ├── output.py
-│   │   ├── read_2_gene.py
-│   │   └── ref_2_msa.py
-│   ├── ui/
-│   │   ├── interactive.py
-│   │   └── ui_components.py
-│   └── utils/
-│       ├── file_scanner.py
-│       ├── logger.py
-│       ├── progress.py
-│       └── validators.py
-└── output/                        # Created after pipeline run
 ```
 
 ## Usage
@@ -87,16 +57,6 @@ When skipping alignment via `--sam`, ensure the SAM:
 - Has at least one mapped read
 - Includes MD tags (`samtools calmd` can add them)
 
-## Pipeline Outline
-
-1. **MSA generation** – MAFFT builds reference MSAs.
-2. **Indexer** – Builds Bowtie2/BWA-MEM2/Minimap2 reference indexes.
-3. **Read alignment** – Selected aligner maps paired reads.
-4. **Reference→MSA mapping** – Captures reference base positions across the MSA.
-5. **Read→reference mapping** – Parses SAM alignments into per-base TSV (PySAM).
-6. **Unique mapping** – SNP-focused mapper identifies uniquely supported references.
-7. **Output creation** – Writes gene-specific FASTQ/BAM outputs.
-
 ## Output Layout
 
 ```
@@ -110,8 +70,3 @@ output/
 └── bam/                           # Gene-specific BAMs (+ .bai)
 ```
 
-## Development Tips
-
-- Run the pipeline from the repo root (`python mapper.py ...`).
-- To add new stages, place modules under `src/pipeline/` and import from `mapper.py`.
-- Keep the Conda spec (`mapper_env.yml`) in sync when adding binary dependencies.
