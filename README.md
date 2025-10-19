@@ -28,7 +28,7 @@ You’ll be prompted to:
 - Pick an aligner (`bowtie2`, `bwa-mem2`, `minimap2`)
 - Configure threads and minimap2 profile (if applicable)
 
-> **Note:** Interactive mode scans the current working directory for input files. Place your inputs in the project root (or run the command from the directory that contains them) so they appear in the selection lists.
+ **Note:** Interactive mode scans the current working directory for input files. Place your inputs in the project root (or run the command from the directory that contains them) so they appear in the selection lists.
 
 ### Argument-Driven Mode
 ```bash
