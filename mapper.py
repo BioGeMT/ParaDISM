@@ -9,6 +9,7 @@ This script handles:
 """
 
 import argparse
+import atexit
 import sys
 from pathlib import Path
 
@@ -19,6 +20,15 @@ if str(SRC_DIR) not in sys.path:
 from pipeline.executor import PipelineExecutor
 from ui.interactive import interactive_mode
 from ui.ui_components import console
+
+
+def _restore_cursor() -> None:
+    """Ensure terminal cursor is visible when the process exits."""
+    sys.stderr.write("\033[?25h")
+    sys.stderr.flush()
+
+
+atexit.register(_restore_cursor)
 
 
 def run_with_arguments(args: argparse.Namespace) -> None:
