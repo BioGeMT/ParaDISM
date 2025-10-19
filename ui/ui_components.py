@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Rich-based UI components for PKD1 mapper pipeline.
-Provides beautiful terminal displays for file selection and configuration.
+Rich-based UI components for the homologous-region mapper.
+Provide structured terminal displays for file selection and configuration.
 """
 
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.columns import Columns
 from rich import box
 from rich.text import Text
 

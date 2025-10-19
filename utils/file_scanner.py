@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-File scanning utilities for PKD1 mapper pipeline.
-Extracts metadata from FASTQ, FASTA, and SAM files for UI display.
+File scanning utilities for the homologous-region mapper pipeline.
+Extract metadata from FASTQ, FASTA, and SAM files for UI display.
 """
 
 import os

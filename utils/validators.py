@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Validation functions for PKD1 mapper pipeline.
-Checks file integrity and compatibility before pipeline execution.
+Validation helpers for the homologous-region mapper pipeline.
+Check file integrity and compatibility before pipeline execution.
 """
 
 from typing import Dict, List

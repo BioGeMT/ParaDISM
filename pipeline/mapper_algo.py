@@ -1,7 +1,7 @@
 import argparse
 import gc
 import sys
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Tuple
 from collections import defaultdict
 
 def load_msa_mapping(msa_filepath: str) -> Tuple[Dict, Dict, Dict, List]:
