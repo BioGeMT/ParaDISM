@@ -47,7 +47,7 @@ Required:
 - `--reference`: Reference FASTA
 
 Optional:
-- `--aligner`: `bowtie2` (default), `bwa-mem2`, or `minimap2`
+- `--aligner`: `bwa-mem2` (default), `bowtie2`, or `minimap2`
 - `--threads`: Number of alignment threads (default: 4)
 - `--minimap2-profile`: `short`, `pacbio`, or `nanopore` (required with minimap2)
 - `--sam`: Existing alignment (skips alignment stage)
