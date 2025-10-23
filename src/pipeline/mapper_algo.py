@@ -137,12 +137,12 @@ def process_read_scenarios(read_name: str, scenario_rows: List[List], sequence_b
     return processed_scenarios
 
 def find_unique_mapping_in_scenarios(read_scenarios: Dict[str, List], genes: List[str]) -> str:
+    """Decide unique mapping; supports paired-end and single-end."""
     plus_data = read_scenarios.get('plus', [])
     minus_data = read_scenarios.get('minus', [])
-    
-    if not plus_data or not minus_data:
-        return "NONE"
-    
+
+    has_both_strands = bool(plus_data and minus_data)
+
     def check_conditions(scenarios: List, gene: str) -> Tuple[bool, bool]:
         if not scenarios:
             return False, False
@@ -175,13 +175,22 @@ def find_unique_mapping_in_scenarios(read_scenarios: Dict[str, List], genes: Lis
         return c1_pass, c2_pass
 
     mapped_genes = []
-    for gene in genes:
-        plus_c1, plus_c2 = check_conditions(plus_data, gene)
-        minus_c1, minus_c2 = check_conditions(minus_data, gene)
-        
-        if ((plus_c1 and plus_c2 and minus_c2) or 
-            (minus_c1 and minus_c2 and plus_c2)):
-            mapped_genes.append(gene)
+    if has_both_strands:
+        # Paired-end logic: one strand must pass c1+c2, the other c2
+        for gene in genes:
+            plus_c1, plus_c2 = check_conditions(plus_data, gene)
+            minus_c1, minus_c2 = check_conditions(minus_data, gene)
+
+            if ((plus_c1 and plus_c2 and minus_c2) or 
+                (minus_c1 and minus_c2 and plus_c2)):
+                mapped_genes.append(gene)
+    else:
+        # Single-end logic: the available strand must pass both c1 and c2
+        strand_data = plus_data if plus_data else minus_data
+        for gene in genes:
+            c1, c2 = check_conditions(strand_data, gene)
+            if c1 and c2:
+                mapped_genes.append(gene)
     
     return mapped_genes[0] if len(mapped_genes) == 1 else "NONE"
 

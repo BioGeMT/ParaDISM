@@ -150,7 +150,7 @@ class PipelineExecutor:
                 ref,
                 "--msa_file",
                 str(msa_output),
-                "--output",
+                "--output_file",
                 str(ref_msa_tsv),
             ],
             "Mapping reference sequences to MSA",

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Validation helpers for the homologous-region mapper pipeline.
-Check file integrity and compatibility before pipeline execution.
-"""
+"""Validation helpers for basic FASTQ/FASTA/SAM checks."""
 
 from typing import Dict, List
 from pathlib import Path
@@ -10,18 +7,7 @@ import subprocess
 
 
 def validate_fastq_pair(r1_path: str, r2_path: str, r1_metadata: Dict, r2_metadata: Dict) -> List[Dict]:
-    """
-    Validate R1/R2 FASTQ pair compatibility.
-
-    Args:
-        r1_path: Path to R1 FASTQ
-        r2_path: Path to R2 FASTQ
-        r1_metadata: Metadata from scan_fastq_metadata(r1_path)
-        r2_metadata: Metadata from scan_fastq_metadata(r2_path)
-
-    Returns:
-        List of validation results
-    """
+    """Validate compatibility of an R1/R2 FASTQ pair."""
     results = []
 
     # Check if files exist
@@ -101,16 +87,7 @@ def validate_fastq_pair(r1_path: str, r2_path: str, r1_metadata: Dict, r2_metada
 
 
 def validate_fastq_single(r1_path: str, r1_metadata: Dict) -> List[Dict]:
-    """
-    Validate single-end FASTQ file.
-
-    Args:
-        r1_path: Path to FASTQ file
-        r1_metadata: Metadata from scan_fastq_metadata(r1_path)
-
-    Returns:
-        List of validation results
-    """
+    """Validate a single-end FASTQ file."""
     results = []
 
     # Check if file exists
@@ -150,16 +127,7 @@ def validate_fastq_single(r1_path: str, r1_metadata: Dict) -> List[Dict]:
 
 
 def validate_fasta(fa_path: str, fa_metadata: Dict) -> List[Dict]:
-    """
-    Validate FASTA reference file.
-
-    Args:
-        fa_path: Path to FASTA file
-        fa_metadata: Metadata from scan_fasta_metadata(fa_path)
-
-    Returns:
-        List of validation results
-    """
+    """Validate a reference FASTA file."""
     results = []
 
     # Check if file exists
@@ -214,16 +182,7 @@ def validate_fasta(fa_path: str, fa_metadata: Dict) -> List[Dict]:
 
 
 def validate_sam(sam_path: str, sam_metadata: Dict) -> List[Dict]:
-    """
-    Validate SAM file for mapper pipeline requirements.
-
-    Args:
-        sam_path: Path to SAM file
-        sam_metadata: Metadata from scan_sam_metadata(sam_path)
-
-    Returns:
-        List of validation results
-    """
+    """Validate SAM for header, alignment rate, MD tags, and refs."""
     results = []
 
     # Check if file exists
@@ -301,13 +260,5 @@ def validate_sam(sam_path: str, sam_metadata: Dict) -> List[Dict]:
 
 
 def has_blocking_errors(validation_results: List[Dict]) -> bool:
-    """
-    Check if any validation results are blocking errors.
-
-    Args:
-        validation_results: List of validation result dicts
-
-    Returns:
-        True if any blocking errors found
-    """
+    """Return True if any result is a blocking error."""
     return any(result["status"] == "error" and result["blocking"] for result in validation_results)

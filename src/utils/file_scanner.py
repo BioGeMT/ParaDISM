@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""
-File scanning utilities for the homologous-region mapper pipeline.
-Extract metadata from FASTQ, FASTA, and SAM files for UI display.
-"""
+"""Fast metadata scanners for FASTQ/FASTA/SAM (UI display)."""
 
 import os
 import subprocess
 from typing import Dict, List, Tuple, Optional
 from pathlib import Path
-import re
+"""Note: keep this module light; avoid expensive sampling that isn't used."""
 
 
 def format_bytes(bytes_size: int) -> str:
-    """Convert bytes to human-readable format."""
+    """Return human-readable byte size."""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes_size < 1024.0:
             return f"{bytes_size:.1f} {unit}"
@@ -21,29 +18,11 @@ def format_bytes(bytes_size: int) -> str:
 
 
 def scan_fastq_metadata(fq_path: str) -> Dict:
-    """
-    Quick scan of FASTQ file for display metadata.
-
-    Args:
-        fq_path: Path to FASTQ file
-
-    Returns:
-        Dict with size, read count, and quality encoding info
-    """
+    """Return size, read count, mean length, and quality encoding."""
     try:
         # Get file size
         size_bytes = os.path.getsize(fq_path)
         size_human = format_bytes(size_bytes)
-
-        # Estimate read count from first 100K lines
-        result = subprocess.run(
-            f"head -n 100000 '{fq_path}' | wc -l",
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        sample_lines = int(result.stdout.strip())
 
         # Get total line count (fast approximation)
         result = subprocess.run(
@@ -108,15 +87,7 @@ def scan_fastq_metadata(fq_path: str) -> Dict:
 
 
 def scan_fasta_metadata(fa_path: str) -> Dict:
-    """
-    Scan FASTA file for sequence information.
-
-    Args:
-        fa_path: Path to FASTA file
-
-    Returns:
-        Dict with size, sequence count, and sequence IDs
-    """
+    """Return basic FASTA stats and sequence IDs."""
     try:
         from Bio import SeqIO
 
@@ -160,15 +131,7 @@ def scan_fasta_metadata(fa_path: str) -> Dict:
 
 
 def scan_sam_metadata(sam_path: str) -> Dict:
-    """
-    Validate and extract SAM file metadata.
-
-    Args:
-        sam_path: Path to SAM file
-
-    Returns:
-        Dict with size, read counts, and validation status
-    """
+    """Return SAM stats (size, counts, MD presence, reference names)."""
     try:
         size_bytes = os.path.getsize(sam_path)
         size_human = format_bytes(size_bytes)

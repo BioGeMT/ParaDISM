@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""
-Rich-based UI components for the homologous-region mapper.
-Provide structured terminal displays for file selection and configuration.
-"""
+"""Rich UI components for file selection, validation, and config display."""
 
 from typing import Dict, List, Optional, Tuple
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich import box
 from rich.text import Text
+from rich import box
 
 
 console = Console()
@@ -20,14 +17,7 @@ def display_single_end_files(
     references: List[Tuple[str, Dict]],
     sam_files: List[Tuple[str, Dict]]
 ) -> None:
-    """
-    Display detected files for single-end mode (individual FASTQ files, not pairs).
-
-    Args:
-        fastq_files: List of Path objects for FASTQ files
-        references: List of (ref_path, ref_metadata)
-        sam_files: List of (sam_path, sam_metadata)
-    """
+    """Show single-end FASTQs with reference/SAM summaries."""
     from pathlib import Path
     from utils.file_scanner import scan_fastq_metadata
 
@@ -147,14 +137,7 @@ def display_file_pairs(
     references: List[Tuple[str, Dict]],
     sam_files: List[Tuple[str, Dict]]
 ) -> None:
-    """
-    Display detected files in organized panels.
-
-    Args:
-        fastq_pairs: List of (r1_path, r2_path, r1_metadata, r2_metadata)
-        references: List of (ref_path, ref_metadata)
-        sam_files: List of (sam_path, sam_metadata)
-    """
+    """Show paired-end FASTQs with reference/SAM summaries."""
     panels = []
 
     # Paired Reads Panel
@@ -274,15 +257,7 @@ def display_file_pairs(
 
 
 def display_validation_results(validations: List[Dict]) -> bool:
-    """
-    Display validation results with color-coded status.
-
-    Args:
-        validations: List of validation result dicts
-
-    Returns:
-        True if safe to proceed (no blocking errors), False otherwise
-    """
+    """Render validation results; return True if no blocking errors."""
     if not validations:
         return True
 
@@ -327,21 +302,7 @@ def display_pipeline_config(
     sam_file: Optional[str] = None,
     minimap2_profile: Optional[str] = None
 ) -> None:
-    """
-    Display full pipeline configuration before execution (supports both paired-end and single-end).
-
-    Args:
-        r1_file: R1 FASTQ filename (or single-end reads)
-        r2_file: R2 FASTQ filename (None for single-end)
-        ref_file: Reference FASTA filename
-        read_count: Number of reads (or pairs for paired-end)
-        ref_sequences: Number of sequences in reference
-        ref_size_kb: Reference size in kilobases
-        aligner: Aligner name (bowtie2/bwa-mem2/minimap2)
-        threads: Number of threads
-        sam_file: Optional SAM file (if using existing alignment)
-        minimap2_profile: Optional minimap2 profile (short/pacbio-hifi/pacbio-clr/ont-q20/ont-standard)
-    """
+    """Display pipeline configuration summary (paired or single-end)."""
     lines = []
 
     # INPUT FILES section

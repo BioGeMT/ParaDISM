@@ -7,15 +7,7 @@ from Bio.SeqRecord import SeqRecord
 import subprocess
 
 def process_files(tsv_path, r1_path, r2_path, output_dir):
-    """
-    Organize sequencing reads into gene-specific FASTQ files based on TSV mappings.
-    Supports both paired-end (R1+R2) and single-end (R1 only) modes.
-
-    Args:
-        r2_path: Optional R2 file path (None for single-end)
-
-    Returns a list of genes processed.
-    """
+    """Split reads into per-gene FASTQs (paired or single-end)."""
     # Read TSV and preserve order of mapped reads
     gene_mapping = {}   # {read_name: gene}
 
@@ -130,26 +122,16 @@ def create_bam_files(
         if not os.path.exists(fastq_file):
             print(f"Error: FASTQ file {fastq_file} does not exist", file=sys.stderr)
             continue
-        if not os.path.exists(tmp_ref):
-            with open(tmp_ref, "w") as f:
-                f.write(f">{gene}\n{ref_db[gene]}\n")
-        else:
-            print(f"Warning: {tmp_ref} already exists, overwriting", file=sys.stderr)
+        # Always write a fresh per-gene reference FASTA (avoid stale content)
+        with open(tmp_ref, "w") as f:
+            f.write(f">{gene}\n{ref_db[gene]}\n")
 
         # Build index and align based on aligner choice
         if aligner == 'bowtie2':
             # Build bowtie2 index
             build_cmd = f"bowtie2-build {tmp_ref} {index_base}"
             print(f"Building bowtie2 index: {build_cmd}", file=sys.stderr)
-            try:
-                result = subprocess.run(build_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                if result.stdout:
-                    print(result.stdout, file=sys.stderr)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error building bowtie2 index for {gene}: {e.stderr}", file=sys.stderr)
-                continue
+            subprocess.run(build_cmd, shell=True, check=True)
 
             # Align with bowtie2
             if is_paired:
@@ -157,29 +139,13 @@ def create_bam_files(
             else:
                 align_cmd = f"bowtie2 --very-sensitive -x {index_base} -U {fastq_file} -S {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
-            try:
-                result = subprocess.run(align_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                if result.stdout:
-                    print(result.stdout, file=sys.stderr)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error in bowtie2 alignment for {gene}: {e.stderr}", file=sys.stderr)
-                continue
+            subprocess.run(align_cmd, shell=True, check=True)
 
         elif aligner == 'bwa-mem2':
             # Build bwa-mem2 index
             build_cmd = f"bwa-mem2 index -p {index_base} {tmp_ref}"
             print(f"Building bwa-mem2 index: {build_cmd}", file=sys.stderr)
-            try:
-                result = subprocess.run(build_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                if result.stdout:
-                    print(result.stdout, file=sys.stderr)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error building bwa-mem2 index for {gene}: {e.stderr}", file=sys.stderr)
-                continue
+            subprocess.run(build_cmd, shell=True, check=True)
 
             # Align with bwa-mem2
             if is_paired:
@@ -187,15 +153,7 @@ def create_bam_files(
             else:
                 align_cmd = f"bwa-mem2 mem -t {threads} {index_base} {fastq_file} > {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
-            try:
-                result = subprocess.run(align_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                if result.stdout:
-                    print(result.stdout, file=sys.stderr)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error in bwa-mem2 alignment for {gene}: {e.stderr}", file=sys.stderr)
-                continue
+            subprocess.run(align_cmd, shell=True, check=True)
 
         elif aligner == 'minimap2':
             # Determine minimap2 preset
@@ -212,41 +170,21 @@ def create_bam_files(
             index_mmi = f"{index_base}.mmi"
             build_cmd = f"minimap2 -x {preset} -d {index_mmi} {tmp_ref}"
             print(f"Building minimap2 ({minimap2_profile}) index: {build_cmd}", file=sys.stderr)
-            try:
-                result = subprocess.run(build_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                if result.stdout:
-                    print(result.stdout, file=sys.stderr)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error building minimap2 index for {gene}: {e.stderr}", file=sys.stderr)
-                continue
+            subprocess.run(build_cmd, shell=True, check=True)
 
             # Align with minimap2 (paired or single-end)
             align_cmd = f"minimap2 -ax {preset} --MD -t {threads} {index_mmi} {fastq_file} > {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
-            try:
-                result = subprocess.run(align_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                if result.stdout:
-                    print(result.stdout, file=sys.stderr)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr)
-            except subprocess.CalledProcessError as e:
-                print(f"Error in minimap2 alignment for {gene}: {e.stderr}", file=sys.stderr)
-                continue
+            subprocess.run(align_cmd, shell=True, check=True)
 
         else:
             print(f"Error: Unsupported aligner '{aligner}'", file=sys.stderr)
             continue
 
         # Convert to BAM
-        try:
-            subprocess.run(f"samtools view -b {sam_path} > {bam_path}", shell=True, check=True)
-            subprocess.run(f"samtools sort -o {sorted_bam} {bam_path}", shell=True, check=True)
-            subprocess.run(f"samtools index {sorted_bam}", shell=True, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Error in SAM/BAM conversion for {gene}: {e}", file=sys.stderr)
-            continue
+        subprocess.run(f"samtools view -b {sam_path} > {bam_path}", shell=True, check=True)
+        subprocess.run(f"samtools sort -o {sorted_bam} {bam_path}", shell=True, check=True)
+        subprocess.run(f"samtools index {sorted_bam}", shell=True, check=True)
 
         # Cleanup index files based on aligner
         os.remove(tmp_ref)
