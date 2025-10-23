@@ -88,22 +88,9 @@ When skipping alignment via `--sam`, ensure the SAM:
 
 ```
 output/
-├── ref_seq_msa.aln                # MAFFT alignment
-├── ref_seq_msa.tsv                # Reference→MSA coordinate map
 ├── mapped_reads.sam               # Aligner output (if generated)
-├── mapped_reads.tsv               # Read→reference TSV
 ├── unique_mappings.tsv            # Final unique mapping table
 ├── fastq/                         # Gene-specific FASTQs
 ├── bam/                           # Gene-specific BAMs (+ .bai)
 └── pipeline_YYYYMMDD_HHMMSS.log  # Run log (sections + streamed output)
-
-Optional variant-calling outputs (if you run `var_calling.sh`):
-
 ```
-output/
-└── variant_calling/
-    ├── freebayes/*.vcf
-    ├── bcftools/*.vcf
-    └── gatk/*.vcf
-```
-
