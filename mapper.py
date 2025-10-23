@@ -32,12 +32,12 @@ atexit.register(_restore_cursor)
 
 
 def run_with_arguments(args: argparse.Namespace) -> None:
-    """Run mapper using explicit command-line arguments."""
+    """Run mapper using explicit command-line arguments (supports both paired-end and single-end)."""
 
     if not Path(args.read1).exists():
         console.print(f"[red]✗ R1 file not found: {args.read1}[/red]")
         sys.exit(1)
-    if not Path(args.read2).exists():
+    if args.read2 and not Path(args.read2).exists():
         console.print(f"[red]✗ R2 file not found: {args.read2}[/red]")
         sys.exit(1)
     if not Path(args.reference).exists():
@@ -50,6 +50,12 @@ def run_with_arguments(args: argparse.Namespace) -> None:
     if args.aligner == "minimap2" and not args.minimap2_profile:
         console.print("[red]✗ --minimap2-profile must be provided when --aligner minimap2[/red]")
         sys.exit(1)
+
+    # Show mode info
+    mode = "paired-end" if args.read2 else "single-end"
+    console.print(f"[cyan]Running in {mode} mode[/cyan]")
+    if not args.read2:
+        console.print("[yellow]⚠ Single-end mode has lower mapping confidence (no mate validation)[/yellow]")
 
     profile = args.minimap2_profile or "short"
 
@@ -78,21 +84,30 @@ def build_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
 
     parser = argparse.ArgumentParser(
-        description="Read-mapping and refinement workflow for highly homologous regions",
+        description="Read-mapping and refinement workflow for highly homologous regions (supports both paired-end and single-end)",
         formatter_class=CustomHelpFormatter,
         epilog="""
 Examples:
   # Interactive mode
   python mapper.py
 
-  # Argument-driven mode
+  # Paired-end mode
   python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa
+
+  # Single-end mode
+  python mapper.py --read1 reads.fq --reference ref.fa
 
   # Use existing SAM file
   python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa --sam mapped.sam
 
   # Specify aligner and threads
-  python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa --aligner bowtie2 --threads 8
+  python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa --aligner bwa-mem2 --threads 16
+
+  # PacBio HiFi single-end
+  python mapper.py --read1 pacbio_hifi.fq --reference ref.fa --aligner minimap2 --minimap2-profile pacbio-hifi
+
+  # Nanopore Q20+ single-end
+  python mapper.py --read1 ont_q20.fq --reference ref.fa --aligner minimap2 --minimap2-profile ont-q20
         """,
     )
 
@@ -100,8 +115,8 @@ Examples:
         "Required arguments (argument-driven mode)",
         "Provide these together to skip the interactive prompts.",
     )
-    required.add_argument("--read1", metavar="READ1", help="R1 FASTQ file")
-    required.add_argument("--read2", metavar="READ2", help="R2 FASTQ file")
+    required.add_argument("--read1", metavar="READ1", help="R1 FASTQ file (or single-end reads)")
+    required.add_argument("--read2", metavar="READ2", help="R2 FASTQ file (optional, for paired-end mode)")
     required.add_argument("--reference", metavar="REFERENCE", help="Reference FASTA file")
 
     optional = parser.add_argument_group("Optional arguments")
@@ -117,8 +132,10 @@ Examples:
     optional.add_argument(
         "--minimap2-profile",
         metavar="PROFILE",
-        choices=["short", "pacbio", "nanopore"],
-        help="Minimap2 profile [short|pacbio|nanopore] (required when --aligner minimap2)",
+        choices=["short", "pacbio-hifi", "pacbio-clr", "ont-q20", "ont-standard"],
+        help="Minimap2 profile (required when --aligner minimap2): "
+             "short (short-read), pacbio-hifi (PacBio HiFi/CCS), pacbio-clr (PacBio CLR), "
+             "ont-q20 (Nanopore Q20+), ont-standard (Nanopore standard).",
     )
     optional.add_argument(
         "--output-dir",
@@ -136,13 +153,15 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.read1 and args.read2 and args.reference:
+    # Check if we have minimum required arguments for CLI mode
+    if args.read1 and args.reference:
         run_with_arguments(args)
         return
 
-    if any([args.read1, args.read2, args.reference]):
+    # Partial arguments provided
+    if any([args.read1, args.reference]):
         console.print(
-            "[yellow]⚠ Partial arguments provided. Use --read1, --read2, and --reference together for argument-driven mode.[/yellow]"
+            "[yellow]⚠ Partial arguments provided. Minimum required: --read1 and --reference[/yellow]"
         )
         console.print("[yellow]  Launching interactive mode instead...[/yellow]\n")
 

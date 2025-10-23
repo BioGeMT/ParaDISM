@@ -100,6 +100,55 @@ def validate_fastq_pair(r1_path: str, r2_path: str, r1_metadata: Dict, r2_metada
     return results
 
 
+def validate_fastq_single(r1_path: str, r1_metadata: Dict) -> List[Dict]:
+    """
+    Validate single-end FASTQ file.
+
+    Args:
+        r1_path: Path to FASTQ file
+        r1_metadata: Metadata from scan_fastq_metadata(r1_path)
+
+    Returns:
+        List of validation results
+    """
+    results = []
+
+    # Check if file exists
+    if not r1_metadata["exists"]:
+        results.append({
+            "status": "error",
+            "message": f"✗ FASTQ file not found or cannot be read: {r1_path}",
+            "blocking": True
+        })
+        return results
+
+    # Show read count
+    read_count = r1_metadata["read_count"]
+    results.append({
+        "status": "success",
+        "message": f"✓ FASTQ contains {read_count:,} reads",
+        "blocking": False
+    })
+
+    # Show quality encoding
+    results.append({
+        "status": "success",
+        "message": f"✓ Quality encoding detected: {r1_metadata['quality_encoding']}",
+        "blocking": False
+    })
+
+    # Show read length
+    read_len = r1_metadata["read_length_mean"]
+    if read_len > 0:
+        results.append({
+            "status": "success",
+            "message": f"✓ Mean read length: {read_len}bp",
+            "blocking": False
+        })
+
+    return results
+
+
 def validate_fasta(fa_path: str, fa_metadata: Dict) -> List[Dict]:
     """
     Validate FASTA reference file.

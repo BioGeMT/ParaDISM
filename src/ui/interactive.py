@@ -33,14 +33,60 @@ def interactive_mode():
 
     print_header()
 
+    # Sequencing Mode Selection - FIRST, before file detection
+    from rich import box as rbox
+    from rich.panel import Panel
+    from rich.table import Table
+
+    print_section("Sequencing Mode Selection")
+
+    mode_table = Table(show_header=False, box=None, padding=(0, 1), expand=False)
+    mode_table.add_column("Number", style="dim", width=4)
+    mode_table.add_column("Mode", style="bright_white")
+    mode_table.add_row("1", "Paired-End")
+    mode_table.add_row("2", "Single-End")
+
+    mode_panel = Panel(
+        mode_table,
+        title="[bold green]Select Sequencing Mode[/bold green]",
+        title_align="left",
+        border_style="green",
+        box=rbox.ROUNDED,
+        expand=False,
+        padding=(1, 2)
+    )
+    console.print(mode_panel)
+    console.print()
+
+    is_paired = True
+    while True:
+        choice = console.input("[green]Select [1-2]:[/green] ").strip()
+        if choice == "1":
+            is_paired = True
+            console.print("[green]✓[/green] Selected: [cyan]Paired-End Mode[/cyan]")
+            break
+        elif choice == "2":
+            is_paired = False
+            console.print("[green]✓[/green] Selected: [cyan]Single-End Mode[/cyan]")
+            break
+        else:
+            console.print("[red]Invalid selection. Please enter 1 or 2[/red]")
+
+    console.print()
+
+    # Now detect files based on mode
     print_section("Input Files")
 
-    pairs = find_paired_fastqs(".")
+    all_fastq_files = sorted(list(Path(".").glob("*.fq")) + list(Path(".").glob("*.fastq")))
+
+    # Only auto-detect pairs if in paired-end mode
     fastq_pairs = []
-    for r1_path, r2_path in pairs:
-        r1_meta = scan_fastq_metadata(r1_path)
-        r2_meta = scan_fastq_metadata(r2_path)
-        fastq_pairs.append((r1_path, r2_path, r1_meta, r2_meta))
+    if is_paired:
+        pairs = find_paired_fastqs(".")
+        for r1_path, r2_path in pairs:
+            r1_meta = scan_fastq_metadata(r1_path)
+            r2_meta = scan_fastq_metadata(r2_path)
+            fastq_pairs.append((r1_path, r2_path, r1_meta, r2_meta))
 
     ref_files = find_references(".")
     references = []
@@ -54,11 +100,15 @@ def interactive_mode():
         sam_meta = scan_sam_metadata(sam_path)
         sam_files.append((sam_path, sam_meta))
 
-    display_file_pairs(fastq_pairs, references, sam_files)
+    # Display files appropriately based on mode
+    if is_paired:
+        display_file_pairs(fastq_pairs, references, sam_files)
+    else:
+        # For single-end, show individual FASTQ files (no pairing)
+        from ui.ui_components import display_single_end_files
+        display_single_end_files(all_fastq_files, references, sam_files)
 
-    all_fastq_files = sorted(list(Path(".").glob("*.fq")) + list(Path(".").glob("*.fastq")))
-
-    if not fastq_pairs and len(all_fastq_files) < 2:
+    if not all_fastq_files:
         console.print("\n[red]✗ No FASTQ files found![/red]")
         console.print("Please ensure you have FASTQ files in the current directory.\n")
         sys.exit(1)
@@ -70,48 +120,28 @@ def interactive_mode():
 
     console.print()
 
-    if not fastq_pairs:
-        console.print("[yellow]⚠ No auto-paired FASTQ files detected.[/yellow]")
-        console.print("[yellow]  Please manually select R1 and R2 files.[/yellow]\n")
-
-        console.print("[cyan]Available FASTQ files:[/cyan]")
-        for idx, fq_file in enumerate(all_fastq_files, 1):
-            fq_meta = scan_fastq_metadata(str(fq_file))
-            console.print(f"  [green]{idx}[/green]. {fq_file.name} [dim]({fq_meta['size_human']}, {fq_meta['read_count']:,} reads)[/dim]")
-
-        console.print()
-
+    # FASTQ file selection based on mode
+    if not is_paired:
+        # === SINGLE-END MODE ===
+        # Show all files and let user select one
         while True:
-            choice = console.input(f"[green]Select R1 file [1-{len(all_fastq_files)}]:[/green] ").strip()
+            choice = console.input(f"[green]Select FASTQ file [1-{len(all_fastq_files)}]:[/green] ").strip()
             try:
                 idx = int(choice) - 1
                 if 0 <= idx < len(all_fastq_files):
                     r1_path = str(all_fastq_files[idx])
                     r1_meta = scan_fastq_metadata(r1_path)
-                    console.print(f"[green]✓[/green] R1: [cyan]{Path(r1_path).name}[/cyan]")
+                    console.print(f"[green]✓[/green] Selected: [cyan]{Path(r1_path).name}[/cyan]")
+                    r2_path = None
+                    r2_meta = None
                     break
                 else:
                     console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
             except ValueError:
                 console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
 
-        while True:
-            choice = console.input(f"[green]Select R2 file [1-{len(all_fastq_files)}]:[/green] ").strip()
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(all_fastq_files):
-                    r2_path = str(all_fastq_files[idx])
-                    if r2_path == r1_path:
-                        console.print("[red]R2 cannot be the same as R1. Please select a different file.[/red]")
-                        continue
-                    r2_meta = scan_fastq_metadata(r2_path)
-                    console.print(f"[green]✓[/green] R2: [cyan]{Path(r2_path).name}[/cyan]")
-                    break
-                else:
-                    console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
-            except ValueError:
-                console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
-    else:
+    elif fastq_pairs:
+        # === PAIRED-END MODE with auto-detected pairs ===
         while True:
             choice = console.input(f"[green]Select FASTQ pair [1-{len(fastq_pairs)}] or 'm' for manual selection:[/green] ").strip().lower()
             if choice == 'm':
@@ -154,7 +184,6 @@ def interactive_mode():
                         console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
                 break
             else:
-                choice = choice if choice else "1"
                 try:
                     idx = int(choice) - 1
                     if 0 <= idx < len(fastq_pairs):
@@ -165,6 +194,50 @@ def interactive_mode():
                         console.print(f"[red]Invalid selection. Please enter 1-{len(fastq_pairs)} or 'm' for manual[/red]")
                 except ValueError:
                     console.print(f"[red]Invalid selection. Please enter 1-{len(fastq_pairs)} or 'm' for manual[/red]")
+
+    else:
+        # === PAIRED-END MODE without auto-detected pairs ===
+        console.print("[yellow]⚠ No auto-paired FASTQ files detected.[/yellow]")
+        console.print("[yellow]  Please manually select R1 and R2 files.[/yellow]\n")
+
+        console.print("[cyan]Available FASTQ files:[/cyan]")
+        for idx, fq_file in enumerate(all_fastq_files, 1):
+            fq_meta = scan_fastq_metadata(str(fq_file))
+            console.print(f"  [green]{idx}[/green]. {fq_file.name} [dim]({fq_meta['size_human']}, {fq_meta['read_count']:,} reads)[/dim]")
+        console.print()
+
+        # Select R1
+        while True:
+            choice = console.input(f"[green]Select R1 file [1-{len(all_fastq_files)}]:[/green] ").strip()
+            try:
+                idx = int(choice) - 1
+                if 0 <= idx < len(all_fastq_files):
+                    r1_path = str(all_fastq_files[idx])
+                    r1_meta = scan_fastq_metadata(r1_path)
+                    console.print(f"[green]✓[/green] R1: [cyan]{Path(r1_path).name}[/cyan]")
+                    break
+                else:
+                    console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
+            except ValueError:
+                console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
+
+        # Select R2
+        while True:
+            choice = console.input(f"[green]Select R2 file [1-{len(all_fastq_files)}]:[/green] ").strip()
+            try:
+                idx = int(choice) - 1
+                if 0 <= idx < len(all_fastq_files):
+                    r2_path = str(all_fastq_files[idx])
+                    if r2_path == r1_path:
+                        console.print("[red]R2 cannot be the same as R1. Please select a different file.[/red]")
+                        continue
+                    r2_meta = scan_fastq_metadata(r2_path)
+                    console.print(f"[green]✓[/green] R2: [cyan]{Path(r2_path).name}[/cyan]")
+                    break
+                else:
+                    console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
+            except ValueError:
+                console.print(f"[red]Invalid selection. Please enter 1-{len(all_fastq_files)}[/red]")
 
     console.print()
 
@@ -182,7 +255,7 @@ def interactive_mode():
     else:
         while True:
             choice = console.input(
-                f"[green]Select reference [1-{len(references)}], 'm' to see all FASTA files, or ENTER for first:[/green] "
+                f"[green]Select reference [1-{len(references)}] or 'm' to see all FASTA files:[/green] "
             ).strip().lower()
 
             if choice == 'm':
@@ -208,7 +281,6 @@ def interactive_mode():
                         console.print(f"[red]Invalid selection. Please enter 1-{len(all_ref_files)}[/red]")
                 break
             else:
-                choice = choice if choice else "1"
                 try:
                     idx = int(choice) - 1
                     if 0 <= idx < len(references):
@@ -281,8 +353,7 @@ def interactive_mode():
         console.print()
 
         while True:
-            choice = console.input("[green]Select [1-3] or ENTER for BWA-MEM2:[/green] ").strip()
-            choice = choice if choice else "1"
+            choice = console.input("[green]Select [1-3]:[/green] ").strip()
 
             if choice == "1":
                 aligner = "bwa-mem2"
@@ -296,43 +367,76 @@ def interactive_mode():
                 aligner = "minimap2"
 
                 console.print()
-                console.print("[cyan]Select Minimap2 Profile:[/cyan]")
-                console.print("  [green]1[/green] - short (Illumina paired-end)")
-                console.print("  [green]2[/green] - pacbio (PacBio HiFi/CLR)")
-                console.print("  [green]3[/green] - nanopore (Oxford Nanopore)")
+                print_section("Minimap2 Profile Selection")
+
+                profile_table = Table(show_header=False, box=None, padding=(0, 1), expand=False)
+                profile_table.add_column("Number", style="dim", width=4)
+                profile_table.add_column("Profile", style="bright_white")
+                profile_table.add_column("Description", style="cyan")
+                profile_table.add_row("1", "Short", "(Short-Read Sequencing)")
+                profile_table.add_row("2", "PacBio-HiFi", "(PacBio HiFi/CCS)")
+                profile_table.add_row("3", "PacBio-CLR", "(PacBio Continuous)")
+                profile_table.add_row("4", "ONT-Q20", "(Nanopore Q20+)")
+                profile_table.add_row("5", "ONT-Standard", "(Nanopore Standard)")
+
+                profile_panel = Panel(
+                    profile_table,
+                    title="[bold green]Select Minimap2 Profile[/bold green]",
+                    title_align="left",
+                    border_style="green",
+                    box=rbox.ROUNDED,
+                    expand=False,
+                    padding=(1, 2)
+                )
+                console.print(profile_panel)
                 console.print()
 
                 while True:
-                    profile_choice = console.input("[green]Select [1-3] or ENTER for short:[/green] ").strip()
-                    profile_choice = profile_choice if profile_choice else "1"
+                    profile_choice = console.input("[green]Select [1-5]:[/green] ").strip()
 
                     if profile_choice == "1":
                         minimap2_profile = "short"
+                        display_name = "Short"
                         break
                     elif profile_choice == "2":
-                        minimap2_profile = "pacbio"
+                        minimap2_profile = "pacbio-hifi"
+                        display_name = "PacBio-HiFi"
                         break
                     elif profile_choice == "3":
-                        minimap2_profile = "nanopore"
+                        minimap2_profile = "pacbio-clr"
+                        display_name = "PacBio-CLR"
+                        break
+                    elif profile_choice == "4":
+                        minimap2_profile = "ont-q20"
+                        display_name = "ONT-Q20"
+                        break
+                    elif profile_choice == "5":
+                        minimap2_profile = "ont-standard"
+                        display_name = "ONT-Standard"
                         break
                     else:
-                        console.print("[red]Invalid selection. Please enter 1-3[/red]")
+                        console.print("[red]Invalid selection. Please enter 1-5[/red]")
 
-                console.print(f"[green]✓[/green] Selected: [cyan]Minimap2 ({minimap2_profile})[/cyan]")
+                console.print(f"[green]✓[/green] Selected: [cyan]Minimap2 ({display_name})[/cyan]")
                 break
             else:
                 console.print("[red]Invalid selection. Please enter 1-3[/red]")
 
         console.print()
 
+        import os
+        max_threads = os.cpu_count() or 1
         while True:
-            choice = console.input("[green]Number of threads (ENTER for 4):[/green] ").strip()
+            choice = console.input(f"[green]Number of threads ({max_threads} available):[/green] ").strip()
             if not choice:
-                break
+                console.print("[red]Please enter a number of threads.[/red]")
+                continue
             try:
                 threads = int(choice)
                 if threads < 1:
                     raise ValueError
+                if threads > max_threads:
+                    console.print(f"[yellow]⚠ Warning: {threads} threads requested but only {max_threads} available[/yellow]")
                 console.print(f"[green]✓[/green] Threads: [cyan]{threads}[/cyan]")
                 break
             except ValueError:
@@ -342,8 +446,14 @@ def interactive_mode():
 
     validations = []
 
-    if fastq_pairs:
+    # Validate FASTQ files
+    if is_paired and r2_path:
         validations.extend(validate_fastq_pair(r1_path, r2_path, r1_meta, r2_meta))
+    else:
+        # Single-end validation (just R1)
+        from utils.validators import validate_fastq_single
+        validations.extend(validate_fastq_single(r1_path, r1_meta))
+
     if ref_meta:
         validations.extend(validate_fasta(ref_path, ref_meta))
     if sam_path:
@@ -360,7 +470,7 @@ def interactive_mode():
 
     display_pipeline_config(
         r1_file=Path(r1_path).name,
-        r2_file=Path(r2_path).name,
+        r2_file=Path(r2_path).name if r2_path else None,
         ref_file=Path(ref_path).name,
         read_count=r1_meta['read_count'],
         ref_sequences=ref_meta['num_sequences'],

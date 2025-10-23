@@ -42,7 +42,7 @@ class PipelineExecutor:
     def run_pipeline(
         self,
         r1: str | Path,
-        r2: str | Path,
+        r2: str | Path | None,
         ref: str | Path,
         aligner: str = "bwa-mem2",
         threads: int = 4,
@@ -50,15 +50,16 @@ class PipelineExecutor:
         minimap2_profile: str = "short",
         show_header: bool = True,
     ) -> None:
-        """Execute the complete pipeline."""
+        """Execute the complete pipeline (supports both paired-end and single-end)."""
 
         if show_header:
             print("\n\033[0;36mRunning mapper pipeline...\033[0m\n", file=sys.stderr)
 
         r1 = str(r1)
-        r2 = str(r2)
+        r2 = str(r2) if r2 else None
         ref = str(ref)
         sam = str(sam) if sam else None
+        is_paired = r2 is not None
 
         msa_output = self.output_dir / "ref_seq_msa.aln"
         self._run_spinner(
@@ -81,36 +82,64 @@ class PipelineExecutor:
                     ["bowtie2-build", ref, str(index_base)],
                     "Building Bowtie2 index",
                 )
-                self._run_spinner(
-                    f"bowtie2 -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
-                    "Aligning reads with Bowtie2",
-                    shell=True,
-                )
+                if is_paired:
+                    self._run_spinner(
+                        f"bowtie2 -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
+                        "Aligning reads with Bowtie2",
+                        shell=True,
+                    )
+                else:
+                    self._run_spinner(
+                        f"bowtie2 -p {threads} -x '{index_base}' -U '{r1}' -S '{sam_output}'",
+                        "Aligning reads with Bowtie2",
+                        shell=True,
+                    )
             elif aligner == "bwa-mem2":
                 index_base = self.output_dir / "ref_index"
                 self._run_spinner(
                     ["bwa-mem2", "index", "-p", str(index_base), ref],
                     "Building BWA-MEM2 index",
                 )
-                self._run_spinner(
-                    f"bwa-mem2 mem -t {threads} '{index_base}' '{r1}' '{r2}' > '{sam_output}'",
-                    "Aligning reads with BWA-MEM2",
-                    shell=True,
-                )
+                if is_paired:
+                    self._run_spinner(
+                        f"bwa-mem2 mem -t {threads} '{index_base}' '{r1}' '{r2}' > '{sam_output}'",
+                        "Aligning reads with BWA-MEM2",
+                        shell=True,
+                    )
+                else:
+                    self._run_spinner(
+                        f"bwa-mem2 mem -t {threads} '{index_base}' '{r1}' > '{sam_output}'",
+                        "Aligning reads with BWA-MEM2",
+                        shell=True,
+                    )
             elif aligner == "minimap2":
                 index_file = self.output_dir / "ref_index.mmi"
-                preset_map = {"short": "sr", "pacbio": "map-pb", "nanopore": "map-ont"}
+                # Modern minimap2 presets (2024-2025)
+                preset_map = {
+                    "short": "sr",
+                    "pacbio-hifi": "map-hifi",
+                    "pacbio-clr": "map-pb",
+                    "ont-q20": "lr:hq",
+                    "ont-standard": "map-ont",
+                }
                 preset = preset_map.get(minimap2_profile, "sr")
 
                 self._run_spinner(
                     ["minimap2", "-x", preset, "-d", str(index_file), ref],
                     f"Building minimap2 ({minimap2_profile}) index",
                 )
-                self._run_spinner(
-                    f"minimap2 -ax {preset} --MD -t {threads} '{index_file}' '{r1}' '{r2}' > '{sam_output}'",
-                    f"Aligning reads with minimap2 ({minimap2_profile})",
-                    shell=True,
-                )
+                if is_paired:
+                    self._run_spinner(
+                        f"minimap2 -ax {preset} --MD -t {threads} '{index_file}' '{r1}' '{r2}' > '{sam_output}'",
+                        f"Aligning reads with minimap2 ({minimap2_profile})",
+                        shell=True,
+                    )
+                else:
+                    self._run_spinner(
+                        f"minimap2 -ax {preset} --MD -t {threads} '{index_file}' '{r1}' > '{sam_output}'",
+                        f"Aligning reads with minimap2 ({minimap2_profile})",
+                        shell=True,
+                    )
 
         ref_msa_tsv = self.output_dir / "ref_seq_msa.tsv"
         self._run_spinner(
@@ -128,17 +157,21 @@ class PipelineExecutor:
         )
 
         mapped_reads_tsv = self.output_dir / "mapped_reads.tsv"
+        read_2_gene_cmd = [
+            "python",
+            str(self.pipeline_dir / "read_2_gene.py"),
+            "--sam",
+            str(sam_output),
+            "--output",
+            str(mapped_reads_tsv),
+            "--fastq",
+            r1,
+        ]
+        if not is_paired:
+            read_2_gene_cmd.append("--single-end")
+
         self._run_progress(
-            [
-                "python",
-                str(self.pipeline_dir / "read_2_gene.py"),
-                "--sam",
-                str(sam_output),
-                "--output",
-                str(mapped_reads_tsv),
-                "--fastq",
-                r1,
-            ],
+            read_2_gene_cmd,
             "Mapping reads to reference sequences",
         )
 
@@ -159,29 +192,35 @@ class PipelineExecutor:
 
         fastq_dir = self.output_dir / "fastq"
         bam_dir = self.output_dir / "bam"
+
+        # Build command with optional R2
+        output_cmd = [
+            "python",
+            str(self.pipeline_dir / "output.py"),
+            "--tsv",
+            str(unique_mappings_tsv),
+            "--r1",
+            r1,
+        ]
+        if r2:
+            output_cmd.extend(["--r2", r2])
+        output_cmd.extend([
+            "--ref",
+            ref,
+            "--fastq-dir",
+            str(fastq_dir),
+            "--bam-dir",
+            str(bam_dir),
+            "--aligner",
+            aligner,
+            "--threads",
+            str(threads),
+            "--minimap2-profile",
+            minimap2_profile,
+        ])
+
         self._run_progress(
-            [
-                "python",
-                str(self.pipeline_dir / "output.py"),
-                "--tsv",
-                str(unique_mappings_tsv),
-                "--r1",
-                r1,
-                "--r2",
-                r2,
-                "--ref",
-                ref,
-                "--fastq-dir",
-                str(fastq_dir),
-                "--bam-dir",
-                str(bam_dir),
-                "--aligner",
-                aligner,
-                "--threads",
-                str(threads),
-                "--minimap2-profile",
-                minimap2_profile,
-            ],
+            output_cmd,
             "Writing output files",
         )
 

@@ -60,20 +60,24 @@ def process_read_data(read_name: str, read_rows: List[List], sequence_bases: Dic
     return processed_rows
 
 def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[str]) -> str:
-    """Find unique mapping for SNP-only analysis"""
+    """Find unique mapping for SNP-only analysis (supports both paired-end and single-end)"""
     plus_data = read_scenarios.get('plus', [])
     minus_data = read_scenarios.get('minus', [])
-    
-    if not plus_data or not minus_data:
+
+    # Check if we have no data at all
+    if not plus_data and not minus_data:
         return "NONE"
-    
+
+    # Determine if we have both strands (paired-end) or just one (single-end)
+    has_both_strands = bool(plus_data and minus_data)
+
     def check_conditions(scenarios: List, gene: str) -> Tuple[bool, bool]:
         if not scenarios:
             return False, False
-        
+
         all_positions = set()
         matching_positions = defaultdict(set)
-        
+
         for scenario in scenarios:
             for row in scenario:
                 msa_pos = row['MSA_Position']
@@ -81,32 +85,42 @@ def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[st
                 for g in genes:
                     if row['Read_Base'].upper() == row[f'{g}_Base'].upper():
                         matching_positions[g].add(msa_pos)
-        
+
         # Check condition 1: unique match
         c1_pass = any(
             pos in matching_positions[gene] and
             all(pos not in matching_positions[g] for g in genes if g != gene)
             for pos in all_positions
         )
-        
+
         # Check condition 2: no contradictions
         c2_pass = all(
             pos in matching_positions[gene] or
             all(pos not in matching_positions[g] for g in genes if g != gene)
             for pos in all_positions
         )
-        
+
         return c1_pass, c2_pass
 
     mapped_genes = []
-    for gene in genes:
-        plus_c1, plus_c2 = check_conditions(plus_data, gene)
-        minus_c1, minus_c2 = check_conditions(minus_data, gene)
-        
-        if ((plus_c1 and plus_c2 and minus_c2) or 
-            (minus_c1 and minus_c2 and plus_c2)):
-            mapped_genes.append(gene)
-    
+
+    if has_both_strands:
+        # Paired-end logic: require one strand with c1+c2, other strand with c2
+        for gene in genes:
+            plus_c1, plus_c2 = check_conditions(plus_data, gene)
+            minus_c1, minus_c2 = check_conditions(minus_data, gene)
+
+            if ((plus_c1 and plus_c2 and minus_c2) or
+                (minus_c1 and minus_c2 and plus_c2)):
+                mapped_genes.append(gene)
+    else:
+        # Single-end logic: require the available strand to pass both c1 and c2
+        strand_data = plus_data if plus_data else minus_data
+        for gene in genes:
+            c1, c2 = check_conditions(strand_data, gene)
+            if c1 and c2:
+                mapped_genes.append(gene)
+
     return mapped_genes[0] if len(mapped_genes) == 1 else "NONE"
 
 def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: Dict,

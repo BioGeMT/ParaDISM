@@ -10,12 +10,13 @@ def count_fastq_reads(fastq_path):
             count += 1
     return count // 4
 
-def process_sam_to_alignment_tsv(sam_filepath, output_tsv_filepath, fastq_path=None):
+def process_sam_to_alignment_tsv(sam_filepath, output_tsv_filepath, fastq_path=None, is_paired=True):
 
     # Count total reads from FASTQ if provided, otherwise count from SAM
     if fastq_path:
-        # Multiply by 2 since we have paired-end reads (R1 and R2)
-        total_reads = count_fastq_reads(fastq_path) * 2
+        # For paired-end, multiply by 2 (R1 and R2); for single-end, use as-is
+        base_count = count_fastq_reads(fastq_path)
+        total_reads = base_count * 2 if is_paired else base_count
     else:
         total_reads = 0
         with pysam.AlignmentFile(sam_filepath, "r") as samfile:
@@ -67,6 +68,8 @@ if __name__ == "__main__":
     parser.add_argument("--sam", required=True, help="Path to input SAM file")
     parser.add_argument("--output", required=True, help="Path for output TSV file")
     parser.add_argument("--fastq", help="Path to FASTQ file for read counting (optional, faster than counting from SAM)")
+    parser.add_argument("--paired", action='store_true', default=True, help="Paired-end mode (default: True)")
+    parser.add_argument("--single-end", dest='paired', action='store_false', help="Single-end mode")
     args = parser.parse_args()
 
-    process_sam_to_alignment_tsv(args.sam, args.output, args.fastq)
+    process_sam_to_alignment_tsv(args.sam, args.output, args.fastq, args.paired)
