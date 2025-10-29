@@ -2,6 +2,7 @@
 """Interactive workflow for the homologous-region mapper."""
 
 import sys
+import os
 from pathlib import Path
 
 from pipeline.executor import PipelineExecutor
@@ -20,6 +21,7 @@ from utils.file_scanner import (
     find_paired_fastqs,
     find_references,
     find_sam_files,
+    format_bytes,
 )
 from utils.validators import (
     validate_fastq_pair,
@@ -28,8 +30,16 @@ from utils.validators import (
 )
 
 
-def interactive_mode():
-    """Run mapper in interactive mode with rich UI."""
+def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
+    input_path = Path(input_dir)
+    if not input_path.exists():
+        console.print(f"[red]✗ Input directory not found: {input_dir}[/red]")
+        sys.exit(1)
+    if not input_path.is_dir():
+        console.print(f"[red]✗ Not a directory: {input_dir}[/red]")
+        sys.exit(1)
+    
+    input_dir_resolved = str(input_path.resolve())
 
     print_header()
 
@@ -76,29 +86,32 @@ def interactive_mode():
 
     # Now detect files based on mode
     print_section("Input Files")
+    
+    if input_dir_resolved != ".":
+        console.print(f"[cyan]Scanning directory: {input_dir_resolved}[/cyan]\n")
 
-    all_fastq_files = sorted(list(Path(".").glob("*.fq")) + list(Path(".").glob("*.fastq")))
+    all_fastq_files = sorted(list(input_path.glob("*.fq")) + list(input_path.glob("*.fastq")))
 
     # Only auto-detect pairs if in paired-end mode
     fastq_pairs = []
     if is_paired:
-        pairs = find_paired_fastqs(".")
+        pairs = find_paired_fastqs(input_dir_resolved)
         for r1_path, r2_path in pairs:
-            r1_meta = scan_fastq_metadata(r1_path)
-            r2_meta = scan_fastq_metadata(r2_path)
-            fastq_pairs.append((r1_path, r2_path, r1_meta, r2_meta))
+            r1_size = os.path.getsize(r1_path)
+            r2_size = os.path.getsize(r2_path)
+            fastq_pairs.append((r1_path, r2_path, r1_size, r2_size))
 
-    ref_files = find_references(".")
+    ref_files = find_references(input_dir_resolved)
     references = []
     for ref_path in ref_files:
-        ref_meta = scan_fasta_metadata(ref_path)
-        references.append((ref_path, ref_meta))
+        ref_size = os.path.getsize(ref_path)
+        references.append((ref_path, ref_size))
 
-    sam_file_paths = find_sam_files(".")
+    sam_file_paths = find_sam_files(input_dir_resolved)
     sam_files = []
     for sam_path in sam_file_paths:
-        sam_meta = scan_sam_metadata(sam_path)
-        sam_files.append((sam_path, sam_meta))
+        sam_size = os.path.getsize(sam_path)
+        sam_files.append((sam_path, sam_size))
 
     # Display files appropriately based on mode
     if is_paired:
@@ -109,13 +122,13 @@ def interactive_mode():
         display_single_end_files(all_fastq_files, references, sam_files)
 
     if not all_fastq_files:
-        console.print("\n[red]✗ No FASTQ files found![/red]")
-        console.print("Please ensure you have FASTQ files in the current directory.\n")
+        console.print(f"\n[red]✗ No FASTQ files found in {input_dir_resolved}![/red]")
+        console.print(f"Please ensure you have FASTQ files in the specified directory.\n")
         sys.exit(1)
 
     if not references:
-        console.print("\n[red]✗ No reference FASTA files found![/red]")
-        console.print("Please ensure you have a reference FASTA file in the current directory.\n")
+        console.print(f"\n[red]✗ No reference FASTA files found in {input_dir_resolved}![/red]")
+        console.print(f"Please ensure you have a reference FASTA file in the specified directory.\n")
         sys.exit(1)
 
     console.print()
@@ -148,8 +161,9 @@ def interactive_mode():
                 console.print()
                 console.print("[cyan]Available FASTQ files:[/cyan]")
                 for idx, fq_file in enumerate(all_fastq_files, 1):
-                    fq_meta = scan_fastq_metadata(str(fq_file))
-                    console.print(f"  [green]{idx}[/green]. {fq_file.name} [dim]({fq_meta['size_human']}, {fq_meta['read_count']:,} reads)[/dim]")
+                    fq_size = os.path.getsize(str(fq_file))
+                    fq_size_str = format_bytes(fq_size)
+                    console.print(f"  [green]{idx}[/green]. {fq_file.name} [dim]({fq_size_str})[/dim]")
                 console.print()
 
                 while True:
@@ -187,8 +201,10 @@ def interactive_mode():
                 try:
                     idx = int(choice) - 1
                     if 0 <= idx < len(fastq_pairs):
-                        r1_path, r2_path, r1_meta, r2_meta = fastq_pairs[idx]
+                        r1_path, r2_path, r1_size, r2_size = fastq_pairs[idx]
                         console.print(f"[green]✓[/green] Selected: [cyan]{Path(r1_path).name}[/cyan] / [cyan]{Path(r2_path).name}[/cyan]")
+                        r1_meta = scan_fastq_metadata(r1_path)
+                        r2_meta = scan_fastq_metadata(r2_path)
                         break
                     else:
                         console.print(f"[red]Invalid selection. Please enter 1-{len(fastq_pairs)} or 'm' for manual[/red]")
@@ -202,8 +218,9 @@ def interactive_mode():
 
         console.print("[cyan]Available FASTQ files:[/cyan]")
         for idx, fq_file in enumerate(all_fastq_files, 1):
-            fq_meta = scan_fastq_metadata(str(fq_file))
-            console.print(f"  [green]{idx}[/green]. {fq_file.name} [dim]({fq_meta['size_human']}, {fq_meta['read_count']:,} reads)[/dim]")
+            fq_size = os.path.getsize(str(fq_file))
+            fq_size_str = format_bytes(fq_size)
+            console.print(f"  [green]{idx}[/green]. {fq_file.name} [dim]({fq_size_str})[/dim]")
         console.print()
 
         # Select R1
@@ -242,15 +259,16 @@ def interactive_mode():
     console.print()
 
     all_ref_files = sorted(
-        list(Path(".").glob("*.fa")) +
-        list(Path(".").glob("*.fasta")) +
-        list(Path(".").glob("*.fas")) +
-        list(Path(".").glob("*.fna"))
+        list(input_path.glob("*.fa")) +
+        list(input_path.glob("*.fasta")) +
+        list(input_path.glob("*.fas")) +
+        list(input_path.glob("*.fna"))
     )
 
     if len(references) == 1:
-        ref_path, ref_meta = references[0]
+        ref_path, ref_size = references[0]
         console.print(f"[green]✓[/green] Auto-selected: [cyan]{Path(ref_path).name}[/cyan]")
+        ref_meta = scan_fasta_metadata(ref_path)
         console.print()
     else:
         while True:
@@ -262,8 +280,9 @@ def interactive_mode():
                 console.print()
                 console.print("[cyan]Available FASTA files:[/cyan]")
                 for idx, ref_file in enumerate(all_ref_files, 1):
-                    ref_meta_temp = scan_fasta_metadata(str(ref_file))
-                    console.print(f"  [green]{idx}[/green]. {ref_file.name} [dim]({ref_meta_temp['num_sequences']} sequences, {ref_meta_temp['size_human']})[/dim]")
+                    ref_size = os.path.getsize(str(ref_file))
+                    ref_size_str = format_bytes(ref_size)
+                    console.print(f"  [green]{idx}[/green]. {ref_file.name} [dim]({ref_size_str})[/dim]")
                 console.print()
 
                 while True:
@@ -284,7 +303,8 @@ def interactive_mode():
                 try:
                     idx = int(choice) - 1
                     if 0 <= idx < len(references):
-                        ref_path, ref_meta = references[idx]
+                        ref_path, ref_size = references[idx]
+                        ref_meta = scan_fasta_metadata(ref_path)
                         console.print(f"[green]✓[/green] Selected: [cyan]{Path(ref_path).name}[/cyan]")
                         break
                     else:
@@ -299,15 +319,17 @@ def interactive_mode():
             choice = console.input("[green]Use existing SAM alignment? (y/n):[/green] ").strip().lower()
             if choice in ['y', 'yes']:
                 if len(sam_files) == 1:
-                    sam_path, sam_meta = sam_files[0]
+                    sam_path, sam_size = sam_files[0]
                     console.print(f"[green]✓[/green] Auto-selected: [cyan]{Path(sam_path).name}[/cyan]")
+                    sam_meta = scan_sam_metadata(sam_path)
                 else:
                     while True:
                         sam_choice = console.input(f"[green]Select SAM file [1-{len(sam_files)}]:[/green] ").strip()
                         try:
                             idx = int(sam_choice) - 1
                             if 0 <= idx < len(sam_files):
-                                sam_path, sam_meta = sam_files[idx]
+                                sam_path, sam_size = sam_files[idx]
+                                sam_meta = scan_sam_metadata(sam_path)
                                 console.print(f"[green]✓[/green] Selected: [cyan]{Path(sam_path).name}[/cyan]")
                                 break
                             else:
@@ -424,7 +446,6 @@ def interactive_mode():
 
         console.print()
 
-        import os
         max_threads = os.cpu_count() or 1
         while True:
             choice = console.input(f"[green]Number of threads ({max_threads} available):[/green] ").strip()
@@ -478,13 +499,17 @@ def interactive_mode():
         aligner=aligner,
         threads=threads,
         sam_file=Path(sam_path).name if sam_path else None,
-        minimap2_profile=minimap2_profile if aligner == "minimap2" else None
+        minimap2_profile=minimap2_profile if aligner == "minimap2" else None,
+        output_dir=output_dir
     )
 
     console.print()
     console.input("[green]Press ENTER to start pipeline or Ctrl+C to cancel...[/green]")
 
-    executor = PipelineExecutor()
+    # Create output directory if it doesn't exist
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    executor = PipelineExecutor(output_dir=output_dir)
     executor.run_pipeline(
         r1=r1_path,
         r2=r2_path,
@@ -500,7 +525,8 @@ def interactive_mode():
     console.print("[green]═══════════════════════════════════════════════════════[/green]")
     console.print()
     console.print("[cyan]Outputs:[/cyan]")
-    console.print("  • Unique mappings: [green]./output/unique_mappings.tsv[/green]")
-    console.print("  • Gene-specific FASTQs: [green]./output/fastq/[/green]")
-    console.print("  • Gene-specific BAMs: [green]./output/bam/[/green]")
+    output_path = Path(output_dir)
+    console.print(f"  • Unique mappings: [green]{output_path}/unique_mappings.tsv[/green]")
+    console.print(f"  • Gene-specific FASTQs: [green]{output_path}/fastq/[/green]")
+    console.print(f"  • Gene-specific BAMs: [green]{output_path}/bam/[/green]")
     console.print()

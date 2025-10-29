@@ -21,7 +21,13 @@ Run without arguments to launch the guided CLI:
 python mapper.py
 ```
 
-You’ll be prompted to:
+Or specify a custom input directory:
+
+```bash
+python mapper.py --input-dir /path/to/data
+```
+
+You'll be prompted to:
 - Select sequencing mode (Paired‑End or Single‑End)
 - Pick FASTQ file(s) accordingly (R1/R2 or a single FASTQ)
 - Choose reference FASTA
@@ -29,7 +35,7 @@ You’ll be prompted to:
 - Pick an aligner (`bowtie2`, `bwa-mem2`, `minimap2`)
 - Configure threads and minimap2 profile (if using minimap2)
 
- **Note:** Interactive mode scans the current working directory for input files. Place your inputs in the project root (or run the command from the directory that contains them) so they appear in the selection lists.
+ **Note:** By default, interactive mode scans the current working directory for input files. Use `--input-dir` to specify a different directory to scan. Place your inputs in the specified directory (or current directory if not specified) so they appear in the selection lists.
 
 ### Argument-Driven Mode
 ```bash

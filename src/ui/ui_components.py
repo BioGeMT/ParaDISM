@@ -2,6 +2,8 @@
 """Rich UI components for file selection, validation, and config display."""
 
 from typing import Dict, List, Optional, Tuple
+import os
+from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -12,14 +14,22 @@ from rich import box
 console = Console()
 
 
+def format_bytes(bytes_size: int) -> str:
+    """Return human-readable byte size."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_size < 1024.0:
+            return f"{bytes_size:.1f} {unit}"
+        bytes_size /= 1024.0
+    return f"{bytes_size:.1f} PB"
+
+
 def display_single_end_files(
     fastq_files: List,
-    references: List[Tuple[str, Dict]],
-    sam_files: List[Tuple[str, Dict]]
+    references: List[Tuple[str, int]],
+    sam_files: List[Tuple[str, int]]
 ) -> None:
     """Show single-end FASTQs with reference/SAM summaries."""
     from pathlib import Path
-    from utils.file_scanner import scan_fastq_metadata
 
     panels = []
 
@@ -30,9 +40,9 @@ def display_single_end_files(
         table.add_column("File", no_wrap=False)
 
         for idx, fq_file in enumerate(fastq_files, 1):
-            fq_meta = scan_fastq_metadata(str(fq_file))
             fq_name = fq_file.name if isinstance(fq_file, Path) else Path(fq_file).name
-            fq_info = f"{fq_meta['size_human']}, {fq_meta['read_count']:,} reads"
+            fq_size = os.path.getsize(str(fq_file))
+            fq_info = format_bytes(fq_size)
 
             table.add_row(
                 f"{idx}.",
@@ -54,16 +64,13 @@ def display_single_end_files(
         table.add_column("Number", style="dim", width=4)
         table.add_column("File", no_wrap=False)
 
-        for idx, (ref_path, ref_meta) in enumerate(references, 1):
+        for idx, (ref_path, ref_size) in enumerate(references, 1):
             ref_name = ref_path.split('/')[-1]
-            ref_info = f"{ref_meta['num_sequences']} sequences, {ref_meta['size_human']}"
-            seq_list = ", ".join(ref_meta['sequence_ids'][:5])
-            if ref_meta['num_sequences'] > 5:
-                seq_list += f", ... +{ref_meta['num_sequences'] - 5} more"
+            ref_info = format_bytes(ref_size)
 
             table.add_row(
                 f"{idx}.",
-                f"[bright_white]{ref_name}[/bright_white]\n[cyan]{ref_info}[/cyan]\n[cyan]{seq_list}[/cyan]"
+                f"[bright_white]{ref_name}[/bright_white]\n[cyan]{ref_info}[/cyan]"
             )
 
         panels.append(Panel(
@@ -81,9 +88,9 @@ def display_single_end_files(
         table.add_column("Number", style="dim", width=4)
         table.add_column("File", no_wrap=False)
 
-        for idx, (sam_path, sam_meta) in enumerate(sam_files, 1):
+        for idx, (sam_path, sam_size) in enumerate(sam_files, 1):
             sam_name = sam_path.split('/')[-1]
-            sam_info = f"{sam_meta['size_human']}, {sam_meta['aligned_reads']:,} aligned reads"
+            sam_info = format_bytes(sam_size)
 
             table.add_row(
                 f"{idx}.",
@@ -133,9 +140,9 @@ def display_single_end_files(
 
 
 def display_file_pairs(
-    fastq_pairs: List[Tuple[str, str, Dict, Dict]],
-    references: List[Tuple[str, Dict]],
-    sam_files: List[Tuple[str, Dict]]
+    fastq_pairs: List[Tuple[str, str, int, int]],
+    references: List[Tuple[str, int]],
+    sam_files: List[Tuple[str, int]]
 ) -> None:
     """Show paired-end FASTQs with reference/SAM summaries."""
     panels = []
@@ -148,11 +155,11 @@ def display_file_pairs(
         table.add_column("Arrow", width=3, justify="center")
         table.add_column("R2", no_wrap=False)
 
-        for idx, (r1_path, r2_path, r1_meta, r2_meta) in enumerate(fastq_pairs, 1):
+        for idx, (r1_path, r2_path, r1_size, r2_size) in enumerate(fastq_pairs, 1):
             r1_name = r1_path.split('/')[-1]
             r2_name = r2_path.split('/')[-1]
-            r1_info = f"{r1_meta['size_human']} ({r1_meta['read_count']:,} reads)"
-            r2_info = f"{r2_meta['size_human']} ({r2_meta['read_count']:,} reads)"
+            r1_info = format_bytes(r1_size)
+            r2_info = format_bytes(r2_size)
 
             table.add_row(
                 f"{idx}.",
@@ -176,16 +183,13 @@ def display_file_pairs(
         table.add_column("Number", style="dim", width=4)
         table.add_column("File", no_wrap=False)
 
-        for idx, (ref_path, ref_meta) in enumerate(references, 1):
+        for idx, (ref_path, ref_size) in enumerate(references, 1):
             ref_name = ref_path.split('/')[-1]
-            ref_info = f"{ref_meta['num_sequences']} sequences, {ref_meta['size_human']}"
-            seq_list = ", ".join(ref_meta['sequence_ids'][:5])
-            if ref_meta['num_sequences'] > 5:
-                seq_list += f", ... +{ref_meta['num_sequences'] - 5} more"
+            ref_info = format_bytes(ref_size)
 
             table.add_row(
                 f"{idx}.",
-                f"[bright_white]{ref_name}[/bright_white]\n[cyan]{ref_info}[/cyan]\n[cyan]{seq_list}[/cyan]"
+                f"[bright_white]{ref_name}[/bright_white]\n[cyan]{ref_info}[/cyan]"
             )
 
         panels.append(Panel(
@@ -203,9 +207,9 @@ def display_file_pairs(
         table.add_column("Number", style="dim", width=4)
         table.add_column("File", no_wrap=False)
 
-        for idx, (sam_path, sam_meta) in enumerate(sam_files, 1):
+        for idx, (sam_path, sam_size) in enumerate(sam_files, 1):
             sam_name = sam_path.split('/')[-1]
-            sam_info = f"{sam_meta['size_human']}, {sam_meta['aligned_reads']:,} aligned reads"
+            sam_info = format_bytes(sam_size)
 
             table.add_row(
                 f"{idx}.",
@@ -300,7 +304,8 @@ def display_pipeline_config(
     aligner: str,
     threads: int,
     sam_file: Optional[str] = None,
-    minimap2_profile: Optional[str] = None
+    minimap2_profile: Optional[str] = None,
+    output_dir: str = "./output"
 ) -> None:
     """Display pipeline configuration summary (paired or single-end)."""
     lines = []
@@ -369,7 +374,9 @@ def display_pipeline_config(
 
     # OUTPUT DIRECTORY section
     lines.append("[bold]OUTPUT DIRECTORY[/bold]")
-    lines.append("  [cyan]./output/[/cyan]")
+    output_path = Path(output_dir)
+    output_dir_display = str(output_path.resolve())
+    lines.append(f"  [cyan]{output_dir_display}/[/cyan]")
     lines.append("  ├─ [green]unique_mappings.tsv[/green]")
     lines.append(f"  ├─ [green]fastq/PKD1*.fq[/green] [dim]({ref_sequences} files)[/dim]")
     lines.append(f"  ├─ [green]bam/PKD1*.bam + .bai[/green] [dim]({ref_sequences * 2} files)[/dim]")

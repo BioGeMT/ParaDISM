@@ -88,8 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=CustomHelpFormatter,
         epilog="""
 Examples:
-  # Interactive mode
+  # Interactive mode (scans current directory)
   python mapper.py
+
+  # Interactive mode with custom input directory
+  python mapper.py --input-dir /path/to/data
 
   # Paired-end mode
   python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa
@@ -143,6 +146,12 @@ Examples:
         default="./output",
         help="Output directory (default: ./output)",
     )
+    optional.add_argument(
+        "--input-dir",
+        metavar="INPUT_DIR",
+        default=".",
+        help="Input directory for interactive mode file scanning (default: current directory)",
+    )
 
     return parser
 
@@ -165,7 +174,16 @@ def main() -> None:
         )
         console.print("[yellow]  Launching interactive mode instead...[/yellow]\n")
 
-    interactive_mode()
+    # Validate input directory if provided
+    input_dir = Path(args.input_dir)
+    if not input_dir.exists():
+        console.print(f"[red]✗ Input directory not found: {args.input_dir}[/red]")
+        sys.exit(1)
+    if not input_dir.is_dir():
+        console.print(f"[red]✗ Not a directory: {args.input_dir}[/red]")
+        sys.exit(1)
+
+    interactive_mode(input_dir=str(input_dir.resolve()), output_dir=args.output_dir)
 
 
 if __name__ == "__main__":
