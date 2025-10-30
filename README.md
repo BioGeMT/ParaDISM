@@ -51,11 +51,11 @@ python mapper.py --read1 <forward_reads.fq> \
 ```
 
 Required:
-- `--read1`: FASTQ (R1 for paired‑end, or single‑end reads)
+- `--read1`: R1 FASTQ file
+- `--read2`: R2 FASTQ file (for paired-end mode)
 - `--reference`: Reference FASTA
 
 Optional:
-- `--read2`: R2 FASTQ for paired‑end mode
 - `--aligner`: `bwa-mem2` (default), `bowtie2`, or `minimap2`
 - `--threads`: Number of alignment threads (default: 4)
 - `--minimap2-profile` (required with minimap2): one of
@@ -124,20 +124,3 @@ output_dir/                                   # Output directory
 ```
 
 **Note:** Intermediate files (MSA, SAM, indices) are created during processing but cleaned up automatically at the end. Only the final outputs listed above are retained.
-
-### Customizing the Prefix
-
-You can control the output file prefix using the `--prefix` option:
-
-```bash
-# Auto-derive prefix from output directory name (default)
-python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa --output-dir sample_001
-
-# Explicitly specify custom prefix
-python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
-  --output-dir results --prefix custom_prefix
-
-# Use empty prefix (no prefix on output files)
-python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
-  --output-dir output --prefix ""
-```
