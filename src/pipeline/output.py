@@ -6,7 +6,7 @@ from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 import subprocess
 
-def process_files(tsv_path, r1_path, r2_path, output_dir):
+def process_files(tsv_path, r1_path, r2_path, output_dir, prefix=""):
     """Split reads into per-gene FASTQs (paired or single-end)."""
     # Read TSV and preserve order of mapped reads
     gene_mapping = {}   # {read_name: gene}
@@ -73,7 +73,9 @@ def process_files(tsv_path, r1_path, r2_path, output_dir):
         if not records:
             continue
 
-        output_file = os.path.join(output_dir, f"{gene}.fq")
+        # Add prefix to gene filename
+        filename = f"{prefix}_{gene}.fq" if prefix else f"{gene}.fq"
+        output_file = os.path.join(output_dir, filename)
 
         with open(output_file, "w") as out_f:
             SeqIO.write(records, out_f, "fastq")
@@ -93,6 +95,7 @@ def create_bam_files(
     threads=4,
     minimap2_profile='short',
     is_paired=False,
+    prefix="",
 ):
     ref_db = {}
     for record in SeqIO.parse(ref_fasta, "fasta"):
@@ -111,12 +114,17 @@ def create_bam_files(
 
         # Verbose output to stderr (goes to log)
         print(f"Processing {gene} for alignment...", file=sys.stderr)
-        fastq_file = os.path.join(fastq_dir, f"{gene}.fq")
-        tmp_ref = os.path.join(output_dir, f"{gene}_ref.fa")
-        index_base = os.path.join(output_dir, f"{gene}_index")
-        sam_path = os.path.join(output_dir, f"{gene}.sam")
-        bam_path = os.path.join(output_dir, f"{gene}.bam")
-        sorted_bam = os.path.join(output_dir, f"{gene}.sorted.bam")
+
+        # Use prefix for filenames
+        fastq_filename = f"{prefix}_{gene}.fq" if prefix else f"{gene}.fq"
+        fastq_file = os.path.join(fastq_dir, fastq_filename)
+
+        bam_filename_base = f"{prefix}_{gene}" if prefix else gene
+        tmp_ref = os.path.join(output_dir, f"{bam_filename_base}_ref.fa")
+        index_base = os.path.join(output_dir, f"{bam_filename_base}_index")
+        sam_path = os.path.join(output_dir, f"{bam_filename_base}.sam")
+        bam_path = os.path.join(output_dir, f"{bam_filename_base}.bam")
+        sorted_bam = os.path.join(output_dir, f"{bam_filename_base}.sorted.bam")
 
         # Verify files exist
         if not os.path.exists(fastq_file):
@@ -220,13 +228,14 @@ def main(
     aligner='bowtie2',
     threads=4,
     minimap2_profile='short',
+    prefix="",
 ):
     # Ensure the output directories exist
     os.makedirs(fastq_dir, exist_ok=True)
     os.makedirs(bam_dir, exist_ok=True)
 
     # Step 1: Process files to create gene-specific FASTQs
-    processed_genes = process_files(tsv_file, r1_file, r2_file, fastq_dir)
+    processed_genes = process_files(tsv_file, r1_file, r2_file, fastq_dir, prefix)
 
     # Step 2: Create BAM files from the gene-specific FASTQs
     create_bam_files(
@@ -238,6 +247,7 @@ def main(
         threads,
         minimap2_profile,
         is_paired=r2_file is not None,
+        prefix=prefix,
     )
 
 if __name__ == "__main__":
@@ -253,6 +263,7 @@ if __name__ == "__main__":
     parser.add_argument('--minimap2-profile', default='short',
                         choices=['short', 'pacbio-hifi', 'pacbio-clr', 'ont-q20', 'ont-standard'],
                         help='Minimap2 profile (default: short)')
+    parser.add_argument('--prefix', default='', help='Prefix to add to all output filenames (default: none)')
 
     args = parser.parse_args()
 
@@ -265,5 +276,6 @@ if __name__ == "__main__":
         bam_dir=args.bam_dir,
         aligner=args.aligner,
         threads=args.threads,
-        minimap2_profile=args.minimap2_profile
+        minimap2_profile=args.minimap2_profile,
+        prefix=args.prefix
     )

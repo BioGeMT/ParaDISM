@@ -17,13 +17,19 @@ PIPELINE_DIR = Path(__file__).resolve().parent
 class PipelineExecutor:
     """Executes the homologous-region mapper pipeline steps."""
 
-    def __init__(self, output_dir: str | Path = "./output", pipeline_dir: str | Path | None = None) -> None:
+    def __init__(self, output_dir: str | Path = "./output", pipeline_dir: str | Path | None = None, prefix: str | None = None) -> None:
         self.output_dir = Path(output_dir)
         self.pipeline_dir = Path(pipeline_dir) if pipeline_dir else PIPELINE_DIR
         self.output_dir.mkdir(exist_ok=True)
 
+        # Use provided prefix, or extract from output directory name
+        if prefix is not None:
+            self.prefix = prefix
+        else:
+            self.prefix = self.output_dir.name if self.output_dir.name != "." else "output"
+
         timestamp = time.strftime('%Y%m%d_%H%M%S')
-        self.log_file = self.output_dir / f"pipeline_{timestamp}.log"
+        self.log_file = self.output_dir / f"{self.prefix}_pipeline_{timestamp}.log"
         self.logger = PipelineLogger(self.log_file)
         self.progress = ProgressRunner(self.logger)
 
@@ -175,7 +181,7 @@ class PipelineExecutor:
             "Mapping reads to reference sequences",
         )
 
-        unique_mappings_tsv = self.output_dir / "unique_mappings.tsv"
+        unique_mappings_tsv = self.output_dir / f"{self.prefix}_unique_mappings.tsv"
         self._run_progress(
             [
                 "python",
@@ -190,8 +196,8 @@ class PipelineExecutor:
             "Refining mapping",
         )
 
-        fastq_dir = self.output_dir / "fastq"
-        bam_dir = self.output_dir / "bam"
+        fastq_dir = self.output_dir / f"{self.prefix}_fastq"
+        bam_dir = self.output_dir / f"{self.prefix}_bam"
 
         # Build command with optional R2
         output_cmd = [
@@ -217,6 +223,8 @@ class PipelineExecutor:
             str(threads),
             "--minimap2-profile",
             minimap2_profile,
+            "--prefix",
+            self.prefix,
         ])
 
         self._run_progress(
@@ -227,7 +235,7 @@ class PipelineExecutor:
         time.sleep(0.2)
 
         self.logger.section("Cleaning up intermediate files")
-        for pattern in ["ref_index.*", "ref_seq_msa.aln", "ref_seq_msa.tsv", "mapped_reads.tsv"]:
+        for pattern in ["ref_index.*", "ref_seq_msa.aln", "ref_seq_msa.tsv", "mapped_reads.tsv", "mapped_reads.sam"]:
             for file_path in self.output_dir.glob(pattern):
                 file_path.unlink()
 

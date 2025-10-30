@@ -59,7 +59,7 @@ def run_with_arguments(args: argparse.Namespace) -> None:
 
     profile = args.minimap2_profile or "short"
 
-    executor = PipelineExecutor(output_dir=args.output_dir)
+    executor = PipelineExecutor(output_dir=args.output_dir, prefix=args.prefix)
     executor.run_pipeline(
         r1=args.read1,
         r2=args.read2,
@@ -145,6 +145,12 @@ Examples:
         metavar="OUTPUT_DIR",
         default="./output",
         help="Output directory (default: ./output)",
+    )
+    optional.add_argument(
+        "--prefix",
+        metavar="PREFIX",
+        default=None,
+        help="Prefix for output files (default: derived from output directory name)",
     )
     optional.add_argument(
         "--input-dir",

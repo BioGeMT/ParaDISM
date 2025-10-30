@@ -46,7 +46,8 @@ python mapper.py --read1 <forward_reads.fq> \
                  [--threads N] \
                  [--minimap2-profile PROFILE] \
                  [--sam existing.sam] \
-                 [--output-dir OUTPUT]
+                 [--output-dir OUTPUT] \
+                 [--prefix PREFIX]
 ```
 
 Required:
@@ -65,6 +66,7 @@ Optional:
   - `ont-standard`
 - `--sam`: Existing alignment (skips alignment stage)
 - `--output-dir`: Destination directory (default: `./output`)
+- `--prefix`: Prefix for output files (default: derived from output directory name)
 
 Paired‑end vs single‑end
 - For paired‑end runs, provide both `--read1` and `--read2`.
@@ -82,6 +84,16 @@ python mapper.py --read1 hifi.fq --reference ref.fa \
 # Single-end with minimap2 (ONT Q20+)
 python mapper.py --read1 ont_q20.fq --reference ref.fa \
   --aligner minimap2 --minimap2-profile ont-q20
+
+# Using custom output directory (prefix auto-derived)
+python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+  --output-dir sample_001
+  # Output files will be prefixed with "sample_001_"
+
+# Explicitly specify a different prefix
+python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+  --output-dir results --prefix custom_prefix
+  # Output files will be prefixed with "custom_prefix_"
 ```
 
 ### SAM Requirements
@@ -92,11 +104,40 @@ When skipping alignment via `--sam`, ensure the SAM:
 
 ## Output Layout
 
+By default, output files are prefixed with the output directory name. For example, if `--output-dir SAMPLE_NAME`, all final outputs will be prefixed with `SAMPLE_NAME_`.
+
 ```
-output/
-├── mapped_reads.sam               # Aligner output (if generated)
-├── unique_mappings.tsv            # Final unique mapping table
-├── fastq/                         # Gene-specific FASTQs
-├── bam/                           # Gene-specific BAMs (+ .bai)
-└── pipeline_YYYYMMDD_HHMMSS.log  # Run log (sections + streamed output)
+output_dir/                                   # Output directory
+├── prefix_pipeline_YYYYMMDD_HHMMSS.log      # Run log (sections + streamed output)
+├── prefix_unique_mappings.tsv               # Final unique mapping table
+├── prefix_fastq/                            # Gene-specific FASTQs directory
+│   ├── prefix_gene1.fq                      # Gene 1 reads
+│   ├── prefix_gene2.fq                      # Gene 2 reads
+│   ├── prefix_gene3.fq                      # Gene 3 reads
+│   └── ...                                  # Additional genes
+└── prefix_bam/                              # Gene-specific BAMs directory
+    ├── prefix_gene1.sorted.bam              # Gene 1 alignments
+    ├── prefix_gene1.sorted.bam.bai          # BAM index
+    ├── prefix_gene2.sorted.bam              # Gene 2 alignments
+    ├── prefix_gene2.sorted.bam.bai
+    └── ...                                  # Additional genes
+```
+
+**Note:** Intermediate files (MSA, SAM, indices) are created during processing but cleaned up automatically at the end. Only the final outputs listed above are retained.
+
+### Customizing the Prefix
+
+You can control the output file prefix using the `--prefix` option:
+
+```bash
+# Auto-derive prefix from output directory name (default)
+python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa --output-dir sample_001
+
+# Explicitly specify custom prefix
+python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+  --output-dir results --prefix custom_prefix
+
+# Use empty prefix (no prefix on output files)
+python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+  --output-dir output --prefix ""
 ```
