@@ -74,14 +74,14 @@ Paired‑end vs single‑end
 
 Examples:
 ```bash
-# Paired-end, default aligner (BWA-MEM2)
+# Paired-end short reads, default aligner (BWA-MEM2)
 python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa
 
-# Single-end with minimap2 (PacBio HiFi)
+# Single-end long reads with minimap2 (PacBio HiFi)
 python mapper.py --read1 hifi.fq --reference ref.fa \
   --aligner minimap2 --minimap2-profile pacbio-hifi
 
-# Single-end with minimap2 (ONT Q20+)
+# Single-end long reads with minimap2 (ONT Q20+)
 python mapper.py --read1 ont_q20.fq --reference ref.fa \
   --aligner minimap2 --minimap2-profile ont-q20
 
