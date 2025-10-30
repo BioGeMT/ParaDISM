@@ -196,6 +196,23 @@ class PipelineExecutor:
             "Refining mapping",
         )
 
+        # Filter out NONE mappings from unique_mappings.tsv
+        self.logger.section("Filtering unique mappings")
+        temp_file = self.output_dir / "temp_unique_mappings.tsv"
+        with open(unique_mappings_tsv, 'r') as infile, open(temp_file, 'w') as outfile:
+            header = infile.readline()
+            outfile.write(header)
+            for line in infile:
+                if not line.strip():
+                    continue
+                parts = line.split('\t')
+                if len(parts) > 1 and parts[1].strip() != "NONE":
+                    outfile.write(line)
+
+        # Replace original with filtered version
+        temp_file.replace(unique_mappings_tsv)
+        print("\033[0;36m✓\033[0m \033[0;36mFiltering unique mappings\033[0m", file=sys.stderr)
+
         fastq_dir = self.output_dir / f"{self.prefix}_fastq"
         bam_dir = self.output_dir / f"{self.prefix}_bam"
 
