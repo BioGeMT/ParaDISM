@@ -50,7 +50,7 @@ class PipelineExecutor:
         r1: str | Path,
         r2: str | Path | None,
         ref: str | Path,
-        aligner: str = "bwa-mem2",
+        aligner: str = "bowtie2",
         threads: int = 4,
         sam: str | Path | None = None,
         minimap2_profile: str = "short",

@@ -342,7 +342,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
             else:
                 console.print("[yellow]Please answer y or n[/yellow]")
 
-    aligner = "bwa-mem2"
+    aligner = "bowtie2"
     minimap2_profile = "short"
     threads = 4
 
@@ -358,8 +358,8 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         aligner_table.add_column("Number", style="dim", width=4)
         aligner_table.add_column("Aligner", style="bright_white")
         aligner_table.add_column("Description", style="cyan")
-        aligner_table.add_row("1", "BWA-MEM2", "(default, fast for short reads)")
-        aligner_table.add_row("2", "Bowtie2", "(alternative for short reads)")
+        aligner_table.add_row("1", "Bowtie2", "(default, best for short reads)")
+        aligner_table.add_row("2", "BWA-MEM2", "(fast alternative for short reads)")
         aligner_table.add_row("3", "Minimap2", "(versatile, supports long reads)")
 
         aligner_panel = Panel(
@@ -378,12 +378,12 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
             choice = console.input("[green]Select [1-3]:[/green] ").strip()
 
             if choice == "1":
-                aligner = "bwa-mem2"
-                console.print("[green]✓[/green] Selected: [cyan]BWA-MEM2[/cyan]")
-                break
-            elif choice == "2":
                 aligner = "bowtie2"
                 console.print("[green]✓[/green] Selected: [cyan]Bowtie2[/cyan]")
+                break
+            elif choice == "2":
+                aligner = "bwa-mem2"
+                console.print("[green]✓[/green] Selected: [cyan]BWA-MEM2[/cyan]")
                 break
             elif choice == "3":
                 aligner = "minimap2"
