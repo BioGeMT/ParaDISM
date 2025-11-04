@@ -13,3 +13,6 @@ simulated*
 ref.fa
 analysis/
 output/
+HTS*
+*log*
+*sim*

@@ -6,8 +6,8 @@ set -euo pipefail
 DATA_DIR="/mnt/STORAGE-BioGeMT-01/pkd_data"
 REFERENCE="ref.fa"
 ALIGNER="bwa-mem2"
-THREADS=64
-OUTPUT_BASE="output"
+THREADS=16
+OUTPUT_BASE="HTS_bwa_output"
 LOG_DIR="mapper_logs"
 
 # Check if reference exists
@@ -40,12 +40,20 @@ SAMPLES=(
     "HTS169"
     "HTS170"
     "HTS171"
+    "IndexCHKPEPI00000968_HTS002"
 )
 
 # Process each sample
 for sample in "${SAMPLES[@]}"; do
-    r1_file="$DATA_DIR/${sample}_R1.fq"
-    r2_file="$DATA_DIR/${sample}_R2.fq"
+    # Handle different naming patterns
+    if [[ "$sample" == "IndexCHKPEPI00000968_HTS002" ]]; then
+        r1_file="$DATA_DIR/${sample}_1.fq"
+        r2_file="$DATA_DIR/${sample}_2.fq"
+    else
+        r1_file="$DATA_DIR/${sample}_R1.fq"
+        r2_file="$DATA_DIR/${sample}_R2.fq"
+    fi
+
     output_dir="$OUTPUT_BASE/$sample"
 
     # Check if files exist
@@ -68,6 +76,11 @@ for sample in "${SAMPLES[@]}"; do
     # Set log file path
     log_file="$LOG_DIR/${sample}.log"
 
+    # Capture start time
+    start_time=$(date +%s)
+    start_date=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "Start time: $start_date" | tee -a "$log_file"
+
     # Run mapper.py with time command, save all output to log
     if /usr/bin/time -v python mapper.py \
         --read1 "$r1_file" \
@@ -75,15 +88,25 @@ for sample in "${SAMPLES[@]}"; do
         --reference "$REFERENCE" \
         --aligner "$ALIGNER" \
         --threads "$THREADS" \
-        --output-dir "$output_dir" > "$log_file" 2>&1; then
+        --output-dir "$output_dir" >> "$log_file" 2>&1; then
         status="SUCCESS"
     else
         status="FAILED"
     fi
 
-    echo "Status: $status" >> "$log_file"
+    # Capture end time and calculate duration
+    end_time=$(date +%s)
+    end_date=$(date '+%Y-%m-%d %H:%M:%S')
+    duration=$((end_time - start_time))
+    hours=$((duration / 3600))
+    minutes=$(((duration % 3600) / 60))
+    seconds=$((duration % 60))
 
-    echo "Completed: $sample (Status: $status, Log: $log_file)"
+    echo "End time: $end_date" | tee -a "$log_file"
+    echo "Status: $status" | tee -a "$log_file"
+    printf "Wall clock time: %02d:%02d:%02d (%d seconds)\n" $hours $minutes $seconds $duration | tee -a "$log_file"
+
+    echo "Completed: $sample (Status: $status, Time: ${hours}h ${minutes}m ${seconds}s, Log: $log_file)"
     echo ""
 done
 
