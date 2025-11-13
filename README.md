@@ -1,6 +1,6 @@
 # ParaDISM: Paralog Disambiguating Mapper
 
-A dead-mapping and refinement workflow for highly homologous genomic regions. The pipeline aligns reads (paired-end or single-end), maps alignments back to a multiple‑sequence alignment (MSA), refines to uniquely supported mappings, and produces gene‑specific FASTQ/BAM outputs.
+A read-mapping and refinement workflow for highly homologous genomic regions. The pipeline aligns reads (paired-end or single-end), maps alignments back to a multiple‑sequence alignment (MSA), refines to uniquely supported mappings, and produces gene‑specific FASTQ/BAM outputs.
 
 ## Prerequisites
 
