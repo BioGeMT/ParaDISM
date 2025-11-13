@@ -127,9 +127,12 @@ Examples:
     optional.add_argument(
         "--aligner",
         metavar="ALIGNER",
-        default="bowtie2",
-        choices=["bowtie2", "bwa-mem2", "minimap2"],
-        help="Read aligner [bowtie2|bwa-mem2|minimap2] (default: bowtie2)",
+        default="bwa-mem2",
+        choices=["bwa-mem2", "bowtie2", "minimap2"],
+        help=(
+            "Read aligner [bwa-mem2|bowtie2|minimap2] (default: BWA-MEM2 for short reads; "
+            "Bowtie2 is an alternative short-read aligner)"
+        ),
     )
     optional.add_argument("--threads", metavar="THREADS", type=int, default=4, help="Threads to use (default: 4)")
     optional.add_argument(

@@ -50,7 +50,7 @@ class PipelineExecutor:
         r1: str | Path,
         r2: str | Path | None,
         ref: str | Path,
-        aligner: str = "bowtie2",
+        aligner: str = "bwa-mem2",
         threads: int = 4,
         sam: str | Path | None = None,
         minimap2_profile: str = "short",
@@ -252,7 +252,13 @@ class PipelineExecutor:
         time.sleep(0.2)
 
         self.logger.section("Cleaning up intermediate files")
-        for pattern in ["ref_index.*", "ref_seq_msa.aln", "ref_seq_msa.tsv", "mapped_reads.tsv", "mapped_reads.sam"]:
+        for pattern in [
+            "ref_index.*",
+            "ref_seq_msa.aln",
+            "ref_seq_msa.tsv",
+            "mapped_reads.tsv",
+            "mapped_reads.sam",
+        ]:
             for file_path in self.output_dir.glob(pattern):
                 file_path.unlink()
 

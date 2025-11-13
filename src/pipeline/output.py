@@ -91,7 +91,7 @@ def create_bam_files(
     ref_fasta,
     fastq_dir,
     output_dir,
-    aligner='bowtie2',
+    aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
     is_paired=False,
@@ -225,7 +225,7 @@ def main(
     ref_fasta,
     fastq_dir,
     bam_dir,
-    aligner='bowtie2',
+    aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
     prefix="",
@@ -258,7 +258,12 @@ if __name__ == "__main__":
     parser.add_argument('--ref', required=True, dest='ref_fasta', help='Reference sequences FASTA file')
     parser.add_argument('--fastq-dir', default='mapped_fastq', help='Output directory for gene-specific FASTQ files')
     parser.add_argument('--bam-dir', default='bam_files', help='Output directory for BAM files')
-    parser.add_argument('--aligner', default='bowtie2', choices=['bowtie2', 'bwa-mem2', 'minimap2'], help='Aligner to use (default: bowtie2)')
+    parser.add_argument(
+        '--aligner',
+        default='bwa-mem2',
+        choices=['bwa-mem2', 'bowtie2', 'minimap2'],
+        help='Aligner to use (default: BWA-MEM2 for short reads; Bowtie2 is an alternative short-read aligner)'
+    )
     parser.add_argument('--threads', type=int, default=4, help='Number of threads for alignment (default: 4)')
     parser.add_argument('--minimap2-profile', default='short',
                         choices=['short', 'pacbio-hifi', 'pacbio-clr', 'ont-q20', 'ont-standard'],
