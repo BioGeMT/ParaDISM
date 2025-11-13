@@ -8,8 +8,8 @@ A dead-mapping and refinement workflow for highly homologous genomic regions. Th
 To create a conda environment with all required dependencies, run:
 
 ```bash
-conda env create -f mapper_env.yml
-conda activate mapper_env
+conda env create -f paradism_env.yml
+conda activate paradism_env
 ```
 
 ## Usage
