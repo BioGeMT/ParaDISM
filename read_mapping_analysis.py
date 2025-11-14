@@ -67,7 +67,9 @@ def parse_bwa_sam(sam_path):
     """Parse BWA SAM file to extract primary alignments."""
     bwa_predictions = {}
 
-    with pysam.AlignmentFile(sam_path, "r") as samfile:
+    mode = "rb" if sam_path.endswith(('.bam', '.cram')) else "r"
+
+    with pysam.AlignmentFile(sam_path, mode) as samfile:
         for read in samfile.fetch(until_eof=True):
             # Skip secondary and supplementary alignments
             if read.is_secondary or read.is_supplementary:
@@ -248,6 +250,21 @@ def main():
         help='Simulated R1 FASTQ file (contains ground truth)'
     )
     parser.add_argument(
+        '--mapper-tsv',
+        default=None,
+        help='Path to ParaDISM unique_mappings TSV (default based on aligner)'
+    )
+    parser.add_argument(
+        '--direct-sam',
+        default=None,
+        help='Path to baseline SAM/BAM (default based on aligner)'
+    )
+    parser.add_argument(
+        '--analysis-dir',
+        default=None,
+        help='Directory to store analysis outputs (default: sim_read_mapping_analysis/{aligner})'
+    )
+    parser.add_argument(
         '--output-prefix',
         default=None,
         help='Output prefix for plots and reports (default: metrics_{aligner})'
@@ -259,18 +276,18 @@ def main():
     if args.output_prefix is None:
         args.output_prefix = f'metrics_{args.aligner}'
 
-    # Set file paths based on aligner
-    args.mapper_tsv = f'sim_output/{args.aligner}/{args.aligner}_unique_mappings.tsv'
-    args.direct_sam = f'sim_output/{args.aligner}/direct/{args.aligner}_direct.sorted.bam'
+    if args.mapper_tsv is None:
+        args.mapper_tsv = f'sim_output/{args.aligner}/{args.aligner}_unique_mappings.tsv'
+    if args.direct_sam is None:
+        args.direct_sam = f'sim_output/{args.aligner}/direct/{args.aligner}_direct.sorted.bam'
 
-    # Create output directory for this aligner
-    base_analysis_dir = Path('sim_read_mapping_analysis')
-    base_analysis_dir.mkdir(exist_ok=True)
-    output_dir = base_analysis_dir / args.aligner
-    output_dir.mkdir(exist_ok=True)
+    if args.analysis_dir is None:
+        analysis_dir = Path('sim_read_mapping_analysis') / args.aligner
+    else:
+        analysis_dir = Path(args.analysis_dir)
+    analysis_dir.mkdir(parents=True, exist_ok=True)
 
-    # Update output prefix to include directory
-    args.output_prefix = str(output_dir / args.output_prefix)
+    args.output_prefix = str(analysis_dir / args.output_prefix)
 
     # Check files exist
     for filepath in [args.fastq_r1, args.mapper_tsv, args.direct_sam]:

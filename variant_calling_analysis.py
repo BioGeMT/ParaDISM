@@ -496,6 +496,11 @@ def main():
         help='Output prefix for plots and reports (default: metrics_{aligner})'
     )
     parser.add_argument(
+        '--analysis-dir',
+        default=None,
+        help='Directory to store analysis outputs (default: sim_variant_calling_analysis/{aligner})'
+    )
+    parser.add_argument(
         '--positions-tsv',
         default='all_genes_mutations.tsv',
         help='TSV file with all positions (GENE, POS, TYPE) for true specificity calculation (default: all_genes_mutations.tsv)'
@@ -514,13 +519,14 @@ def main():
         args.output_prefix = f'metrics_{args.aligner}'
     
     # Create output directory
-    base_analysis_dir = Path('sim_variant_calling_analysis')
-    base_analysis_dir.mkdir(exist_ok=True)
-    output_dir = base_analysis_dir / args.aligner
-    output_dir.mkdir(exist_ok=True)
-    
+    if args.analysis_dir is None:
+        analysis_dir = Path('sim_variant_calling_analysis') / args.aligner
+    else:
+        analysis_dir = Path(args.analysis_dir)
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+
     # Update output prefix to include directory
-    args.output_prefix = str(output_dir / args.output_prefix)
+    args.output_prefix = str(analysis_dir / args.output_prefix)
     
     # Check required files exist
     for filepath in [args.ground_truth, args.combined_vcf, args.direct_vcf]:
@@ -633,4 +639,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

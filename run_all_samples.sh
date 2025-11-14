@@ -8,7 +8,9 @@ REFERENCE="ref.fa"
 ALIGNER="bwa-mem2"
 THREADS=16
 OUTPUT_BASE="HTS_bwa_output"
-LOG_DIR="mapper_logs"
+LOG_DIR="$OUTPUT_BASE/mapper_logs"
+# Only used when ALIGNER=minimap2 (valid presets: short, pacbio-hifi, pacbio-clr, ont-q20, ont-standard)
+MINIMAP2_PROFILE="short"
 
 # Check if reference exists
 if [ ! -f "$REFERENCE" ]; then
@@ -16,7 +18,7 @@ if [ ! -f "$REFERENCE" ]; then
     exit 1
 fi
 
-# Create log directory
+# Create log directory inside the output hierarchy
 mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR/"
 
@@ -82,13 +84,21 @@ for sample in "${SAMPLES[@]}"; do
     echo "Start time: $start_date" | tee -a "$log_file"
 
     # Run mapper.py with time command, save all output to log
-    if /usr/bin/time -v python mapper.py \
-        --read1 "$r1_file" \
-        --read2 "$r2_file" \
-        --reference "$REFERENCE" \
-        --aligner "$ALIGNER" \
-        --threads "$THREADS" \
-        --output-dir "$output_dir" >> "$log_file" 2>&1; then
+    mapper_cmd=(
+        python mapper.py
+        --read1 "$r1_file"
+        --read2 "$r2_file"
+        --reference "$REFERENCE"
+        --aligner "$ALIGNER"
+        --threads "$THREADS"
+        --output-dir "$output_dir"
+    )
+
+    if [[ "$ALIGNER" == "minimap2" ]]; then
+        mapper_cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
+    fi
+
+    if /usr/bin/time -v "${mapper_cmd[@]}" >> "$log_file" 2>&1; then
         status="SUCCESS"
     else
         status="FAILED"
@@ -114,4 +124,3 @@ echo "=========================================="
 echo "All samples processed!"
 echo "Logs saved to: $LOG_DIR/"
 echo "=========================================="
-
