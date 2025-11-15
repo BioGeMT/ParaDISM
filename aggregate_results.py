@@ -317,19 +317,19 @@ def create_read_mapping_plot(aggregated, aligner, output_path):
 
     # Panel 1: Precision
     axes[0].barh(y_pos - bar_height/2, mapper_prec, bar_height,
-                 xerr=mapper_prec_err, label='Mapper', color=colors['mapper'], capsize=5)
+                 xerr=mapper_prec_err, label='ParaDISM', color=colors['mapper'], capsize=5)
     axes[0].barh(y_pos + bar_height/2, direct_prec, bar_height,
                  xerr=direct_prec_err, label=aligner.upper(), color=colors['direct'], capsize=5)
 
     # Panel 2: Recall
     axes[1].barh(y_pos - bar_height/2, mapper_rec, bar_height,
-                 xerr=mapper_rec_err, label='Mapper', color=colors['mapper'], capsize=5)
+                 xerr=mapper_rec_err, label='ParaDISM', color=colors['mapper'], capsize=5)
     axes[1].barh(y_pos + bar_height/2, direct_rec, bar_height,
                  xerr=direct_rec_err, label=aligner.upper(), color=colors['direct'], capsize=5)
 
     # Panel 3: Specificity
     axes[2].barh(y_pos - bar_height/2, mapper_spec, bar_height,
-                 xerr=mapper_spec_err, label='Mapper', color=colors['mapper'], capsize=5)
+                 xerr=mapper_spec_err, label='ParaDISM', color=colors['mapper'], capsize=5)
     axes[2].barh(y_pos + bar_height/2, direct_spec, bar_height,
                  xerr=direct_spec_err, label=aligner.upper(), color=colors['direct'], capsize=5)
 
@@ -434,19 +434,19 @@ def create_variant_calling_plot(aggregated, aligner, output_path):
 
     # Panel 1: Precision
     axes[0].barh(y_pos - bar_height/2, combined_prec, bar_height,
-                 xerr=combined_prec_err, label='Combined', color=colors['combined'], capsize=5)
+                 xerr=combined_prec_err, label='ParaDISM', color=colors['combined'], capsize=5)
     axes[0].barh(y_pos + bar_height/2, direct_prec, bar_height,
                  xerr=direct_prec_err, label=f'{aligner.upper()} Direct', color=colors['direct'], capsize=5)
 
     # Panel 2: Recall
     axes[1].barh(y_pos - bar_height/2, combined_rec, bar_height,
-                 xerr=combined_rec_err, label='Combined', color=colors['combined'], capsize=5)
+                 xerr=combined_rec_err, label='ParaDISM', color=colors['combined'], capsize=5)
     axes[1].barh(y_pos + bar_height/2, direct_rec, bar_height,
                  xerr=direct_rec_err, label=f'{aligner.upper()} Direct', color=colors['direct'], capsize=5)
 
     # Panel 3: Specificity
     axes[2].barh(y_pos - bar_height/2, combined_spec, bar_height,
-                 xerr=combined_spec_err, label='Combined', color=colors['combined'], capsize=5)
+                 xerr=combined_spec_err, label='ParaDISM', color=colors['combined'], capsize=5)
     axes[2].barh(y_pos + bar_height/2, direct_spec, bar_height,
                  xerr=direct_spec_err, label=f'{aligner.upper()} Direct', color=colors['direct'], capsize=5)
 
