@@ -6,7 +6,7 @@ set -euo pipefail
 # Configuration
 # ------------------------------------------------------------------
 SEED_START=1
-SEED_END=1000
+SEED_END=1
 SIM_OUTPUT_BASE="sim_output"
 REFERENCE="ref.fa"
 THREADS=16
