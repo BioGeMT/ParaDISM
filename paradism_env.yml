@@ -14,3 +14,9 @@ dependencies:
   - biopython
   - pysam
   - rich
+  # Data analysis and plotting
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - scipy
+  - freebayes

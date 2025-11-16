@@ -189,28 +189,28 @@ def create_grouped_bar_chart(metrics_mapper, metrics_direct, labels, aligner_nam
     bar_height = 0.35
 
     # Panel 1: Precision
-    axes[0].barh(y_pos - bar_height/2, mapper_precision, bar_height, label='Mapper', color='red')
-    axes[0].barh(y_pos + bar_height/2, direct_precision, bar_height, label=aligner_name.upper(), color='#4682B4')
+    axes[0].barh(y_pos - bar_height/2, mapper_precision, bar_height, label='paradism', color='red')
+    axes[0].barh(y_pos + bar_height/2, direct_precision, bar_height, label=aligner_name, color='#4682B4')
     axes[0].set_yticks(y_pos)
     axes[0].set_yticklabels(display_labels, weight='bold')
     axes[0].set_xlabel('Precision', weight='bold')
     axes[0].set_title('Precision', weight='bold')
     axes[0].set_xlim([0, 1.05])
     axes[0].grid(axis='x', alpha=0.3)
-
+    
     # Panel 2: Recall
-    axes[1].barh(y_pos - bar_height/2, mapper_recall, bar_height, label='Mapper', color='red')
-    axes[1].barh(y_pos + bar_height/2, direct_recall, bar_height, label=aligner_name.upper(), color='#4682B4')
+    axes[1].barh(y_pos - bar_height/2, mapper_recall, bar_height, label='paradism', color='red')
+    axes[1].barh(y_pos + bar_height/2, direct_recall, bar_height, label=aligner_name, color='#4682B4')
     axes[1].set_yticks(y_pos)
     axes[1].set_yticklabels(display_labels, weight='bold')
     axes[1].set_xlabel('Recall', weight='bold')
     axes[1].set_title('Recall', weight='bold')
     axes[1].set_xlim([0, 1.05])
     axes[1].grid(axis='x', alpha=0.3)
-
+    
     # Panel 3: Specificity
-    axes[2].barh(y_pos - bar_height/2, mapper_specificity, bar_height, label='Mapper', color='red')
-    axes[2].barh(y_pos + bar_height/2, direct_specificity, bar_height, label=aligner_name.upper(), color='#4682B4')
+    axes[2].barh(y_pos - bar_height/2, mapper_specificity, bar_height, label='paradism', color='red')
+    axes[2].barh(y_pos + bar_height/2, direct_specificity, bar_height, label=aligner_name, color='#4682B4')
     axes[2].set_yticks(y_pos)
     axes[2].set_yticklabels(display_labels, weight='bold')
     axes[2].set_xlabel('Specificity', weight='bold')

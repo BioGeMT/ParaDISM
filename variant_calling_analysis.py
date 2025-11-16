@@ -414,8 +414,8 @@ def create_grouped_bar_chart(gene_metrics, aligner_name, output_path):
     bar_height = 0.35
     
     # Panel 1: Precision
-    axes[0].barh(y_pos - bar_height/2, combined_precision, bar_height, label='Combined', color='red')
-    axes[0].barh(y_pos + bar_height/2, direct_precision, bar_height, label=f'{aligner_name.upper()} Direct', color='#4682B4')
+    axes[0].barh(y_pos - bar_height/2, combined_precision, bar_height, label='paradism', color='red')
+    axes[0].barh(y_pos + bar_height/2, direct_precision, bar_height, label=aligner_name, color='#4682B4')
     axes[0].set_yticks(y_pos)
     axes[0].set_yticklabels(display_labels, weight='bold')
     axes[0].set_xlabel('Precision', weight='bold')
@@ -424,8 +424,8 @@ def create_grouped_bar_chart(gene_metrics, aligner_name, output_path):
     axes[0].grid(axis='x', alpha=0.3)
     
     # Panel 2: Recall
-    axes[1].barh(y_pos - bar_height/2, combined_recall, bar_height, label='Combined', color='red')
-    axes[1].barh(y_pos + bar_height/2, direct_recall, bar_height, label=f'{aligner_name.upper()} Direct', color='#4682B4')
+    axes[1].barh(y_pos - bar_height/2, combined_recall, bar_height, label='paradism', color='red')
+    axes[1].barh(y_pos + bar_height/2, direct_recall, bar_height, label=aligner_name, color='#4682B4')
     axes[1].set_yticks(y_pos)
     axes[1].set_yticklabels(display_labels, weight='bold')
     axes[1].set_xlabel('Recall', weight='bold')
@@ -434,8 +434,8 @@ def create_grouped_bar_chart(gene_metrics, aligner_name, output_path):
     axes[1].grid(axis='x', alpha=0.3)
     
     # Panel 3: Specificity
-    axes[2].barh(y_pos - bar_height/2, combined_specificity, bar_height, label='Combined', color='red')
-    axes[2].barh(y_pos + bar_height/2, direct_specificity, bar_height, label=f'{aligner_name.upper()} Direct', color='#4682B4')
+    axes[2].barh(y_pos - bar_height/2, combined_specificity, bar_height, label='paradism', color='red')
+    axes[2].barh(y_pos + bar_height/2, direct_specificity, bar_height, label=aligner_name, color='#4682B4')
     axes[2].set_yticks(y_pos)
     axes[2].set_yticklabels(display_labels, weight='bold')
     axes[2].set_xlabel('Specificity', weight='bold')
@@ -455,13 +455,13 @@ def create_grouped_bar_chart(gene_metrics, aligner_name, output_path):
 
 def print_summary(metrics_combined, metrics_direct, aligner_name):
     """Print concise summary."""
-    print(f"\nCombined:         Prec={metrics_combined['precision']:.4f}  Rec={metrics_combined['recall']:.4f}  Spec={metrics_combined['specificity']:.4f}")
+    print(f"\nParaDISM:         Prec={metrics_combined['precision']:.4f}  Rec={metrics_combined['recall']:.4f}  Spec={metrics_combined['specificity']:.4f}")
     print(f"{aligner_name.upper():<14}Prec={metrics_direct['precision']:.4f}  Rec={metrics_direct['recall']:.4f}  Spec={metrics_direct['specificity']:.4f}")
-    print(f"\nTrue Positives:   Combined={metrics_combined['tp']}, Direct={metrics_direct['tp']}")
-    print(f"False Positives:  Combined={metrics_combined['fp']}, Direct={metrics_direct['fp']}")
-    print(f"False Negatives:  Combined={metrics_combined['fn']}, Direct={metrics_direct['fn']}")
+    print(f"\nTrue Positives:   ParaDISM={metrics_combined['tp']}, Direct={metrics_direct['tp']}")
+    print(f"False Positives:  ParaDISM={metrics_combined['fp']}, Direct={metrics_direct['fp']}")
+    print(f"False Negatives:  ParaDISM={metrics_combined['fn']}, Direct={metrics_direct['fn']}")
     if metrics_combined.get('tn', 0) > 0:
-        print(f"True Negatives:   Combined={metrics_combined['tn']}, Direct={metrics_direct.get('tn', 0)}")
+        print(f"True Negatives:   ParaDISM={metrics_combined['tn']}, Direct={metrics_direct.get('tn', 0)}")
         print(f"  (Using position-level specificity calculation)")
 
 
@@ -550,9 +550,9 @@ def main():
     ground_truth = parse_vcf(args.ground_truth, filter_snps_only=True)
     print(f"  Found {len(ground_truth)} SNPs in ground truth")
     
-    print("Parsing combined VCF...")
+    print("Parsing ParaDISM combined VCF...")
     combined = parse_vcf(args.combined_vcf)
-    print(f"  Found {len(combined)} variants in combined VCF")
+    print(f"  Found {len(combined)} variants in ParaDISM combined VCF")
     
     print("Parsing direct VCF...")
     direct = parse_vcf(args.direct_vcf)

@@ -317,21 +317,21 @@ def create_read_mapping_plot(aggregated, aligner, output_path):
 
     # Panel 1: Precision
     axes[0].barh(y_pos - bar_height/2, mapper_prec, bar_height,
-                 xerr=mapper_prec_err, label='ParaDISM', color=colors['mapper'], capsize=5)
+                 xerr=mapper_prec_err, label='paradism', color=colors['mapper'], capsize=5)
     axes[0].barh(y_pos + bar_height/2, direct_prec, bar_height,
-                 xerr=direct_prec_err, label=aligner.upper(), color=colors['direct'], capsize=5)
+                 xerr=direct_prec_err, label=aligner, color=colors['direct'], capsize=5)
 
     # Panel 2: Recall
     axes[1].barh(y_pos - bar_height/2, mapper_rec, bar_height,
-                 xerr=mapper_rec_err, label='ParaDISM', color=colors['mapper'], capsize=5)
+                 xerr=mapper_rec_err, label='paradism', color=colors['mapper'], capsize=5)
     axes[1].barh(y_pos + bar_height/2, direct_rec, bar_height,
-                 xerr=direct_rec_err, label=aligner.upper(), color=colors['direct'], capsize=5)
+                 xerr=direct_rec_err, label=aligner, color=colors['direct'], capsize=5)
 
     # Panel 3: Specificity
     axes[2].barh(y_pos - bar_height/2, mapper_spec, bar_height,
-                 xerr=mapper_spec_err, label='ParaDISM', color=colors['mapper'], capsize=5)
+                 xerr=mapper_spec_err, label='paradism', color=colors['mapper'], capsize=5)
     axes[2].barh(y_pos + bar_height/2, direct_spec, bar_height,
-                 xerr=direct_spec_err, label=aligner.upper(), color=colors['direct'], capsize=5)
+                 xerr=direct_spec_err, label=aligner, color=colors['direct'], capsize=5)
 
     # Format axes
     for idx, (ax, title) in enumerate(zip(axes, ['Precision', 'Recall', 'Specificity'])):
@@ -434,21 +434,21 @@ def create_variant_calling_plot(aggregated, aligner, output_path):
 
     # Panel 1: Precision
     axes[0].barh(y_pos - bar_height/2, combined_prec, bar_height,
-                 xerr=combined_prec_err, label='ParaDISM', color=colors['combined'], capsize=5)
+                 xerr=combined_prec_err, label='paradism', color=colors['combined'], capsize=5)
     axes[0].barh(y_pos + bar_height/2, direct_prec, bar_height,
-                 xerr=direct_prec_err, label=f'{aligner.upper()} Direct', color=colors['direct'], capsize=5)
+                 xerr=direct_prec_err, label=aligner, color=colors['direct'], capsize=5)
 
     # Panel 2: Recall
     axes[1].barh(y_pos - bar_height/2, combined_rec, bar_height,
-                 xerr=combined_rec_err, label='ParaDISM', color=colors['combined'], capsize=5)
+                 xerr=combined_rec_err, label='paradism', color=colors['combined'], capsize=5)
     axes[1].barh(y_pos + bar_height/2, direct_rec, bar_height,
-                 xerr=direct_rec_err, label=f'{aligner.upper()} Direct', color=colors['direct'], capsize=5)
+                 xerr=direct_rec_err, label=aligner, color=colors['direct'], capsize=5)
 
     # Panel 3: Specificity
     axes[2].barh(y_pos - bar_height/2, combined_spec, bar_height,
-                 xerr=combined_spec_err, label='ParaDISM', color=colors['combined'], capsize=5)
+                 xerr=combined_spec_err, label='paradism', color=colors['combined'], capsize=5)
     axes[2].barh(y_pos + bar_height/2, direct_spec, bar_height,
-                 xerr=direct_spec_err, label=f'{aligner.upper()} Direct', color=colors['direct'], capsize=5)
+                 xerr=direct_spec_err, label=aligner, color=colors['direct'], capsize=5)
 
     # Format axes
     for idx, (ax, title) in enumerate(zip(axes, ['Precision', 'Recall', 'Specificity'])):
@@ -465,6 +465,214 @@ def create_variant_calling_plot(aggregated, aligner, output_path):
                fontsize=16, frameon=True, fancybox=True, shadow=True)
 
     plt.tight_layout(rect=[0, 0, 0.98, 0.96])
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def create_read_mapping_overall_comparison(aggregated, aligners, output_path):
+    """Create overall read mapping comparison across all aligners with vertical bars."""
+    # Use BWA-MEM2 as the ParaDISM baseline
+    paradism_aligner = 'bwa-mem2'
+
+    if paradism_aligner not in aggregated:
+        print(f"Warning: {paradism_aligner} not found for ParaDISM baseline", file=sys.stderr)
+        return
+
+    # Check if 'Overall' exists
+    if 'Overall' not in aggregated[paradism_aligner]['mapper']:
+        print("Warning: No Overall metrics found", file=sys.stderr)
+        return
+
+    # Set font sizes
+    plt.rcParams.update({
+        'font.size': 11,
+        'axes.titlesize': 14,
+        'axes.labelsize': 12,
+        'xtick.labelsize': 11,
+        'ytick.labelsize': 11,
+        'legend.fontsize': 11,
+        'font.weight': 'bold',
+        'axes.titleweight': 'bold',
+        'axes.labelweight': 'bold'
+    })
+
+    # Create figure with 3 subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+    # Prepare data: ParaDISM + 3 direct aligners
+    labels = ['paradism', 'bwa-mem2', 'bowtie2', 'minimap2']
+    colors = ['red', '#4682B4', '#4682B4', '#4682B4']
+
+    # Extract ParaDISM metrics (mapper approach)
+    paradism_prec = aggregated[paradism_aligner]['mapper']['Overall']['precision_mean']
+    paradism_prec_err = aggregated[paradism_aligner]['mapper']['Overall']['precision_std']
+    paradism_rec = aggregated[paradism_aligner]['mapper']['Overall']['recall_mean']
+    paradism_rec_err = aggregated[paradism_aligner]['mapper']['Overall']['recall_std']
+    paradism_spec = aggregated[paradism_aligner]['mapper']['Overall']['specificity_mean']
+    paradism_spec_err = aggregated[paradism_aligner]['mapper']['Overall']['specificity_std']
+
+    # Extract direct aligner metrics
+    precision_values = [paradism_prec]
+    precision_errors = [paradism_prec_err]
+    recall_values = [paradism_rec]
+    recall_errors = [paradism_rec_err]
+    specificity_values = [paradism_spec]
+    specificity_errors = [paradism_spec_err]
+
+    for aligner in aligners:
+        if aligner in aggregated and 'Overall' in aggregated[aligner]['direct']:
+            precision_values.append(aggregated[aligner]['direct']['Overall']['precision_mean'])
+            precision_errors.append(aggregated[aligner]['direct']['Overall']['precision_std'])
+            recall_values.append(aggregated[aligner]['direct']['Overall']['recall_mean'])
+            recall_errors.append(aggregated[aligner]['direct']['Overall']['recall_std'])
+            specificity_values.append(aggregated[aligner]['direct']['Overall']['specificity_mean'])
+            specificity_errors.append(aggregated[aligner]['direct']['Overall']['specificity_std'])
+        else:
+            precision_values.append(0)
+            precision_errors.append(0)
+            recall_values.append(0)
+            recall_errors.append(0)
+            specificity_values.append(0)
+            specificity_errors.append(0)
+
+    x_pos = np.arange(len(labels))
+    bar_width = 0.6
+
+    # Panel 1: Precision
+    axes[0].bar(x_pos, precision_values, bar_width, yerr=precision_errors,
+                color=colors, capsize=15)
+    axes[0].set_ylabel('Precision', weight='bold')
+    axes[0].set_title('Precision', weight='bold')
+    axes[0].set_xticks(x_pos)
+    axes[0].set_xticklabels(labels, weight='bold')
+    axes[0].set_ylim([0, 1.05])
+    axes[0].grid(axis='y', alpha=0.3)
+
+    # Panel 2: Recall
+    axes[1].bar(x_pos, recall_values, bar_width, yerr=recall_errors,
+                color=colors, capsize=15)
+    axes[1].set_ylabel('Recall', weight='bold')
+    axes[1].set_title('Recall', weight='bold')
+    axes[1].set_xticks(x_pos)
+    axes[1].set_xticklabels(labels, weight='bold')
+    axes[1].set_ylim([0, 1.05])
+    axes[1].grid(axis='y', alpha=0.3)
+
+    # Panel 3: Specificity
+    axes[2].bar(x_pos, specificity_values, bar_width, yerr=specificity_errors,
+                color=colors, capsize=15)
+    axes[2].set_ylabel('Specificity', weight='bold')
+    axes[2].set_title('Specificity', weight='bold')
+    axes[2].set_xticks(x_pos)
+    axes[2].set_xticklabels(labels, weight='bold')
+    axes[2].set_ylim([0, 1.05])
+    axes[2].grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def create_variant_calling_overall_comparison(aggregated, aligners, output_path):
+    """Create overall variant calling comparison across all aligners with vertical bars."""
+    # Use BWA-MEM2 as the ParaDISM baseline
+    paradism_aligner = 'bwa-mem2'
+
+    if paradism_aligner not in aggregated:
+        print(f"Warning: {paradism_aligner} not found for ParaDISM baseline", file=sys.stderr)
+        return
+
+    # Check if 'Overall' exists
+    if 'Overall' not in aggregated[paradism_aligner]['combined']:
+        print("Warning: No Overall metrics found", file=sys.stderr)
+        return
+
+    # Set font sizes
+    plt.rcParams.update({
+        'font.size': 11,
+        'axes.titlesize': 14,
+        'axes.labelsize': 12,
+        'xtick.labelsize': 11,
+        'ytick.labelsize': 11,
+        'legend.fontsize': 11,
+        'font.weight': 'bold',
+        'axes.titleweight': 'bold',
+        'axes.labelweight': 'bold'
+    })
+
+    # Create figure with 3 subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+    # Prepare data: ParaDISM + 3 direct aligners
+    labels = ['paradism', 'bwa-mem2', 'bowtie2', 'minimap2']
+    colors = ['red', '#4682B4', '#4682B4', '#4682B4']
+
+    # Extract ParaDISM metrics (combined approach)
+    paradism_prec = aggregated[paradism_aligner]['combined']['Overall']['precision_mean']
+    paradism_prec_err = aggregated[paradism_aligner]['combined']['Overall']['precision_std']
+    paradism_rec = aggregated[paradism_aligner]['combined']['Overall']['recall_mean']
+    paradism_rec_err = aggregated[paradism_aligner]['combined']['Overall']['recall_std']
+    paradism_spec = aggregated[paradism_aligner]['combined']['Overall']['specificity_mean']
+    paradism_spec_err = aggregated[paradism_aligner]['combined']['Overall']['specificity_std']
+
+    # Extract direct aligner metrics
+    precision_values = [paradism_prec]
+    precision_errors = [paradism_prec_err]
+    recall_values = [paradism_rec]
+    recall_errors = [paradism_rec_err]
+    specificity_values = [paradism_spec]
+    specificity_errors = [paradism_spec_err]
+
+    for aligner in aligners:
+        if aligner in aggregated and 'Overall' in aggregated[aligner]['direct']:
+            precision_values.append(aggregated[aligner]['direct']['Overall']['precision_mean'])
+            precision_errors.append(aggregated[aligner]['direct']['Overall']['precision_std'])
+            recall_values.append(aggregated[aligner]['direct']['Overall']['recall_mean'])
+            recall_errors.append(aggregated[aligner]['direct']['Overall']['recall_std'])
+            specificity_values.append(aggregated[aligner]['direct']['Overall']['specificity_mean'])
+            specificity_errors.append(aggregated[aligner]['direct']['Overall']['specificity_std'])
+        else:
+            precision_values.append(0)
+            precision_errors.append(0)
+            recall_values.append(0)
+            recall_errors.append(0)
+            specificity_values.append(0)
+            specificity_errors.append(0)
+
+    x_pos = np.arange(len(labels))
+    bar_width = 0.6
+
+    # Panel 1: Precision
+    axes[0].bar(x_pos, precision_values, bar_width, yerr=precision_errors,
+                color=colors, capsize=15)
+    axes[0].set_ylabel('Precision', weight='bold')
+    axes[0].set_title('Precision', weight='bold')
+    axes[0].set_xticks(x_pos)
+    axes[0].set_xticklabels(labels, weight='bold')
+    axes[0].set_ylim([0, 1.05])
+    axes[0].grid(axis='y', alpha=0.3)
+
+    # Panel 2: Recall
+    axes[1].bar(x_pos, recall_values, bar_width, yerr=recall_errors,
+                color=colors, capsize=15)
+    axes[1].set_ylabel('Recall', weight='bold')
+    axes[1].set_title('Recall', weight='bold')
+    axes[1].set_xticks(x_pos)
+    axes[1].set_xticklabels(labels, weight='bold')
+    axes[1].set_ylim([0, 1.05])
+    axes[1].grid(axis='y', alpha=0.3)
+
+    # Panel 3: Specificity
+    axes[2].bar(x_pos, specificity_values, bar_width, yerr=specificity_errors,
+                color=colors, capsize=15)
+    axes[2].set_ylabel('Specificity', weight='bold')
+    axes[2].set_title('Specificity', weight='bold')
+    axes[2].set_xticks(x_pos)
+    axes[2].set_xticklabels(labels, weight='bold')
+    axes[2].set_ylim([0, 1.05])
+    axes[2].grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -581,6 +789,19 @@ def main():
             vc_plot = output_dir / f'variant_calling_aggregated_{aligner}_comparison.png'
             create_variant_calling_plot(variant_calling_agg, aligner, vc_plot)
             print(f"  Saved: {vc_plot}")
+
+    # Create overall comparison plots (cross-aligner)
+    print("Creating overall comparison plots...")
+
+    if read_mapping_agg:
+        rm_overall_plot = output_dir / 'read_mapping_overall_comparison.png'
+        create_read_mapping_overall_comparison(read_mapping_agg, args.aligners, rm_overall_plot)
+        print(f"  Saved: {rm_overall_plot}")
+
+    if variant_calling_agg:
+        vc_overall_plot = output_dir / 'variant_calling_overall_comparison.png'
+        create_variant_calling_overall_comparison(variant_calling_agg, args.aligners, vc_overall_plot)
+        print(f"  Saved: {vc_overall_plot}")
 
     print(f"\nAggregation complete! Results saved to: {output_dir}/")
     print(f"  Read mapping: {len([a for a in args.aligners if a in read_mapping_agg])} aligners")
