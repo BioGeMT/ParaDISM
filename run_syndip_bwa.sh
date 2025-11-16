@@ -5,9 +5,9 @@ set -euo pipefail
 # Configuration
 DATA_DIR="/homes/dtzim01/ParaDISM/syndip_reads"
 REFERENCE="ref.fa"
-ALIGNER="minimap2"
+ALIGNER="bwa-mem2"
 THREADS=16
-OUTPUT_BASE="syndip_minimap2_output"
+OUTPUT_BASE="syndip_bwa_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 # Only used when ALIGNER=minimap2 (valid presets: short, pacbio-hifi, pacbio-clr, ont-q20, ont-standard)
 MINIMAP2_PROFILE="short"

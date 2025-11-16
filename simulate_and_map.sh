@@ -9,7 +9,7 @@ SEED_START=1
 SEED_END=1000
 SIM_OUTPUT_BASE="sim_output"
 REFERENCE="ref.fa"
-THREADS=16
+THREADS=2
 NUM_READS=100000
 ERROR_RATE=0.01             # default sequencing error rate (per base)
 MINIMAP2_PROFILE="short"     # sr preset
@@ -198,61 +198,147 @@ run_variant_calling() {
 # ------------------------------------------------------------------
 ERROR_SUFFIX=$(format_error_suffix "$ERROR_RATE")
 
-for seed in $(seq "$SEED_START" "$SEED_END"); do
-    echo "=============================="
-    echo "Processing seed: $seed"
-    echo "=============================="
+# Timing CSV setup
+TIMING_CSV="${SIM_OUTPUT_BASE}/timing_data.csv"
+TIMING_TMP_DIR="${SIM_OUTPUT_BASE}/timing_tmp"
+mkdir -p "$TIMING_TMP_DIR"
 
-    seed_dir="$SIM_OUTPUT_BASE/seed_${seed}"
-    mkdir -p "$seed_dir"
+# Process seeds in batches of 10 in parallel
+SEEDS_PER_BATCH=10
+seed_array=($(seq "$SEED_START" "$SEED_END"))
+total_seeds=${#seed_array[@]}
 
-    echo "Simulating reads..."
-    python read_simulator.py \
-        --reference "$REFERENCE" \
-        --output-dir "$seed_dir" \
-        --seed "$seed" \
-        --num-reads "$NUM_READS" \
-        --error-rate "$ERROR_RATE" \
-        --snp-prob "$SNP_PROB" \
-        --indel-prob "$INDEL_PROB"
-
-    r1="$seed_dir/simulated_r1_err_${ERROR_SUFFIX}.fq"
-    r2="$seed_dir/simulated_r2_err_${ERROR_SUFFIX}.fq"
-
-    if [[ ! -f "$r1" || ! -f "$r2" ]]; then
-        echo "Missing simulated FASTQs for seed $seed" >&2
-        exit 1
+for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
+    batch_end=$((batch_start + SEEDS_PER_BATCH))
+    if [[ $batch_end -gt $total_seeds ]]; then
+        batch_end=$total_seeds
     fi
+    
+    echo "=============================="
+    echo "Processing seeds batch: ${seed_array[$batch_start]} to ${seed_array[$((batch_end-1))]}"
+    echo "=============================="
+    
+    # Process all seeds in this batch in parallel
+    for ((i=batch_start; i<batch_end; i++)); do
+        seed=${seed_array[$i]}
+        (
+            echo "=============================="
+            echo "Processing seed: $seed"
+            echo "=============================="
 
-    for aligner in "${ALIGNERS[@]}"; do
-        echo "--- Running aligner: $aligner (seed $seed) ---"
-        aligner_dir="$seed_dir/$aligner"
-        paradism_output="$aligner_dir/paradism_output"
-        prefix="seed_${seed}_${aligner}"
-        paradism_prefix="paradism_${prefix}"
-        mkdir -p "$paradism_output"
+            seed_dir="$SIM_OUTPUT_BASE/seed_${seed}"
+            mkdir -p "$seed_dir"
 
-        run_mapper "$aligner" "$r1" "$r2" "$paradism_output" "$paradism_prefix"
+            echo "Simulating reads for seed $seed..."
+            python read_simulator.py \
+                --reference "$REFERENCE" \
+                --output-dir "$seed_dir" \
+                --seed "$seed" \
+                --num-reads "$NUM_READS" \
+                --error-rate "$ERROR_RATE" \
+                --snp-prob "$SNP_PROB" \
+                --indel-prob "$INDEL_PROB"
 
-        base_bam="$aligner_dir/${aligner}_base.sorted.bam"
-        base_tmp="$aligner_dir/base_align"
-        run_base_alignment "$aligner" "$r1" "$r2" "$base_tmp" "$base_bam"
+            r1="$seed_dir/simulated_r1_err_${ERROR_SUFFIX}.fq"
+            r2="$seed_dir/simulated_r2_err_${ERROR_SUFFIX}.fq"
 
-        mapper_tsv="$paradism_output/${paradism_prefix}_unique_mappings.tsv"
-        analysis_dir="$aligner_dir/read_mapping_analysis"
-        output_prefix="seed_${seed}_${aligner}"
+            if [[ ! -f "$r1" || ! -f "$r2" ]]; then
+                echo "Missing simulated FASTQs for seed $seed" >&2
+                exit 1
+            fi
 
-        python read_mapping_analysis.py \
-            --aligner "$aligner" \
-            --fastq-r1 "$r1" \
-            --mapper-tsv "$mapper_tsv" \
-            --direct-sam "$base_bam" \
-            --analysis-dir "$analysis_dir" \
-            --output-prefix "$output_prefix"
+            # Process all aligners in parallel for this seed
+            for aligner in "${ALIGNERS[@]}"; do
+                (
+                    echo "--- Running aligner: $aligner (seed $seed) ---"
+                    aligner_dir="$seed_dir/$aligner"
+                    paradism_output="$aligner_dir/paradism_output"
+                    prefix="seed_${seed}_${aligner}"
+                    paradism_prefix="paradism_${prefix}"
+                    mkdir -p "$paradism_output"
 
-        run_variant_calling "$aligner" "$seed" "$paradism_prefix" "$paradism_output" "$base_bam" "$aligner_dir" "$seed_dir"
+                    # Start timing for ParaDISM mapper only
+                    paradism_start_time=$(date +%s)
+                    paradism_start_date=$(date '+%Y-%m-%d %H:%M:%S')
+
+                    run_mapper "$aligner" "$r1" "$r2" "$paradism_output" "$paradism_prefix"
+
+                    # End timing for ParaDISM mapper
+                    paradism_end_time=$(date +%s)
+                    paradism_end_date=$(date '+%Y-%m-%d %H:%M:%S')
+                    paradism_duration=$((paradism_end_time - paradism_start_time))
+                    hours=$((paradism_duration / 3600))
+                    minutes=$(((paradism_duration % 3600) / 60))
+                    seconds=$((paradism_duration % 60))
+                    formatted_time=$(printf "%02d:%02d:%02d" $hours $minutes $seconds)
+                    
+                    # Write timing to temporary file (for parallel safety)
+                    timing_tmp_file="$TIMING_TMP_DIR/seed_${seed}_${aligner}.timing"
+                    echo "$seed,$aligner,$paradism_duration,$formatted_time" > "$timing_tmp_file"
+
+                    base_bam="$aligner_dir/${aligner}_base.sorted.bam"
+                    base_tmp="$aligner_dir/base_align"
+                    run_base_alignment "$aligner" "$r1" "$r2" "$base_tmp" "$base_bam"
+
+                    mapper_tsv="$paradism_output/${paradism_prefix}_unique_mappings.tsv"
+                    analysis_dir="$aligner_dir/read_mapping_analysis"
+                    output_prefix="seed_${seed}_${aligner}"
+
+                    python read_mapping_analysis.py \
+                        --aligner "$aligner" \
+                        --fastq-r1 "$r1" \
+                        --mapper-tsv "$mapper_tsv" \
+                        --direct-sam "$base_bam" \
+                        --analysis-dir "$analysis_dir" \
+                        --output-prefix "$output_prefix"
+
+                    run_variant_calling "$aligner" "$seed" "$paradism_prefix" "$paradism_output" "$base_bam" "$aligner_dir" "$seed_dir"
+                    
+                    echo "--- Completed aligner: $aligner (seed $seed) ---"
+                    echo "  ParaDISM time: ${formatted_time} (${paradism_duration} seconds)"
+                ) &
+            done
+            
+            # Wait for all aligners to complete for this seed
+            wait
+            echo "=============================="
+            echo "Completed seed: $seed"
+            echo "=============================="
+        ) &
     done
+    
+    # Wait for all seeds in this batch to complete before moving to next batch
+    wait
+    echo "=============================="
+    echo "Completed batch: ${seed_array[$batch_start]} to ${seed_array[$((batch_end-1))]}"
+    echo "=============================="
 done
+
+# ------------------------------------------------------------------
+# Aggregate timing data
+# ------------------------------------------------------------------
+echo "=============================="
+echo "Aggregating timing data..."
+echo "=============================="
+
+# Create CSV with header and combine all timing files
+echo "seed,aligner,wall_clock_seconds,wall_clock_formatted" > "$TIMING_CSV"
+
+# Append all timing files
+for timing_file in "$TIMING_TMP_DIR"/*.timing; do
+    if [[ -f "$timing_file" ]]; then
+        cat "$timing_file" >> "$TIMING_CSV"
+    fi
+done
+
+# Sort CSV by seed, then aligner
+sort -t',' -k1,1n -k2,2 "$TIMING_CSV" > "${TIMING_CSV}.tmp"
+mv "${TIMING_CSV}.tmp" "$TIMING_CSV"
+
+# Clean up temporary timing files
+rm -rf "$TIMING_TMP_DIR"
+
+echo "Timing data aggregated to: $TIMING_CSV"
 
 # ------------------------------------------------------------------
 # Aggregate results across all seeds

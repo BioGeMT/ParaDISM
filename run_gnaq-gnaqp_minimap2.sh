@@ -3,11 +3,11 @@
 set -euo pipefail
 
 # Configuration
-DATA_DIR="/homes/dtzim01/ParaDISM/syndip_reads"
-REFERENCE="ref.fa"
+DATA_DIR="/homes/dtzim01/ParaDISM/gnaq_reads"
+REFERENCE="gnaq-gnaqp_ref.fa"
 ALIGNER="minimap2"
-THREADS=16
-OUTPUT_BASE="syndip_minimap2_output"
+THREADS=4
+OUTPUT_BASE="gnaq_output/gnaq-gnaqp_minimap2_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 # Only used when ALIGNER=minimap2 (valid presets: short, pacbio-hifi, pacbio-clr, ont-q20, ont-standard)
 MINIMAP2_PROFILE="short"
@@ -23,10 +23,11 @@ mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR/"
 
 SAMPLES=(
-    "ERR1341793"
-    "ERR1341794"
-    "ERR1341795"
-    "ERR1341796"
+    "SRR5602384"
+    "SRR5602389"
+    "SRR5602393"
+    "SRR5602414"
+    "SRR5602419"
 )
 
 # Process all samples in parallel
