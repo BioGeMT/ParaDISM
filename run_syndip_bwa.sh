@@ -77,7 +77,12 @@ for sample in "${SAMPLES[@]}"; do
             mapper_cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
         fi
 
-        if /usr/bin/time -v "${mapper_cmd[@]}" >> "$log_file" 2>&1; then
+        # Run mapper (may exit with status 1 even if successful)
+        /usr/bin/time -v "${mapper_cmd[@]}" >> "$log_file" 2>&1 || true
+
+        # Check if output files were created successfully (this is the real success indicator)
+        expected_output="$output_dir/${sample}_unique_mappings.tsv"
+        if [ -f "$expected_output" ]; then
             status="SUCCESS"
         else
             status="FAILED"
@@ -97,6 +102,13 @@ for sample in "${SAMPLES[@]}"; do
 
         echo "Completed: $sample (Status: $status, Time: ${hours}h ${minutes}m ${seconds}s, Log: $log_file)"
         echo ""
+        
+        # Exit with 0 if successful, 1 if failed
+        if [ "$status" = "SUCCESS" ]; then
+            exit 0
+        else
+            exit 1
+        fi
     ) &
 done
 

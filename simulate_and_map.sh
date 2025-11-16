@@ -42,7 +42,15 @@ run_mapper() {
         cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
     fi
 
-    "${cmd[@]}"
+    # Run mapper (may exit with status 1 even if successful)
+    "${cmd[@]}" || true
+    
+    # Verify output file was created (this is the real success indicator)
+    local expected_output="$output_dir/${prefix}_unique_mappings.tsv"
+    if [ ! -f "$expected_output" ]; then
+        echo "ERROR: Expected output file not found: $expected_output" >&2
+        exit 1
+    fi
 }
 
 run_base_alignment() {

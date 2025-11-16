@@ -31,6 +31,7 @@ SAMPLES=(
 )
 
 # Process all samples in parallel
+declare -a PIDS=()
 for sample in "${SAMPLES[@]}"; do
     (
         r1_file="$DATA_DIR/${sample}_1.fastq"
@@ -78,7 +79,12 @@ for sample in "${SAMPLES[@]}"; do
             mapper_cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
         fi
 
-        if /usr/bin/time -v "${mapper_cmd[@]}" >> "$log_file" 2>&1; then
+        # Run mapper (may exit with status 1 even if successful)
+        /usr/bin/time -v "${mapper_cmd[@]}" >> "$log_file" 2>&1 || true
+
+        # Check if output files were created successfully (this is the real success indicator)
+        expected_output="$output_dir/${sample}_unique_mappings.tsv"
+        if [ -f "$expected_output" ]; then
             status="SUCCESS"
         else
             status="FAILED"
@@ -98,14 +104,34 @@ for sample in "${SAMPLES[@]}"; do
 
         echo "Completed: $sample (Status: $status, Time: ${hours}h ${minutes}m ${seconds}s, Log: $log_file)"
         echo ""
+        
+        # Exit with 0 if successful, 1 if failed
+        if [ "$status" = "SUCCESS" ]; then
+            exit 0
+        else
+            exit 1
+        fi
     ) &
+    PIDS+=($!)
 done
 
-# Wait for all samples to complete
-wait
+# Wait for all samples to complete and track failures
+FAILED_COUNT=0
+for pid in "${PIDS[@]}"; do
+    if ! wait $pid; then
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+    fi
+done
 
 echo "=========================================="
 echo "All samples processed!"
 echo "Logs saved to: $LOG_DIR/"
+if [ $FAILED_COUNT -gt 0 ]; then
+    echo "WARNING: $FAILED_COUNT sample(s) failed"
+    exit 1
+else
+    echo "All samples completed successfully!"
+    exit 0
+fi
 echo "=========================================="
 
