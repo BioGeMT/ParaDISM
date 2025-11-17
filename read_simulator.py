@@ -18,12 +18,12 @@ NUCL = ["A", "C", "T", "G"]
 GENES = ["PKD1"] + [f"PKD1P{i}" for i in range(1, 7)]
 
 # Genome-level parameters (match notebook defaults)
-SNP_PROB = 0.001
-INDEL_PROB = 0.0001
+SNP_PROB = 0.005
+INDEL_PROB = 0.0005
 INDEL_LEN_MEAN = 2
 
 # Sequencing defaults
-DEFAULT_ERROR = [0.001]
+DEFAULT_ERROR = [0.01]
 READ_LENGTH = 150
 FRAGMENT_LENGTH_MEAN = 350
 DEFAULT_READS = 100_000
