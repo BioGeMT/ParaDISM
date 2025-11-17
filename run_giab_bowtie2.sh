@@ -3,11 +3,11 @@
 set -euo pipefail
 
 # Configuration
-DATA_DIR="/homes/dtzim01/ParaDISM/syndip_reads"
+DATA_DIR="/homes/dtzim01/ParaDISM/giab_hg002_reads"
 REFERENCE="ref.fa"
-ALIGNER="bwa-mem2"
-THREADS=16
-OUTPUT_BASE="syndip_bwa_output"
+ALIGNER="bowtie2"
+THREADS=8
+OUTPUT_BASE="giab_bowtie2_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 # Only used when ALIGNER=minimap2 (valid presets: short, pacbio-hifi, pacbio-clr, ont-q20, ont-standard)
 MINIMAP2_PROFILE="short"
@@ -23,17 +23,15 @@ mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR/"
 
 SAMPLES=(
-    "ERR1341793"
-    "ERR1341794"
-    "ERR1341795"
-    "ERR1341796"
+    "L001"
+    "L002"
 )
 
 # Process all samples in parallel
 for sample in "${SAMPLES[@]}"; do
     (
-        r1_file="$DATA_DIR/${sample}_1.fastq"
-        r2_file="$DATA_DIR/${sample}_2.fastq"
+        r1_file="$DATA_DIR/${sample}_R1.fastq"
+        r2_file="$DATA_DIR/${sample}_R2.fastq"
 
         output_dir="$OUTPUT_BASE/$sample"
 
