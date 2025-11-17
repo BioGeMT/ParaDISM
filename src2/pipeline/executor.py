@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Sequence
 
 import subprocess
+import threading
 from pipeline.mapper_algo_snp_only import load_msa_mapping
 from utils.logger import PipelineLogger
 from utils.progress import ProgressRunner
@@ -41,7 +42,9 @@ class PipelineExecutor:
         self.logger = PipelineLogger(self.log_file)
         self.progress = ProgressRunner(self.logger)
         self.per_gene_dir = self.output_dir / "per_gene"
+        self.diag_dir = self.output_dir / "diagnostics"
         self.per_gene_dir.mkdir(exist_ok=True)
+        self.diag_dir.mkdir(exist_ok=True)
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -53,8 +56,8 @@ class PipelineExecutor:
         self.progress.run_with_progress(command, message)
 
     def _run_command(self, cmd: Sequence[str], message: str, gene: str | None = None, stdout=None) -> None:
-        prefix = f"[{gene}] " if gene else ""
-        print(f"{prefix}{message}", file=sys.stderr)
+        log_label = f"{gene}: {message}" if gene else message
+        self.logger.section(log_label)
         run_kwargs: Dict = {"stderr": subprocess.PIPE, "text": True, "check": True}
         if stdout is None:
             run_kwargs["stdout"] = subprocess.PIPE
@@ -75,6 +78,33 @@ class PipelineExecutor:
                 self.logger.write(result.stdout)
             if result.stderr:
                 self.logger.write(result.stderr)
+
+    def _run_callable_with_spinner(self, func, message: str) -> None:
+        self.logger.section(message)
+        stop_event = threading.Event()
+
+        def spin() -> None:
+            index = 0
+            while not stop_event.is_set():
+                char = self.progress.spinner_chars[index % len(self.progress.spinner_chars)]
+                print(f"\r{char} {message}", end="", file=sys.stderr)
+                sys.stderr.flush()
+                index += 1
+                time.sleep(0.1)
+
+        thread = threading.Thread(target=spin, daemon=True)
+        thread.start()
+        try:
+            func()
+            stop_event.set()
+            thread.join()
+            print(f"\r\033[0;36m✓\033[0m \033[0;36m{message}\033[0m", file=sys.stderr)
+        except Exception:
+            stop_event.set()
+            thread.join()
+            print(f"\r\033[0;31m✗\033[0m \033[0;31m{message}\033[0m", file=sys.stderr)
+            self.progress._tail_log()
+            raise
 
     def _write_slice_file(
         self,
@@ -201,6 +231,7 @@ class PipelineExecutor:
             str(mapped_reads_tsv),
             "--fastq",
             r1,
+            "--quiet",
         ]
         if not is_paired:
             read_2_gene_cmd.append("--single-end")
@@ -341,33 +372,39 @@ class PipelineExecutor:
         if not records:
             raise RuntimeError("Reference FASTA does not match MSA gene names")
 
-        print(f"Launching per-gene alignments ({len(records)} genes, {threads} threads each)", file=sys.stderr)
-        futures = []
         results: List[Dict[str, Path]] = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(records)) as executor:
-            for gene_name, seq in records:
-                futures.append(
-                    executor.submit(
-                        self._process_gene,
-                        gene_name,
-                        seq,
-                        r1,
-                        r2,
-                        aligner,
-                        threads,
-                        minimap2_profile,
-                        is_paired,
-                        sequence_positions,
-                        ref_msa_tsv,
+
+        def per_gene_job() -> None:
+            futures = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(records)) as executor:
+                for gene_name, seq in records:
+                    futures.append(
+                        executor.submit(
+                            self._process_gene,
+                            gene_name,
+                            seq,
+                            r1,
+                            r2,
+                            aligner,
+                            threads,
+                            minimap2_profile,
+                            is_paired,
+                            sequence_positions,
+                            ref_msa_tsv,
+                        )
                     )
-                )
-            for future in concurrent.futures.as_completed(futures):
-                results.append(future.result())
+                for future in concurrent.futures.as_completed(futures):
+                    results.append(future.result())
+
+        self._run_callable_with_spinner(
+            per_gene_job,
+            f"Mapping reads ({len(records)} genes × {threads} threads)",
+        )
 
         slice_lookup = self._build_slice_lookup(results)
         final_unique, consensus_counts, all_reads = self._reconcile_results(results, gene_names)
 
-        slice_table = self.output_dir / f"{self.prefix}_slice_positions.tsv"
+        slice_table = self.diag_dir / f"{self.prefix}_slice_positions.tsv"
         with open(slice_table, "w") as out:
             header = ["Read_Name"] + [f"{gene}_MSA_Start" for gene in gene_names]
             out.write("\t".join(header) + "\n")
@@ -394,12 +431,12 @@ class PipelineExecutor:
             else:
                 disagreement += 1
 
-        slice_summary = self.output_dir / f"{self.prefix}_slice_overlap_summary.txt"
+        slice_summary = self.diag_dir / f"{self.prefix}_slice_overlap_summary.txt"
         with open(slice_summary, "w") as out:
             out.write(f"Reads with identical slices across all genes: {identical}\n")
             out.write(f"Reads with any slice disagreement:            {disagreement}\n")
 
-        consensus_summary = self.output_dir / f"{self.prefix}_consensus_summary.tsv"
+        consensus_summary = self.diag_dir / f"{self.prefix}_consensus_summary.tsv"
         with open(consensus_summary, "w") as out:
             out.write("Outcome\tCount\n")
             out.write(f"Single gene consensus\t{consensus_counts['single_gene']}\n")

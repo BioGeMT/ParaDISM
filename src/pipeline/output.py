@@ -20,8 +20,10 @@ def process_files(tsv_path, r1_path, r2_path, output_dir, prefix=""):
             parts = line.split('\t')
             read_name = parts[0]
             gene = parts[1] if len(parts) > 1 else "NONE"
-            if gene != "NONE":
-                gene_mapping[read_name]  = gene
+            base_gene = gene.replace(" (1/2 read mates)", "")
+            partial = "(1/2 read mates)" in gene
+            if gene != "NONE" and not partial:
+                gene_mapping[read_name]  = base_gene
 
     # Load FASTQ records into dictionaries for quick lookup
     r1_records = SeqIO.to_dict(SeqIO.parse(r1_path, "fastq"))

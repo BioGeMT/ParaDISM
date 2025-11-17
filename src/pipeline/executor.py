@@ -172,6 +172,7 @@ class PipelineExecutor:
             str(mapped_reads_tsv),
             "--fastq",
             r1,
+            "--quiet",
         ]
         if not is_paired:
             read_2_gene_cmd.append("--single-end")
@@ -238,15 +239,4 @@ class PipelineExecutor:
         time.sleep(0.2)
 
         self.logger.section("Cleaning up intermediate files")
-        for pattern in [
-            "ref_index.*",
-            "ref_seq_msa.aln",
-            "ref_seq_msa.tsv",
-            "mapped_reads.tsv",
-            "mapped_reads.sam",
-        ]:
-            for file_path in self.output_dir.glob(pattern):
-                file_path.unlink()
-
-        print("\033[0;36m✓\033[0m \033[0;36mCleaning up intermediate files\033[0m", file=sys.stderr)
         print(f"\nPipeline complete. Outputs saved to: {self.output_dir}\n", file=sys.stderr)

@@ -10,7 +10,7 @@ def count_fastq_reads(fastq_path):
             count += 1
     return count // 4
 
-def process_sam_to_alignment_tsv(sam_filepath, output_tsv_filepath, fastq_path=None, is_paired=True):
+def process_sam_to_alignment_tsv(sam_filepath, output_tsv_filepath, fastq_path=None, is_paired=True, quiet=False):
 
     # Count total reads from FASTQ if provided, otherwise count from SAM
     if fastq_path:
@@ -58,12 +58,13 @@ def process_sam_to_alignment_tsv(sam_filepath, output_tsv_filepath, fastq_path=N
                 )
 
             reads_processed += 1
-            if reads_processed % 1000 == 0:
+            if not quiet and reads_processed % 1000 == 0:
                 sys.stdout.write(f"\rReads processed: {reads_processed:,}/{total_reads:,}")
                 sys.stdout.flush()
 
-        sys.stdout.write(f"\rReads processed: {reads_processed:,}/{total_reads:,}\n")
-        sys.stdout.flush()
+        if not quiet:
+            sys.stdout.write(f"\rReads processed: {reads_processed:,}/{total_reads:,}\n")
+            sys.stdout.flush()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -72,6 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--fastq", help="Path to FASTQ file for read counting (optional, faster than counting from SAM)")
     parser.add_argument("--paired", action='store_true', default=True, help="Paired-end mode (default: True)")
     parser.add_argument("--single-end", dest='paired', action='store_false', help="Single-end mode")
+    parser.add_argument("--quiet", action='store_true', help="Suppress progress output")
     args = parser.parse_args()
 
-    process_sam_to_alignment_tsv(args.sam, args.output, args.fastq, args.paired)
+    process_sam_to_alignment_tsv(args.sam, args.output, args.fastq, args.paired, quiet=args.quiet)
