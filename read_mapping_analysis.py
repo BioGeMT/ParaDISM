@@ -42,6 +42,7 @@ def parse_ground_truth_from_fastq(fastq_path):
 def parse_mapper_results(tsv_path):
     """Parse mapper unique_mappings.tsv output."""
     mapper_predictions = {}
+    partial_reads = set()
 
     with open(tsv_path, 'r') as f:
         _ = f.readline()  # Skip header
@@ -55,12 +56,14 @@ def parse_mapper_results(tsv_path):
 
             read_name = parts[0]
             gene = parts[1] if parts[1] != "NONE" else "NONE"
+            if gene.endswith("(1/2 read mates)"):
+                partial_reads.add(read_name)
 
             # Remove strand suffix (+/-) if present
             read_name = read_name.rstrip('+-')
             mapper_predictions[read_name] = gene
 
-    return mapper_predictions
+    return mapper_predictions, partial_reads
 
 
 def parse_bwa_sam(sam_path):
@@ -296,7 +299,7 @@ def main():
             sys.exit(1)
 
     ground_truth = parse_ground_truth_from_fastq(args.fastq_r1)
-    mapper_predictions = parse_mapper_results(args.mapper_tsv)
+    mapper_predictions, partial_reads = parse_mapper_results(args.mapper_tsv)
     direct_predictions = parse_bwa_sam(args.direct_sam)
 
     # Get all possible genes (labels)
@@ -306,7 +309,7 @@ def main():
 
     # Align all predictions to ground truth
     # Only include reads that have ground truth
-    read_ids = sorted(ground_truth.keys())
+    read_ids = [rid for rid in sorted(ground_truth.keys()) if rid not in partial_reads]
 
     y_true = [ground_truth[rid] for rid in read_ids]
     y_mapper = [mapper_predictions.get(rid, "NONE") for rid in read_ids]
