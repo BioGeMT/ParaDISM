@@ -136,8 +136,8 @@ def process_read_scenarios(read_name: str, scenario_rows: List[List], sequence_b
     
     return processed_scenarios
 
-def find_unique_mapping_in_scenarios(read_scenarios: Dict[str, List], genes: List[str]) -> str:
-    """Decide unique mapping; supports paired-end and single-end."""
+def find_unique_mapping_in_scenarios(read_scenarios: Dict[str, List], genes: List[str]) -> Tuple[str, bool]:
+    """Decide unique mapping; returns assignment and strand coverage."""
     plus_data = read_scenarios.get('plus', [])
     minus_data = read_scenarios.get('minus', [])
 
@@ -192,12 +192,14 @@ def find_unique_mapping_in_scenarios(read_scenarios: Dict[str, List], genes: Lis
             if c1 and c2:
                 mapped_genes.append(gene)
     
-    return mapped_genes[0] if len(mapped_genes) == 1 else "NONE"
+    assignment = mapped_genes[0] if len(mapped_genes) == 1 else "NONE"
+    return assignment, has_both_strands
 
 def process_read_mappings(read_map_filepath: str, sequence_positions: Dict,
                          sequence_bases: Dict, gap_bases_dict: Dict,
                          gene_names: List, output_file: str,
-                         batch_size: int = 10000, max_scenarios: int = 100) -> None:
+                         batch_size: int = 10000, max_scenarios: int = 100,
+                         paired_mode: bool = True) -> None:
     
     with open(output_file, 'w') as out_f:
         out_f.write('Read_Name\tUniquely_Mapped\n')
@@ -270,11 +272,14 @@ def process_read_mappings(read_map_filepath: str, sequence_positions: Dict,
             nonlocal current_read_base, reads_processed, read_scenarios
             
             if current_read_base and read_scenarios:
-                unique_gene = find_unique_mapping_in_scenarios(
+                unique_gene, has_both = find_unique_mapping_in_scenarios(
                     read_scenarios[current_read_base],
-                    gene_names
+                    gene_names,
                 )
-                out_f.write(f'{current_read_base}\t{unique_gene}\n')
+                label = unique_gene
+                if paired_mode and unique_gene != "NONE" and not has_both:
+                    label = f"{unique_gene} (1/2 read mates)"
+                out_f.write(f'{current_read_base}\t{label}\n')
                 del read_scenarios[current_read_base]
                 reads_processed += 1
                 
@@ -350,6 +355,8 @@ def main():
                       help='Number of reads to process before memory cleanup')
     parser.add_argument('--max_scenarios', type=int, default=100,
                       help='Maximum number of mapping scenarios per read')
+    parser.add_argument('--single-end', action='store_true',
+                      help='Treat input as single-end (disables mate annotations)')
 
     args = parser.parse_args()
 
@@ -358,7 +365,8 @@ def main():
     process_read_mappings(
         args.read_map, sequence_positions, sequence_bases,
         gap_bases_dict, gene_names, args.output_file,
-        args.batch_size, args.max_scenarios
+        args.batch_size, args.max_scenarios,
+        paired_mode=not args.single_end
     )
 
 if __name__ == '__main__':

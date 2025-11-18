@@ -59,14 +59,14 @@ def process_read_data(read_name: str, read_rows: List[List], sequence_bases: Dic
     
     return processed_rows
 
-def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[str]) -> str:
-    """Find unique mapping for SNP-only analysis (supports both paired-end and single-end)"""
+def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[str]) -> Tuple[str, bool]:
+    """Find unique mapping for SNP-only analysis; returns assignment and strand coverage."""
     plus_data = read_scenarios.get('plus', [])
     minus_data = read_scenarios.get('minus', [])
 
     # Check if we have no data at all
     if not plus_data and not minus_data:
-        return "NONE"
+        return "NONE", False
 
     # Determine if we have both strands (paired-end) or just one (single-end)
     has_both_strands = bool(plus_data and minus_data)
@@ -121,11 +121,12 @@ def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[st
             if c1 and c2:
                 mapped_genes.append(gene)
 
-    return mapped_genes[0] if len(mapped_genes) == 1 else "NONE"
+    assignment = mapped_genes[0] if len(mapped_genes) == 1 else "NONE"
+    return assignment, has_both_strands
 
 def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: Dict,
                                    sequence_bases: Dict, gene_names: List, output_file: str,
-                                   batch_size: int = 10000) -> None:
+                                   batch_size: int = 10000, paired_mode: bool = True) -> None:
     """Process read mappings for SNP-only analysis (no insertions)"""
 
     # First pass: count total unique read pairs
@@ -174,11 +175,14 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
             nonlocal current_read_base, reads_processed, read_scenarios
             
             if current_read_base and read_scenarios:
-                unique_gene = find_unique_mapping_snp_only(
+                unique_gene, has_both = find_unique_mapping_snp_only(
                     read_scenarios[current_read_base],
                     gene_names
                 )
-                out_f.write(f'{current_read_base}\t{unique_gene}\n')
+                label = unique_gene
+                if paired_mode and unique_gene != "NONE" and not has_both:
+                    label = f"{unique_gene} (1/2 read mates)"
+                out_f.write(f'{current_read_base}\t{label}\n')
                 del read_scenarios[current_read_base]
                 reads_processed += 1
 
@@ -243,6 +247,8 @@ def main():
                       help='Output file for unique mapping results')
     parser.add_argument('--batch_size', type=int, default=10000,
                       help='Number of reads to process before memory cleanup')
+    parser.add_argument('--single-end', action='store_true',
+                      help='Treat input as single-end (disables mate annotations)')
 
     args = parser.parse_args()
 
@@ -250,7 +256,8 @@ def main():
     
     process_read_mappings_snp_only(
         args.read_map, sequence_positions, sequence_bases,
-        gene_names, args.output_file, args.batch_size
+        gene_names, args.output_file, args.batch_size,
+        paired_mode=not args.single_end
     )
 
 if __name__ == '__main__':

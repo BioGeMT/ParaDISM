@@ -30,6 +30,8 @@ def process_sam_to_alignment_tsv(sam_filepath, output_tsv_filepath, fastq_path=N
 
         reads_processed = 0
         for read in samfile.fetch(until_eof=True):
+            if read.is_secondary or read.is_supplementary:
+                continue
             read_name = read.query_name + ('+' if not read.is_reverse else '-')
             ref_name = samfile.get_reference_name(read.reference_id)
 
