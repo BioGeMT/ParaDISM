@@ -264,6 +264,7 @@ class PipelineExecutor:
         self,
         gene_results: List[Dict[str, Path]],
         gene_order: List[str],
+        slice_lookup: Dict[str, Dict[str, int]],
     ) -> tuple[Path, Dict[str, int], set[str]]:
         final_unique = self.output_dir / f"{self.prefix}_unique_mappings.tsv"
         per_gene_calls: Dict[str, Dict[str, str]] = defaultdict(dict)
@@ -290,12 +291,36 @@ class PipelineExecutor:
                 if not non_none:
                     final_call = "NONE"
                     category = "all_none"
-                elif len(set(non_none)) == 1:
-                    final_call = non_none[0]
-                    category = "single_gene"
                 else:
-                    final_call = "NONE"
-                    category = "conflict"
+                    unique_genes = set(non_none)
+                    if len(unique_genes) == 1:
+                        gene_name = next(iter(unique_genes))
+                        # Determine slice class: identical if all genes have same non-NA start
+                        starts = []
+                        missing = False
+                        for g in gene_order:
+                            start = slice_lookup.get(g, {}).get(read)
+                            if start is None:
+                                missing = True
+                                break
+                            starts.append(start)
+                        identical = (not missing and len(set(starts)) == 1)
+
+                        if identical:
+                            final_call = gene_name
+                            category = "single_gene"
+                        else:
+                            # Require at least 2 independent per-gene assignments
+                            support_count = sum(1 for v in votes if v == gene_name)
+                            if support_count >= 2:
+                                final_call = gene_name
+                                category = "single_gene"
+                            else:
+                                final_call = "NONE"
+                                category = "conflict"
+                    else:
+                        final_call = "NONE"
+                        category = "conflict"
                 out.write(f"{read}\t{final_call}\n")
                 consensus_counts[category] += 1
 
@@ -402,7 +427,7 @@ class PipelineExecutor:
         )
 
         slice_lookup = self._build_slice_lookup(results)
-        final_unique, consensus_counts, all_reads = self._reconcile_results(results, gene_names)
+        final_unique, consensus_counts, all_reads = self._reconcile_results(results, gene_names, slice_lookup)
 
         slice_table = self.diag_dir / f"{self.prefix}_slice_positions.tsv"
         with open(slice_table, "w") as out:
