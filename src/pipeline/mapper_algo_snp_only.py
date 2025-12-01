@@ -59,14 +59,14 @@ def process_read_data(read_name: str, read_rows: List[List], sequence_bases: Dic
     
     return processed_rows
 
-def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[str]) -> Tuple[str, bool]:
-    """Find unique mapping for SNP-only analysis; returns assignment and strand coverage."""
+def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[str]) -> Tuple[str, bool, str]:
+    """Find unique mapping for SNP-only analysis; returns assignment, strand coverage, and which strand(s) mapped."""
     plus_data = read_scenarios.get('plus', [])
     minus_data = read_scenarios.get('minus', [])
 
     # Check if we have no data at all
     if not plus_data and not minus_data:
-        return "NONE", False
+        return "NONE", False, ""
 
     # Determine if we have both strands (paired-end) or just one (single-end)
     has_both_strands = bool(plus_data and minus_data)
@@ -122,7 +122,18 @@ def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[st
                 mapped_genes.append(gene)
 
     assignment = mapped_genes[0] if len(mapped_genes) == 1 else "NONE"
-    return assignment, has_both_strands
+
+    # Determine which strand(s) mapped
+    strand_info = ""
+    if assignment != "NONE":
+        if has_both_strands:
+            strand_info = "both"
+        elif plus_data:
+            strand_info = "plus"
+        elif minus_data:
+            strand_info = "minus"
+
+    return assignment, has_both_strands, strand_info
 
 def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: Dict,
                                    sequence_bases: Dict, gene_names: List, output_file: str,
@@ -175,13 +186,14 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
             nonlocal current_read_base, reads_processed, read_scenarios
             
             if current_read_base and read_scenarios:
-                unique_gene, has_both = find_unique_mapping_snp_only(
+                unique_gene, has_both, strand_info = find_unique_mapping_snp_only(
                     read_scenarios[current_read_base],
                     gene_names
                 )
                 label = unique_gene
                 if paired_mode and unique_gene != "NONE" and not has_both:
-                    label = f"{unique_gene} (1/2 read mates)"
+                    # Indicate which specific strand mapped
+                    label = f"{unique_gene} ({strand_info})"
                 out_f.write(f'{current_read_base}\t{label}\n')
                 del read_scenarios[current_read_base]
                 reads_processed += 1

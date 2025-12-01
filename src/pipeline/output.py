@@ -6,10 +6,22 @@ from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 import subprocess
 
+def _base_read_id(read_id: str) -> str:
+    """Normalise read ID to match SAM/TSV names.
+
+    Aligners like BWA-MEM2 often strip trailing '/1' or '/2' from FASTQ
+    read IDs when writing SAM records. Our TSV uses the SAM-style IDs,
+    so we normalise FASTQ IDs by removing a single trailing '/1' or '/2'.
+    """
+    if read_id.endswith("/1") or read_id.endswith("/2"):
+        return read_id[:-2]
+    return read_id
+
+
 def process_files(tsv_path, r1_path, r2_path, output_dir, prefix=""):
     """Split reads into per-gene FASTQs (paired or single-end)."""
     # Read TSV and preserve order of mapped reads
-    gene_mapping = {}   # {read_name: gene}
+    gene_mapping = {}  # {read_name: (gene, strand_info)}
 
     with open(tsv_path) as tsv:
         header = tsv.readline()  # Skip header
@@ -20,49 +32,76 @@ def process_files(tsv_path, r1_path, r2_path, output_dir, prefix=""):
             parts = line.split('\t')
             read_name = parts[0]
             gene = parts[1] if len(parts) > 1 else "NONE"
-            # Strip annotation suffix to get clean gene name, but keep single mates
-            base_gene = gene.replace(" (1/2 read mates)", "")
-            if gene != "NONE":
-                gene_mapping[read_name]  = base_gene
 
-    # Load FASTQ records into dictionaries for quick lookup
-    r1_records = SeqIO.to_dict(SeqIO.parse(r1_path, "fastq"))
-    r2_records = SeqIO.to_dict(SeqIO.parse(r2_path, "fastq")) if r2_path else {}
+            if gene == "NONE":
+                continue
+
+            # Parse strand information from gene label
+            # Format: "GENE" or "GENE (plus)" or "GENE (minus)"
+            if " (plus)" in gene:
+                base_gene = gene.replace(" (plus)", "")
+                strand_info = "plus"
+            elif " (minus)" in gene:
+                base_gene = gene.replace(" (minus)", "")
+                strand_info = "minus"
+            else:
+                base_gene = gene
+                strand_info = "both"
+
+            gene_mapping[read_name] = (base_gene, strand_info)
+
+    # Load FASTQ records into dictionaries for quick lookup.
+    # Keys are normalised to match the SAM/TSV read IDs (no /1 or /2).
+    r1_records = {}
+    for rec in SeqIO.parse(r1_path, "fastq"):
+        r1_records[_base_read_id(rec.id)] = rec
+
+    r2_records = {}
+    if r2_path:
+        for rec in SeqIO.parse(r2_path, "fastq"):
+            r2_records[_base_read_id(rec.id)] = rec
 
     # Organize all records by gene in a single collection
     gene_collection = defaultdict(list)
     is_paired = r2_path is not None
 
-    for read_name, gene in gene_mapping.items():
-        # Add R1 record if exists
-        if read_name in r1_records:
-            r1 = r1_records[read_name]
-            if is_paired:
-                # Paired-end: add /1 suffix
-                gene_collection[gene].append(SeqRecord(
-                    r1.seq,
-                    id=f"{read_name}/1",
-                    description="",
-                    letter_annotations=r1.letter_annotations
-                ))
-            else:
-                # Single-end: no suffix
-                gene_collection[gene].append(SeqRecord(
-                    r1.seq,
-                    id=read_name,
-                    description="",
-                    letter_annotations=r1.letter_annotations
-                ))
+    for read_name, (gene, strand_info) in gene_mapping.items():
+        # Determine which mates to include based on strand_info
+        # plus = R1 only, minus = R2 only, both = both mates
+        include_r1 = strand_info in ("plus", "both")
+        include_r2 = strand_info in ("minus", "both")
 
-        # Add R2 record if exists (only for paired-end)
-        if is_paired and read_name in r2_records:
-            r2 = r2_records[read_name]
-            gene_collection[gene].append(SeqRecord(
-                r2.seq,
-                id=f"{read_name}/2",
-                description="",
-                letter_annotations=r2.letter_annotations
-            ))
+        # Add R1 record if exists and should be included
+        if include_r1:
+            r1 = r1_records.get(read_name)
+            if r1 is not None:
+                if is_paired:
+                    # Paired-end: add /1 suffix
+                    gene_collection[gene].append(SeqRecord(
+                        r1.seq,
+                        id=f"{read_name}/1",
+                        description="",
+                        letter_annotations=r1.letter_annotations
+                    ))
+                else:
+                    # Single-end: no suffix
+                    gene_collection[gene].append(SeqRecord(
+                        r1.seq,
+                        id=read_name,
+                        description="",
+                        letter_annotations=r1.letter_annotations
+                    ))
+
+        # Add R2 record if exists and should be included (only for paired-end)
+        if is_paired and include_r2:
+            r2 = r2_records.get(read_name)
+            if r2 is not None:
+                gene_collection[gene].append(SeqRecord(
+                    r2.seq,
+                    id=f"{read_name}/2",
+                    description="",
+                    letter_annotations=r2.letter_annotations
+                ))
 
     processed_genes = []
 
@@ -96,6 +135,7 @@ def create_bam_files(
     aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
+    bowtie2_score_min='G,20,8',
     is_paired=False,
     prefix="",
 ):
@@ -143,11 +183,9 @@ def create_bam_files(
             print(f"Building bowtie2 index: {build_cmd}", file=sys.stderr)
             subprocess.run(build_cmd, shell=True, check=True)
 
-            # Align with bowtie2
-            if is_paired:
-                align_cmd = f"bowtie2 --very-sensitive --interleaved {fastq_file} -x {index_base} -S {sam_path}"
-            else:
-                align_cmd = f"bowtie2 --very-sensitive -x {index_base} -U {fastq_file} -S {sam_path}"
+            # Align with bowtie2 using initial stage parameters
+            # Note: Always use -U (unpaired) since FASTQ may contain mix of complete pairs and single mates
+            align_cmd = f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
             subprocess.run(align_cmd, shell=True, check=True)
 
@@ -158,10 +196,8 @@ def create_bam_files(
             subprocess.run(build_cmd, shell=True, check=True)
 
             # Align with bwa-mem2
-            if is_paired:
-                align_cmd = f"bwa-mem2 mem -t {threads} -p {index_base} {fastq_file} > {sam_path}"
-            else:
-                align_cmd = f"bwa-mem2 mem -t {threads} {index_base} {fastq_file} > {sam_path}"
+            # Note: Do not use -p flag since FASTQ may contain mix of complete pairs and single mates
+            align_cmd = f"bwa-mem2 mem -t {threads} {index_base} {fastq_file} > {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
             subprocess.run(align_cmd, shell=True, check=True)
 
@@ -230,6 +266,7 @@ def main(
     aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
+    bowtie2_score_min='G,20,8',
     prefix="",
 ):
     # Ensure the output directories exist
@@ -248,6 +285,7 @@ def main(
         aligner,
         threads,
         minimap2_profile,
+        bowtie2_score_min,
         is_paired=r2_file is not None,
         prefix=prefix,
     )
@@ -270,6 +308,8 @@ if __name__ == "__main__":
     parser.add_argument('--minimap2-profile', default='short',
                         choices=['short', 'pacbio-hifi', 'pacbio-clr', 'ont-q20', 'ont-standard'],
                         help='Minimap2 profile (default: short)')
+    parser.add_argument('--bowtie2-score-min', default='G,20,8',
+                        help='Bowtie2 --score-min function (default: G,20,8)')
     parser.add_argument('--prefix', default='', help='Prefix to add to all output filenames (default: none)')
 
     args = parser.parse_args()
@@ -284,5 +324,6 @@ if __name__ == "__main__":
         aligner=args.aligner,
         threads=args.threads,
         minimap2_profile=args.minimap2_profile,
+        bowtie2_score_min=args.bowtie2_score_min,
         prefix=args.prefix
     )

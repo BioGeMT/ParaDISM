@@ -344,6 +344,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
 
     aligner = "bwa-mem2"
     minimap2_profile = "short"
+    bowtie2_score_min = "G,20,8"
     threads = 4
 
     if not sam_path:
@@ -384,6 +385,38 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
             elif choice == "2":
                 aligner = "bowtie2"
                 console.print("[green]✓[/green] Selected: [cyan]Bowtie2[/cyan]")
+
+                # Prompt for Bowtie2 score-min parameter
+                console.print()
+                console.print("[cyan]Bowtie2 --score-min parameter:[/cyan]")
+                console.print("  Format: G,<intercept>,<slope> where score = intercept + slope*ln(read_length)")
+                console.print("  Examples:")
+                console.print("    • G,20,8   (default, permissive)")
+                console.print("    • G,20,20  (more stringent)")
+                console.print("    • G,40,40  (very stringent)")
+                console.print()
+
+                while True:
+                    score_min_input = console.input("[green]Enter score-min (or press ENTER for default G,20,8):[/green] ").strip()
+                    if not score_min_input:
+                        bowtie2_score_min = "G,20,8"
+                        console.print(f"[green]✓[/green] Using default: [cyan]{bowtie2_score_min}[/cyan]")
+                        break
+                    # Basic validation: check format
+                    parts = score_min_input.split(',')
+                    if len(parts) == 3 and parts[0] in ['G', 'L', 'S', 'C']:
+                        try:
+                            # Validate numeric parts
+                            float(parts[1])
+                            float(parts[2])
+                            bowtie2_score_min = score_min_input
+                            console.print(f"[green]✓[/green] Score-min: [cyan]{bowtie2_score_min}[/cyan]")
+                            break
+                        except ValueError:
+                            console.print("[red]Invalid format. Second and third values must be numbers.[/red]")
+                    else:
+                        console.print("[red]Invalid format. Expected: TYPE,intercept,slope (e.g., G,20,8)[/red]")
+
                 break
             elif choice == "3":
                 aligner = "minimap2"
@@ -517,7 +550,8 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         aligner=aligner,
         threads=threads,
         sam=sam_path,
-        minimap2_profile=minimap2_profile
+        minimap2_profile=minimap2_profile,
+        bowtie2_score_min=bowtie2_score_min
     )
 
     console.print("[green]═══════════════════════════════════════════════════════[/green]")

@@ -54,6 +54,7 @@ class PipelineExecutor:
         threads: int = 4,
         sam: str | Path | None = None,
         minimap2_profile: str = "short",
+        bowtie2_score_min: str = "G,20,8",
         show_header: bool = True,
     ) -> None:
         """Execute the complete pipeline (supports both paired-end and single-end)."""
@@ -90,13 +91,13 @@ class PipelineExecutor:
                 )
                 if is_paired:
                     self._run_spinner(
-                        f"bowtie2 -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
+                        f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
                     )
                 else:
                     self._run_spinner(
-                        f"bowtie2 -p {threads} -x '{index_base}' -U '{r1}' -S '{sam_output}'",
+                        f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -U '{r1}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
                     )
@@ -226,6 +227,8 @@ class PipelineExecutor:
             str(threads),
             "--minimap2-profile",
             minimap2_profile,
+            "--bowtie2-score-min",
+            bowtie2_score_min,
             "--prefix",
             self.prefix,
         ])
