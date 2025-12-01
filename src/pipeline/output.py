@@ -135,7 +135,7 @@ def create_bam_files(
     aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
-    bowtie2_score_min='G,20,8',
+    bowtie2_score_min='G,40,40',
     is_paired=False,
     prefix="",
 ):
@@ -266,7 +266,7 @@ def main(
     aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
-    bowtie2_score_min='G,20,8',
+    bowtie2_score_min='G,40,40',
     prefix="",
 ):
     # Ensure the output directories exist
@@ -308,8 +308,8 @@ if __name__ == "__main__":
     parser.add_argument('--minimap2-profile', default='short',
                         choices=['short', 'pacbio-hifi', 'pacbio-clr', 'ont-q20', 'ont-standard'],
                         help='Minimap2 profile (default: short)')
-    parser.add_argument('--bowtie2-score-min', default='G,20,8',
-                        help='Bowtie2 --score-min function (default: G,20,8)')
+    parser.add_argument('--bowtie2-score-min', default='G,40,40',
+                        help='Bowtie2 --score-min function (default: G,40,40)')
     parser.add_argument('--prefix', default='', help='Prefix to add to all output filenames (default: none)')
 
     args = parser.parse_args()

@@ -54,7 +54,7 @@ class PipelineExecutor:
         threads: int = 4,
         sam: str | Path | None = None,
         minimap2_profile: str = "short",
-        bowtie2_score_min: str = "G,20,8",
+        bowtie2_score_min: str = "G,40,40",
         show_header: bool = True,
     ) -> None:
         """Execute the complete pipeline (supports both paired-end and single-end)."""
