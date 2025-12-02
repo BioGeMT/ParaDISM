@@ -362,9 +362,12 @@ def create_iteration_plots(
     axes[0].errorbar(iter_nums, para_prec_mean, yerr=para_prec_std, 
                      fmt='o-', color='red', linewidth=2, markersize=8, 
                      capsize=5, capthick=2, label='ParaDISM', alpha=0.8)
-    axes[0].errorbar(iter_nums, bwa_prec_mean, yerr=bwa_prec_std,
-                     fmt='s--', color='#4682B4', linewidth=2, markersize=8,
+    # BWA is constant across iterations - error bar only at iteration 1, then straight line
+    axes[0].errorbar([iter_nums[0]], [bwa_prec_mean[0]], yerr=[bwa_prec_std[0]],
+                     fmt='s', color='#4682B4', linewidth=2, markersize=8,
                      capsize=5, capthick=2, label='BWA-MEM2 (direct)', alpha=0.8)
+    axes[0].plot(iter_nums, [bwa_prec_mean[0]] * len(iter_nums), ':', 
+                 color='#4682B4', linewidth=2, alpha=0.8)
     axes[0].set_xlabel('Iteration', weight='bold')
     axes[0].set_ylabel('Precision', weight='bold')
     axes[0].set_title(f'Precision Across Iterations (n={seed_end - seed_start + 1} seeds)', weight='bold')
@@ -378,9 +381,12 @@ def create_iteration_plots(
     axes[1].errorbar(iter_nums, para_rec_mean, yerr=para_rec_std,
                      fmt='o-', color='red', linewidth=2, markersize=8,
                      capsize=5, capthick=2, label='ParaDISM', alpha=0.8)
-    axes[1].errorbar(iter_nums, bwa_rec_mean, yerr=bwa_rec_std,
-                     fmt='s--', color='#4682B4', linewidth=2, markersize=8,
+    # BWA is constant across iterations - error bar only at iteration 1, then straight line
+    axes[1].errorbar([iter_nums[0]], [bwa_rec_mean[0]], yerr=[bwa_rec_std[0]],
+                     fmt='s', color='#4682B4', linewidth=2, markersize=8,
                      capsize=5, capthick=2, label='BWA-MEM2 (direct)', alpha=0.8)
+    axes[1].plot(iter_nums, [bwa_rec_mean[0]] * len(iter_nums), ':', 
+                 color='#4682B4', linewidth=2, alpha=0.8)
     axes[1].set_xlabel('Iteration', weight='bold')
     axes[1].set_ylabel('Recall', weight='bold')
     axes[1].set_title(f'Recall Across Iterations (n={seed_end - seed_start + 1} seeds)', weight='bold')
@@ -394,9 +400,12 @@ def create_iteration_plots(
     axes[2].errorbar(iter_nums, para_spec_mean, yerr=para_spec_std,
                      fmt='o-', color='red', linewidth=2, markersize=8,
                      capsize=5, capthick=2, label='ParaDISM', alpha=0.8)
-    axes[2].errorbar(iter_nums, bwa_spec_mean, yerr=bwa_spec_std,
-                     fmt='s--', color='#4682B4', linewidth=2, markersize=8,
+    # BWA is constant across iterations - error bar only at iteration 1, then straight line
+    axes[2].errorbar([iter_nums[0]], [bwa_spec_mean[0]], yerr=[bwa_spec_std[0]],
+                     fmt='s', color='#4682B4', linewidth=2, markersize=8,
                      capsize=5, capthick=2, label='BWA-MEM2 (direct)', alpha=0.8)
+    axes[2].plot(iter_nums, [bwa_spec_mean[0]] * len(iter_nums), ':', 
+                 color='#4682B4', linewidth=2, alpha=0.8)
     axes[2].set_xlabel('Iteration', weight='bold')
     axes[2].set_ylabel('Specificity', weight='bold')
     axes[2].set_title(f'Specificity Across Iterations (n={seed_end - seed_start + 1} seeds)', weight='bold')
