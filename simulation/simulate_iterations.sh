@@ -18,10 +18,10 @@ set -euo pipefail
 # Configuration
 # ------------------------------------------------------------------
 SEED_START=1
-SEED_END=10             # Number of seeds (for error bars)
+SEED_END=50            # Number of seeds (for error bars)
 SIM_OUTPUT_BASE="${SCRIPT_DIR}/sim_output_iterations"
 REFERENCE="${PARADISM_ROOT}/ref.fa"
-THREADS=9                   # Threads per ParaDISM run (10 seeds × 1 aligner × 9 threads = 90 CPUs)
+THREADS=1                   # Threads per ParaDISM run (100 seeds × 1 aligner × 1 thread = 100 CPUs)
 NUM_READS=100000
 ERROR_RATE=0.01             # default sequencing error rate (per base)
 MINIMAP2_PROFILE="short"     # sr preset
@@ -75,8 +75,8 @@ run_mapper() {
 # ------------------------------------------------------------------
 ERROR_SUFFIX=$(format_error_suffix "$ERROR_RATE")
 
-# Process seeds in batches of 10 in parallel (10 seeds × 1 aligner × 9 threads = 90 CPUs)
-SEEDS_PER_BATCH=10
+# Process seeds in batches of 100 in parallel (100 seeds × 1 aligner × 1 thread = 100 CPUs)
+SEEDS_PER_BATCH=100
 seed_array=($(seq "$SEED_START" "$SEED_END"))
 total_seeds=${#seed_array[@]}
 
