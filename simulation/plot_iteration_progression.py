@@ -421,7 +421,29 @@ def create_iteration_plots(
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
     
+    # Save CSV with iteration progression data
+    csv_path = output_dir / f'iteration_progression_{aligner}.csv'
+    import pandas as pd
+    progression_data = {
+        'Iteration': iter_nums,
+        'ParaDISM_Precision_Mean': para_prec_mean,
+        'ParaDISM_Precision_Std': para_prec_std,
+        'ParaDISM_Recall_Mean': para_rec_mean,
+        'ParaDISM_Recall_Std': para_rec_std,
+        'ParaDISM_Specificity_Mean': para_spec_mean,
+        'ParaDISM_Specificity_Std': para_spec_std,
+        'BWA-MEM2_Precision_Mean': bwa_prec_mean,
+        'BWA-MEM2_Precision_Std': bwa_prec_std,
+        'BWA-MEM2_Recall_Mean': bwa_rec_mean,
+        'BWA-MEM2_Recall_Std': bwa_rec_std,
+        'BWA-MEM2_Specificity_Mean': bwa_spec_mean,
+        'BWA-MEM2_Specificity_Std': bwa_spec_std,
+    }
+    df = pd.DataFrame(progression_data)
+    df.to_csv(csv_path, index=False)
+    
     print(f"Saved iteration progression plot: {output_path}")
+    print(f"Saved iteration progression CSV: {csv_path}")
 
 
 def main():

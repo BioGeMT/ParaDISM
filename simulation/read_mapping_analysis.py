@@ -366,9 +366,9 @@ def main():
     summary_data = {
         'Read_ID': read_ids,
         'Ground_Truth': y_true,
-        'Mapper_Prediction': y_mapper,
+        'ParaDISM_Prediction': y_mapper,
         f'{args.aligner.upper()}_Prediction': y_direct,
-        'Mapper_Correct': [1 if y_true[i] == y_mapper[i] else 0 for i in range(len(read_ids))],
+        'ParaDISM_Correct': [1 if y_true[i] == y_mapper[i] else 0 for i in range(len(read_ids))],
         f'{args.aligner.upper()}_Correct': [1 if y_true[i] == y_direct[i] else 0 for i in range(len(read_ids))]
     }
     df = pd.DataFrame(summary_data)
