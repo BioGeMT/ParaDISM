@@ -21,7 +21,7 @@ SEED_START=1
 SEED_END=1
 SIM_OUTPUT_BASE="${SCRIPT_DIR}/sim_output"
 REFERENCE="${PARADISM_ROOT}/ref.fa"
-THREADS=2
+THREADS=1                   # Threads per ParaDISM run (30 seeds × 3 aligners × 1 thread = 90 CPUs)
 NUM_READS=100000
 ERROR_RATE=0.01             # default sequencing error rate (per base)
 MINIMAP2_PROFILE="short"     # sr preset
@@ -80,7 +80,7 @@ TIMING_CSV="${SIM_OUTPUT_BASE}/timing_data.csv"
 TIMING_TMP_DIR="${SIM_OUTPUT_BASE}/timing_tmp"
 mkdir -p "$TIMING_TMP_DIR"
 
-# Process seeds in batches of 30 in parallel
+# Process seeds in batches of 30 in parallel (30 seeds × 3 aligners × 1 thread = 90 CPUs)
 SEEDS_PER_BATCH=30
 seed_array=($(seq "$SEED_START" "$SEED_END"))
 total_seeds=${#seed_array[@]}

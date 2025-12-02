@@ -6,7 +6,7 @@ set -euo pipefail
 DATA_DIR="/mnt/STORAGE-BioGeMT-01/pkd_data"
 REFERENCE="ref.fa"
 ALIGNER="bwa-mem2"
-THREADS=64
+THREADS=5                    # Threads per ParaDISM run (18 samples × 5 threads = 90 CPUs)
 OUTPUT_BASE="HTS_bwa_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 # Only used when ALIGNER=minimap2 (valid presets: short, pacbio-hifi, pacbio-clr, ont-q20, ont-standard)
@@ -45,79 +45,103 @@ SAMPLES=(
     "IndexCHKPEPI00000968_HTS002"
 )
 
-# Process each sample
-for sample in "${SAMPLES[@]}"; do
-    # Handle different naming patterns
-    if [[ "$sample" == "IndexCHKPEPI00000968_HTS002" ]]; then
-        r1_file="$DATA_DIR/${sample}_1.fq"
-        r2_file="$DATA_DIR/${sample}_2.fq"
-    else
-        r1_file="$DATA_DIR/${sample}_R1.fq"
-        r2_file="$DATA_DIR/${sample}_R2.fq"
-    fi
+# Process samples in batches to use 90 CPUs (18 samples × 5 threads = 90 CPUs)
+SAMPLES_PER_BATCH=18
+total_samples=${#SAMPLES[@]}
 
-    output_dir="$OUTPUT_BASE/$sample"
-
-    # Check if files exist
-    if [ ! -f "$r1_file" ]; then
-        echo "Error: R1 file not found: $r1_file"
-        continue
+for ((batch_start=0; batch_start<total_samples; batch_start+=SAMPLES_PER_BATCH)); do
+    batch_end=$((batch_start + SAMPLES_PER_BATCH))
+    if [[ $batch_end -gt $total_samples ]]; then
+        batch_end=$total_samples
     fi
-    if [ ! -f "$r2_file" ]; then
-        echo "Error: R2 file not found: $r2_file"
-        continue
-    fi
-
+    
     echo "=========================================="
-    echo "Processing sample: $sample"
-    echo "R1: $r1_file"
-    echo "R2: $r2_file"
-    echo "Output: $output_dir"
+    echo "Processing samples batch: ${batch_start} to $((batch_end - 1))"
     echo "=========================================="
+    
+    # Process all samples in this batch in parallel
+    for ((i=batch_start; i<batch_end; i++)); do
+        sample="${SAMPLES[$i]}"
+        (
+            # Handle different naming patterns
+            if [[ "$sample" == "IndexCHKPEPI00000968_HTS002" ]]; then
+                r1_file="$DATA_DIR/${sample}_1.fq"
+                r2_file="$DATA_DIR/${sample}_2.fq"
+            else
+                r1_file="$DATA_DIR/${sample}_R1.fq"
+                r2_file="$DATA_DIR/${sample}_R2.fq"
+            fi
 
-    # Set log file path
-    log_file="$LOG_DIR/${sample}.log"
+            output_dir="$OUTPUT_BASE/$sample"
 
-    # Capture start time
-    start_time=$(date +%s)
-    start_date=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "Start time: $start_date" | tee -a "$log_file"
+            # Check if files exist
+            if [ ! -f "$r1_file" ]; then
+                echo "Error: R1 file not found: $r1_file"
+                exit 1
+            fi
+            if [ ! -f "$r2_file" ]; then
+                echo "Error: R2 file not found: $r2_file"
+                exit 1
+            fi
 
-    # Run paradism.py with time command, save all output to log
-    mapper_cmd=(
-        python paradism.py
-        --read1 "$r1_file"
-        --read2 "$r2_file"
-        --reference "$REFERENCE"
-        --aligner "$ALIGNER"
-        --threads "$THREADS"
-        --output-dir "$output_dir"
-        --iterations 2
-    )
+            echo "=========================================="
+            echo "Processing sample: $sample"
+            echo "R1: $r1_file"
+            echo "R2: $r2_file"
+            echo "Output: $output_dir"
+            echo "=========================================="
 
-    if [[ "$ALIGNER" == "minimap2" ]]; then
-        mapper_cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
-    fi
+            # Set log file path
+            log_file="$LOG_DIR/${sample}.log"
 
-    if /usr/bin/time -v "${mapper_cmd[@]}" >> "$log_file" 2>&1; then
-        status="SUCCESS"
-    else
-        status="FAILED"
-    fi
+            # Capture start time
+            start_time=$(date +%s)
+            start_date=$(date '+%Y-%m-%d %H:%M:%S')
+            echo "Start time: $start_date" | tee -a "$log_file"
 
-    # Capture end time and calculate duration
-    end_time=$(date +%s)
-    end_date=$(date '+%Y-%m-%d %H:%M:%S')
-    duration=$((end_time - start_time))
-    hours=$((duration / 3600))
-    minutes=$(((duration % 3600) / 60))
-    seconds=$((duration % 60))
+            # Run paradism.py with time command, save all output to log
+            mapper_cmd=(
+                python paradism.py
+                --read1 "$r1_file"
+                --read2 "$r2_file"
+                --reference "$REFERENCE"
+                --aligner "$ALIGNER"
+                --threads "$THREADS"
+                --output-dir "$output_dir"
+                --iterations 2
+            )
 
-    echo "End time: $end_date" | tee -a "$log_file"
-    echo "Status: $status" | tee -a "$log_file"
-    printf "Wall clock time: %02d:%02d:%02d (%d seconds)\n" $hours $minutes $seconds $duration | tee -a "$log_file"
+            if [[ "$ALIGNER" == "minimap2" ]]; then
+                mapper_cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
+            fi
 
-    echo "Completed: $sample (Status: $status, Time: ${hours}h ${minutes}m ${seconds}s, Log: $log_file)"
+            if /usr/bin/time -v "${mapper_cmd[@]}" >> "$log_file" 2>&1; then
+                status="SUCCESS"
+            else
+                status="FAILED"
+            fi
+
+            # Capture end time and calculate duration
+            end_time=$(date +%s)
+            end_date=$(date '+%Y-%m-%d %H:%M:%S')
+            duration=$((end_time - start_time))
+            hours=$((duration / 3600))
+            minutes=$(((duration % 3600) / 60))
+            seconds=$((duration % 60))
+
+            echo "End time: $end_date" | tee -a "$log_file"
+            echo "Status: $status" | tee -a "$log_file"
+            printf "Wall clock time: %02d:%02d:%02d (%d seconds)\n" $hours $minutes $seconds $duration | tee -a "$log_file"
+
+            echo "Completed: $sample (Status: $status, Time: ${hours}h ${minutes}m ${seconds}s, Log: $log_file)"
+        ) &
+    done
+    
+    # Wait for all samples in this batch to complete
+    wait
+    echo "=========================================="
+    echo "Completed batch: ${batch_start} to $((batch_end - 1))"
+    echo "=========================================="
     echo ""
 done
 
