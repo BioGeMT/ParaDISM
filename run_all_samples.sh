@@ -92,6 +92,7 @@ for sample in "${SAMPLES[@]}"; do
         --aligner "$ALIGNER"
         --threads "$THREADS"
         --output-dir "$output_dir"
+        --iterations 2
     )
 
     if [[ "$ALIGNER" == "minimap2" ]]; then

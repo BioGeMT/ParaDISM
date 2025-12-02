@@ -141,6 +141,63 @@ def parse_vcf_with_info(vcf_path):
     return variants
 
 
+def split_truth_by_zygosity(truth_variants, truth_info):
+    """
+    Split ground truth variants into heterozygous vs homozygous sets.
+    Uses DWGSIM's INFO tags when available:
+      - pl=1 or 2  -> heterozygous
+      - pl=3       -> homozygous
+      - AF≈0.5     -> heterozygous
+      - AF≈1.0     -> homozygous
+    Falls back to treating variants as homozygous if no info is present.
+    """
+    het = set()
+    hom = set()
+
+    for var in truth_variants:
+        info = truth_info.get(var, {})
+        pl = info.get("pl")
+        af = info.get("AF")
+
+        is_het = False
+        is_hom = False
+
+        if pl is not None:
+            try:
+                pl_val = int(pl)
+            except ValueError:
+                pl_val = None
+
+            if pl_val in (1, 2):
+                is_het = True
+            elif pl_val == 3:
+                is_hom = True
+
+        # If pl did not decide, fall back to AF if present
+        if not (is_het or is_hom) and af is not None:
+            try:
+                af_first = float(str(af).split(",")[0])
+            except ValueError:
+                af_first = None
+
+            if af_first is not None:
+                if af_first >= 0.99:
+                    is_hom = True
+                elif 0.4 <= af_first <= 0.6:
+                    is_het = True
+
+        # Final fallback: treat as homozygous if nothing else is known
+        if not (is_het or is_hom):
+            is_hom = True
+
+        if is_het:
+            het.add(var)
+        if is_hom:
+            hom.add(var)
+
+    return het, hom
+
+
 def get_all_positions(variants):
     """Get all unique (CHROM, POS) positions from variants."""
     positions = set()
@@ -549,6 +606,12 @@ def main():
     print("Parsing ground truth VCF (SNPs only)...")
     ground_truth = parse_vcf(args.ground_truth, filter_snps_only=True)
     print(f"  Found {len(ground_truth)} SNPs in ground truth")
+
+    # Derive heterozygous vs homozygous subsets from ground truth INFO fields
+    truth_info = parse_vcf_with_info(args.ground_truth)
+    gt_het, gt_hom = split_truth_by_zygosity(ground_truth, truth_info)
+    print(f"  Heterozygous SNPs in truth: {len(gt_het)}")
+    print(f"  Homozygous SNPs in truth:  {len(gt_hom)}")
     
     print("Parsing ParaDISM combined VCF...")
     combined = parse_vcf(args.combined_vcf)
@@ -573,6 +636,17 @@ def main():
         tp_direct, fp_direct, fn_direct = compare_variants(ground_truth, direct)
         metrics_combined = calculate_metrics(tp_combined, fp_combined, fn_combined)
         metrics_direct = calculate_metrics(tp_direct, fp_direct, fn_direct)
+
+    # Heterozygous-only and homozygous-only metrics (allele-level, no TN)
+    tp_combined_het, fp_combined_het, fn_combined_het = compare_variants(gt_het, combined)
+    tp_direct_het, fp_direct_het, fn_direct_het = compare_variants(gt_het, direct)
+    metrics_combined_het = calculate_metrics(tp_combined_het, fp_combined_het, fn_combined_het)
+    metrics_direct_het = calculate_metrics(tp_direct_het, fp_direct_het, fn_direct_het)
+
+    tp_combined_hom, fp_combined_hom, fn_combined_hom = compare_variants(gt_hom, combined)
+    tp_direct_hom, fp_direct_hom, fn_direct_hom = compare_variants(gt_hom, direct)
+    metrics_combined_hom = calculate_metrics(tp_combined_hom, fp_combined_hom, fn_combined_hom)
+    metrics_direct_hom = calculate_metrics(tp_direct_hom, fp_direct_hom, fn_direct_hom)
     
     # Calculate per-gene metrics
     print("\nCalculating per-gene metrics...")
@@ -624,6 +698,15 @@ def main():
         'Direct_Precision': metrics_direct['precision'],
         'Direct_Recall': metrics_direct['recall'],
         'Direct_Specificity': metrics_direct['specificity'],
+        # Heterozygous-only and homozygous-only overall metrics
+        'Combined_Precision_Het': metrics_combined_het['precision'],
+        'Combined_Recall_Het': metrics_combined_het['recall'],
+        'Combined_Precision_Hom': metrics_combined_hom['precision'],
+        'Combined_Recall_Hom': metrics_combined_hom['recall'],
+        'Direct_Precision_Het': metrics_direct_het['precision'],
+        'Direct_Recall_Het': metrics_direct_het['recall'],
+        'Direct_Precision_Hom': metrics_direct_hom['precision'],
+        'Direct_Recall_Hom': metrics_direct_hom['recall'],
     })
     
     df = pd.DataFrame(summary_data)

@@ -10,7 +10,11 @@ dependencies:
   - bowtie2
   - bwa-mem2
   - minimap2
-  - samtools
+          - samtools
+          - freebayes
+          - bcftools
+          - htslib  # Provides bgzip, tabix, etc.
+          - gsl=2.5  # Required for bcftools compatibility
   - biopython
   - pysam
   - rich
@@ -19,4 +23,3 @@ dependencies:
   - scikit-learn
   - matplotlib
   - scipy
-  - freebayes
