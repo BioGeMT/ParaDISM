@@ -68,15 +68,19 @@ class PipelineExecutor:
         """
         print(f"\n\033[0;33m=== Iteration {iteration} ===\033[0m", file=sys.stderr)
         
-        # 1. Call variants and apply to reference
-        refinement_dir = self.output_dir / "iterative_refinement" / f"iteration_{iteration}"
-        refinement_dir.mkdir(parents=True, exist_ok=True)
+        # Create iteration directory with all outputs organized together
+        iter_output_dir = self.output_dir / f"iteration_{iteration}"
+        iter_output_dir.mkdir(exist_ok=True)
         
-        per_gene_vcf_dir = refinement_dir / "per_gene_vcfs"
+        # 1. Call variants and apply to reference (inside iteration directory)
+        variant_calling_dir = iter_output_dir / "variant_calling"
+        variant_calling_dir.mkdir(exist_ok=True)
+        
+        per_gene_vcf_dir = variant_calling_dir / "per_gene_vcfs"
         per_gene_vcf_dir.mkdir(exist_ok=True)
         
-        vcf_output = refinement_dir / "variants.vcf"
-        updated_ref = refinement_dir / "updated_ref.fa"
+        vcf_output = variant_calling_dir / "variants.vcf"
+        updated_ref = variant_calling_dir / "updated_ref.fa"
         
         self._run_progress(
             [
@@ -91,9 +95,7 @@ class PipelineExecutor:
             f"Refining reference (iteration {iteration})",
         )
         
-        # 2. Re-run pipeline with updated reference
-        iter_output_dir = self.output_dir / f"iteration_{iteration}"
-        iter_output_dir.mkdir(exist_ok=True)
+        # 2. Re-run pipeline with updated reference (ParaDISM outputs go in iteration directory)
         
         # Create temporary executor for this iteration
         iter_executor = PipelineExecutor(
@@ -147,6 +149,18 @@ class PipelineExecutor:
         sam = str(sam) if sam else None
         is_paired = r2 is not None
 
+        # For iteration 1 (initial run), create iteration_1 directory to keep structure consistent
+        # Only create iteration_1 if iterations > 0 (not when called from refinement with iterations=0)
+        original_output_dir = self.output_dir
+        if iterations > 0:
+            iter1_output_dir = self.output_dir / "iteration_1"
+            iter1_output_dir.mkdir(exist_ok=True)
+            # Temporarily redirect self.output_dir for initial run
+            self.output_dir = iter1_output_dir
+        else:
+            # When iterations=0, use output_dir directly (no subdirectory)
+            iter1_output_dir = self.output_dir
+        
         msa_output = self.output_dir / "ref_seq_msa.aln"
         self._run_spinner(
             f"mafft --auto '{ref}' > '{msa_output}'",
@@ -333,14 +347,23 @@ class PipelineExecutor:
 
         print("\033[0;36m✓\033[0m \033[0;36mCleaning up intermediate files\033[0m", file=sys.stderr)
         
-        # Store iteration 0 outputs
-        self.iteration_outputs.append({
-            'iteration': 0,
-            'reference': Path(ref),
-            'output_dir': self.output_dir,
-            'mappings_tsv': unique_mappings_tsv,
-            'bam_dir': bam_dir,
-        })
+        # Store iteration 1 outputs (initial run)
+        # Only store if this was iteration 1 (not when called from refinement)
+        if iterations > 0:
+            self.iteration_outputs.append({
+                'iteration': 1,
+                'reference': Path(ref),
+                'output_dir': self.output_dir,
+                'mappings_tsv': unique_mappings_tsv,
+                'bam_dir': bam_dir,
+            })
+            
+            # Restore original output_dir for subsequent operations
+            self.output_dir = original_output_dir
+        else:
+            # When iterations=0 (called from refinement), don't store in iteration_outputs
+            # The outputs are already in the correct directory
+            pass
         
         # Iterative refinement
         # iterations=1 means run once (no refinement)
@@ -349,7 +372,7 @@ class PipelineExecutor:
         refinement_iterations = iterations - 1
         if refinement_iterations > 0:
             print(f"\n\033[0;36mStarting iterative refinement ({refinement_iterations} iteration(s))...\033[0m\n", file=sys.stderr)
-            for iteration in range(1, refinement_iterations + 1):
+            for iteration in range(2, iterations + 1):
                 iter_ref, iter_output_dir = self._run_single_iteration_refinement(
                     r1=r1,
                     r2=r2,
@@ -376,6 +399,6 @@ class PipelineExecutor:
             # Update output_dir to final iteration
             final_output = self.iteration_outputs[-1]
             self.output_dir = final_output['output_dir']
-            print(f"\n\033[0;36mIterative refinement complete. Final outputs from iteration {refinement_iterations}.\033[0m\n", file=sys.stderr)
+            print(f"\n\033[0;36mIterative refinement complete. Final outputs from iteration {iterations}.\033[0m\n", file=sys.stderr)
         
         print(f"\nPipeline complete. Outputs saved to: {self.output_dir}\n", file=sys.stderr)

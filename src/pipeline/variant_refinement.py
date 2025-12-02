@@ -91,11 +91,11 @@ def call_variants_from_bams(
         
         print(f"  Calling variants for {gene_name}...", file=sys.stderr)
         
-        # Call FreeBayes
-        try:
-            with open(gene_vcf_tmp, "w") as vcf_out, open(
-                per_gene_vcf_dir / f"{gene_name}.log", "w"
-            ) as log_out:
+        # Call FreeBayes - fail fast if it fails
+        with open(gene_vcf_tmp, "w") as vcf_out, open(
+            per_gene_vcf_dir / f"{gene_name}.log", "w"
+        ) as log_out:
+            try:
                 subprocess.run(
                     [
                         "freebayes",
@@ -110,44 +110,29 @@ def call_variants_from_bams(
                     stderr=log_out,
                     check=True,
                 )
-        except subprocess.CalledProcessError:
-            print(f"    Warning: FreeBayes failed for {gene_name}; creating empty VCF", file=sys.stderr)
-            # Create empty VCF
-            with open(gene_vcf, "w") as f:
-                f.write("##fileformat=VCFv4.2\n")
-                f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
-            gene_vcf_tmp.unlink(missing_ok=True)
-            continue
+            except subprocess.CalledProcessError as e:
+                # Read log file for error details
+                log_path = per_gene_vcf_dir / f"{gene_name}.log"
+                error_details = ""
+                if log_path.exists():
+                    with open(log_path, "r") as log_f:
+                        error_details = log_f.read()
+                print(f"Error: FreeBayes failed for {gene_name}", file=sys.stderr)
+                if error_details:
+                    print(f"  FreeBayes stderr: {error_details}", file=sys.stderr)
+                sys.exit(1)
         
         # Filter to SNPs only (matching existing ParaDISM approach)
         if VARIANT_FILTER_SNPS_ONLY:
-            try:
-                # Use bcftools to filter SNPs
-                with open(gene_vcf, "w") as vcf_out:
-                    subprocess.run(
-                        ["bcftools", "view", "-v", "snps", str(gene_vcf_tmp)],
-                        stdout=vcf_out,
-                        stderr=subprocess.DEVNULL,
-                        check=True,
-                    )
-                gene_vcf_tmp.unlink()
-            except subprocess.CalledProcessError:
-                # Fallback to awk filter (matching existing code)
-                print(f"    Using awk filter for {gene_name}...", file=sys.stderr)
-                with open(gene_vcf, "w") as vcf_out:
-                    with open(gene_vcf_tmp, "r") as vcf_in:
-                        for line in vcf_in:
-                            if line.startswith("#"):
-                                vcf_out.write(line)
-                            else:
-                                parts = line.strip().split("\t")
-                                if len(parts) >= 5:
-                                    ref = parts[3]
-                                    alt = parts[4]
-                                    # SNPs only: single nucleotide substitutions
-                                    if len(ref) == 1 and len(alt) == 1:
-                                        vcf_out.write(line)
-                gene_vcf_tmp.unlink()
+            # Use bcftools to filter SNPs - fail fast if it fails
+            with open(gene_vcf, "w") as vcf_out:
+                result = subprocess.run(
+                    ["bcftools", "view", "-v", "snps", str(gene_vcf_tmp)],
+                    stdout=vcf_out,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                )
+            gene_vcf_tmp.unlink()
         else:
             gene_vcf_tmp.rename(gene_vcf)
         
@@ -165,50 +150,84 @@ def call_variants_from_bams(
     
     print(f"  Merging {len(per_gene_vcfs)} per-gene VCFs...", file=sys.stderr)
     
-    # Use bcftools merge if available, otherwise concatenate
-    try:
-        output_vcf.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_vcf, "w") as vcf_out:
+    output_vcf.parent.mkdir(parents=True, exist_ok=True)
+    
+    # bcftools merge requires bgzipped VCFs - compress per-gene VCFs first
+    print(f"  Compressing per-gene VCFs for merging...", file=sys.stderr)
+    compressed_vcfs = []
+    for vcf_file in per_gene_vcfs:
+        vcf_gz = vcf_file.with_suffix(".vcf.gz")
+        try:
             subprocess.run(
-                ["bcftools", "merge", "-m", "all"] + [str(vcf) for vcf in per_gene_vcfs],
-                stdout=vcf_out,
-                stderr=subprocess.DEVNULL,
+                ["bgzip", "-c", str(vcf_file)],
+                stdout=open(vcf_gz, "wb"),
+                stderr=subprocess.PIPE,
                 check=True,
             )
-    except subprocess.CalledProcessError:
-        # Fallback: simple concatenation (matching existing code)
-        print("  Using simple VCF concatenation...", file=sys.stderr)
-        output_vcf.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_vcf, "w") as out_f:
-            # Write header from first VCF
-            with open(per_gene_vcfs[0], "r") as first_vcf:
-                for line in first_vcf:
-                    if line.startswith("#"):
-                        out_f.write(line)
-                    else:
-                        break
-            
-            # Write variants from all VCFs
-            for vcf_file in per_gene_vcfs:
-                with open(vcf_file, "r") as vcf_in:
-                    for line in vcf_in:
-                        if not line.startswith("#"):
-                            out_f.write(line)
-        
-        # Sort by chromosome and position
-        try:
-            sorted_vcf = output_vcf.with_suffix(".sorted.vcf")
-            with open(sorted_vcf, "w") as sorted_out:
-                subprocess.run(
-                    ["bcftools", "sort", str(output_vcf)],
-                    stdout=sorted_out,
-                    stderr=subprocess.DEVNULL,
-                    check=True,
-                )
-            sorted_vcf.rename(output_vcf)
-        except subprocess.CalledProcessError:
-            # If sorting fails, keep unsorted VCF
-            pass
+            # Index compressed VCF
+            subprocess.run(
+                ["bcftools", "index", str(vcf_gz)],
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+            compressed_vcfs.append(vcf_gz)
+        except subprocess.CalledProcessError as e:
+            print(f"Error: Failed to compress {vcf_file}: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+            sys.exit(1)
+    
+    # Merge VCFs using bcftools merge - fail fast if it fails
+    # Use --force-samples to handle duplicate sample names across per-gene VCFs
+    merged_vcf = output_vcf.with_suffix(".merged.vcf")
+    try:
+        with open(merged_vcf, "w") as vcf_out:
+            subprocess.run(
+                ["bcftools", "merge", "-m", "all", "--force-samples"] + [str(vcf) for vcf in compressed_vcfs],
+                stdout=vcf_out,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+    except subprocess.CalledProcessError as e:
+        print(f"Error: bcftools merge failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Sort VCF - fail fast if it fails
+    try:
+        with open(output_vcf, "w") as sorted_out:
+            subprocess.run(
+                ["bcftools", "sort", str(merged_vcf)],
+                stdout=sorted_out,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+        merged_vcf.unlink()  # Remove temporary merged file
+    except subprocess.CalledProcessError as e:
+        print(f"Error: bcftools sort failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Compress and index VCF for bcftools consensus - require bgzip, fail fast
+    if not check_tool("bgzip"):
+        print("Error: bgzip not found. bgzip is required for variant refinement.", file=sys.stderr)
+        sys.exit(1)
+    
+    vcf_gz = output_vcf.with_suffix(".vcf.gz")
+    print(f"  Compressing VCF for bcftools consensus...", file=sys.stderr)
+    try:
+        subprocess.run(
+            ["bgzip", "-c", str(output_vcf)],
+            stdout=open(vcf_gz, "wb"),
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        # Index the compressed VCF
+        subprocess.run(
+            ["bcftools", "index", str(vcf_gz)],
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        print(f"  Compressed VCF saved to: {vcf_gz}", file=sys.stderr)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: bgzip/index failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+        sys.exit(1)
     
     print(f"  Combined VCF saved to: {output_vcf}", file=sys.stderr)
 
@@ -223,7 +242,7 @@ def apply_variants_to_reference(
     
     Args:
         reference: Input reference FASTA
-        vcf: Variants VCF file
+        vcf: Variants VCF file (uncompressed)
         output_ref: Output path for updated reference
     """
     if not check_tool("bcftools"):
@@ -264,28 +283,37 @@ def apply_variants_to_reference(
     
     output_ref.parent.mkdir(parents=True, exist_ok=True)
     
-    # Apply variants using bcftools consensus
+    # Require compressed VCF - fail fast if not found
+    vcf_gz = vcf.with_suffix(".vcf.gz")
+    if not vcf_gz.exists():
+        print(f"Error: Compressed VCF not found: {vcf_gz}", file=sys.stderr)
+        print(f"  Variant refinement requires bgzipped VCF.", file=sys.stderr)
+        sys.exit(1)
+    
+    # Apply variants using bcftools consensus - fail fast if it fails
     try:
         with open(output_ref, "w") as ref_out:
             subprocess.run(
-                ["bcftools", "consensus", "-f", str(reference), str(vcf)],
+                ["bcftools", "consensus", "-f", str(reference), str(vcf_gz)],
                 stdout=ref_out,
                 stderr=subprocess.PIPE,
                 check=True,
             )
+        print(f"  Successfully applied variants from {vcf_gz.name}", file=sys.stderr)
     except subprocess.CalledProcessError as e:
-        print(f"  Error applying variants: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
-        # Fallback: copy reference unchanged
-        import shutil
-        shutil.copy(reference, output_ref)
-        print("  Warning: Variant application failed; using original reference", file=sys.stderr)
+        print(f"Error: bcftools consensus failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+        sys.exit(1)
     
-    # Index the new reference
-    subprocess.run(
-        ["samtools", "faidx", str(output_ref)],
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+    # Index the new reference - fail fast if it fails
+    try:
+        subprocess.run(
+            ["samtools", "faidx", str(output_ref)],
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error: samtools faidx failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+        sys.exit(1)
     
     print(f"  Updated reference saved to: {output_ref}", file=sys.stderr)
 
