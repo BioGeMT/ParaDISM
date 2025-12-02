@@ -5,7 +5,7 @@ set -euo pipefail
 # Configuration
 DATA_DIR="/mnt/STORAGE-BioGeMT-01/pkd_data"
 REFERENCE="ref.fa"
-ALIGNER="bwa"
+ALIGNER="bwa-mem2"
 THREADS=64
 OUTPUT_BASE="HTS_bwa_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
@@ -83,7 +83,7 @@ for sample in "${SAMPLES[@]}"; do
     start_date=$(date '+%Y-%m-%d %H:%M:%S')
     echo "Start time: $start_date" | tee -a "$log_file"
 
-    # Run mapper.py with time command, save all output to log
+    # Run paradism.py with time command, save all output to log
     mapper_cmd=(
         python paradism.py
         --read1 "$r1_file"
