@@ -135,7 +135,6 @@ def create_bam_files(
     aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
-    bowtie2_score_min='G,40,40',
     is_paired=False,
     prefix="",
 ):
@@ -185,7 +184,7 @@ def create_bam_files(
 
             # Align with bowtie2 using initial stage parameters
             # Note: Always use -U (unpaired) since FASTQ may contain mix of complete pairs and single mates
-            align_cmd = f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}"
+            align_cmd = f"bowtie2 --local --score-min G,40,40 -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
             subprocess.run(align_cmd, shell=True, check=True)
 
@@ -197,7 +196,7 @@ def create_bam_files(
 
             # Align with bwa-mem2
             # Note: Do not use -p flag since FASTQ may contain mix of complete pairs and single mates
-            align_cmd = f"bwa-mem2 mem -t {threads} {index_base} {fastq_file} > {sam_path}"
+            align_cmd = f"bwa-mem2 mem -A 2 -B 8 -T 240 -t {threads} {index_base} {fastq_file} > {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
             subprocess.run(align_cmd, shell=True, check=True)
 
@@ -212,6 +211,9 @@ def create_bam_files(
             }
             preset = preset_map.get(minimap2_profile, 'sr')
 
+            # Add stringent score threshold only for short reads
+            score_threshold = "-s 240" if preset == "sr" else ""
+
             # Build minimap2 index
             index_mmi = f"{index_base}.mmi"
             build_cmd = f"minimap2 -x {preset} -d {index_mmi} {tmp_ref}"
@@ -219,7 +221,7 @@ def create_bam_files(
             subprocess.run(build_cmd, shell=True, check=True)
 
             # Align with minimap2 (paired or single-end)
-            align_cmd = f"minimap2 -ax {preset} --MD -t {threads} {index_mmi} {fastq_file} > {sam_path}"
+            align_cmd = f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} {index_mmi} {fastq_file} > {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
             subprocess.run(align_cmd, shell=True, check=True)
 
@@ -266,7 +268,6 @@ def main(
     aligner='bwa-mem2',
     threads=4,
     minimap2_profile='short',
-    bowtie2_score_min='G,40,40',
     prefix="",
 ):
     # Ensure the output directories exist
@@ -285,7 +286,6 @@ def main(
         aligner,
         threads,
         minimap2_profile,
-        bowtie2_score_min,
         is_paired=r2_file is not None,
         prefix=prefix,
     )
@@ -308,8 +308,6 @@ if __name__ == "__main__":
     parser.add_argument('--minimap2-profile', default='short',
                         choices=['short', 'pacbio-hifi', 'pacbio-clr', 'ont-q20', 'ont-standard'],
                         help='Minimap2 profile (default: short)')
-    parser.add_argument('--bowtie2-score-min', default='G,40,40',
-                        help='Bowtie2 --score-min function (default: G,40,40)')
     parser.add_argument('--prefix', default='', help='Prefix to add to all output filenames (default: none)')
 
     args = parser.parse_args()
@@ -324,6 +322,5 @@ if __name__ == "__main__":
         aligner=args.aligner,
         threads=args.threads,
         minimap2_profile=args.minimap2_profile,
-        bowtie2_score_min=args.bowtie2_score_min,
         prefix=args.prefix
     )
