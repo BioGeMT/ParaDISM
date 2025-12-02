@@ -305,7 +305,8 @@ def display_pipeline_config(
     threads: int,
     sam_file: Optional[str] = None,
     minimap2_profile: Optional[str] = None,
-    output_dir: str = "./output"
+    output_dir: str = "./output",
+    iterations: int = 0,
 ) -> None:
     """Display pipeline configuration summary (paired or single-end)."""
     lines = []
@@ -345,6 +346,11 @@ def display_pipeline_config(
             aligner_display += f" ({profile_display})"
         lines.append(f"  Aligner:    [cyan]{aligner_display}[/cyan]")
         lines.append(f"  Threads:    [cyan]{threads}[/cyan] cores")
+    
+    if iterations > 0:
+        lines.append(f"  Iterations: [cyan]{iterations}[/cyan] [dim](iterative refinement enabled)[/dim]")
+    else:
+        lines.append(f"  Iterations: [dim]0 (disabled)[/dim]")
 
     lines.append("")
 

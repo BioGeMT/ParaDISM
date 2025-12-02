@@ -32,6 +32,9 @@ class PipelineExecutor:
         self.log_file = self.output_dir / f"{self.prefix}_pipeline_{timestamp}.log"
         self.logger = PipelineLogger(self.log_file)
         self.progress = ProgressRunner(self.logger)
+        
+        # Track iteration outputs for analysis
+        self.iteration_outputs = []
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -41,6 +44,77 @@ class PipelineExecutor:
 
     def _run_progress(self, command: Sequence[str], message: str) -> None:
         self.progress.run_with_progress(command, message)
+
+    def _run_single_iteration_refinement(
+        self,
+        r1: str,
+        r2: str | None,
+        previous_ref: Path,
+        previous_bam_dir: Path,
+        aligner: str,
+        threads: int,
+        minimap2_profile: str,
+        is_paired: bool,
+        iteration: int,
+    ) -> tuple[Path, Path]:
+        """
+        Run one iteration of refinement:
+        1. Call variants from previous iteration's BAMs
+        2. Apply variants to reference
+        3. Re-run full pipeline with updated reference
+        
+        Returns:
+            Tuple of (updated_reference_path, iteration_output_directory)
+        """
+        print(f"\n\033[0;33m=== Iteration {iteration} ===\033[0m", file=sys.stderr)
+        
+        # 1. Call variants and apply to reference
+        refinement_dir = self.output_dir / "iterative_refinement" / f"iteration_{iteration}"
+        refinement_dir.mkdir(parents=True, exist_ok=True)
+        
+        per_gene_vcf_dir = refinement_dir / "per_gene_vcfs"
+        per_gene_vcf_dir.mkdir(exist_ok=True)
+        
+        vcf_output = refinement_dir / "variants.vcf"
+        updated_ref = refinement_dir / "updated_ref.fa"
+        
+        self._run_progress(
+            [
+                "python",
+                str(self.pipeline_dir / "variant_refinement.py"),
+                "--bam-dir", str(previous_bam_dir),
+                "--reference", str(previous_ref),
+                "--output-vcf", str(vcf_output),
+                "--output-ref", str(updated_ref),
+                "--per-gene-vcf-dir", str(per_gene_vcf_dir),
+            ],
+            f"Refining reference (iteration {iteration})",
+        )
+        
+        # 2. Re-run pipeline with updated reference
+        iter_output_dir = self.output_dir / f"iteration_{iteration}"
+        iter_output_dir.mkdir(exist_ok=True)
+        
+        # Create temporary executor for this iteration
+        iter_executor = PipelineExecutor(
+            output_dir=iter_output_dir,
+            prefix=self.prefix,
+        )
+        
+        # Run full pipeline (will realign because reference changed)
+        iter_executor.run_pipeline(
+            r1=r1,
+            r2=r2,
+            ref=str(updated_ref),
+            aligner=aligner,
+            threads=threads,
+            sam=None,  # Always realign with new reference
+            minimap2_profile=minimap2_profile,
+            show_header=False,
+            iterations=0,  # No nested iterations
+        )
+        
+        return updated_ref, iter_output_dir
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -55,8 +129,14 @@ class PipelineExecutor:
         sam: str | Path | None = None,
         minimap2_profile: str = "short",
         show_header: bool = True,
+        iterations: int = 0,
     ) -> None:
-        """Execute the complete pipeline (supports both paired-end and single-end)."""
+        """Execute the complete pipeline (supports both paired-end and single-end).
+        
+        Args:
+            iterations: Number of iterative refinement iterations (0 = disabled).
+                        Each iteration calls variants, updates reference, and re-runs ParaDISM.
+        """
 
         if show_header:
             print("\n\033[0;36mRunning mapper pipeline...\033[0m\n", file=sys.stderr)
@@ -252,4 +332,46 @@ class PipelineExecutor:
                 file_path.unlink()
 
         print("\033[0;36m✓\033[0m \033[0;36mCleaning up intermediate files\033[0m", file=sys.stderr)
+        
+        # Store iteration 0 outputs
+        self.iteration_outputs.append({
+            'iteration': 0,
+            'reference': Path(ref),
+            'output_dir': self.output_dir,
+            'mappings_tsv': unique_mappings_tsv,
+            'bam_dir': bam_dir,
+        })
+        
+        # Iterative refinement
+        if iterations > 0:
+            print(f"\n\033[0;36mStarting iterative refinement ({iterations} iteration(s))...\033[0m\n", file=sys.stderr)
+            for iteration in range(1, iterations + 1):
+                iter_ref, iter_output_dir = self._run_single_iteration_refinement(
+                    r1=r1,
+                    r2=r2,
+                    previous_ref=self.iteration_outputs[-1]['reference'],
+                    previous_bam_dir=self.iteration_outputs[-1]['bam_dir'],
+                    aligner=aligner,
+                    threads=threads,
+                    minimap2_profile=minimap2_profile,
+                    is_paired=is_paired,
+                    iteration=iteration,
+                )
+                
+                iter_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
+                iter_bam_dir = iter_output_dir / f"{self.prefix}_bam"
+                
+                self.iteration_outputs.append({
+                    'iteration': iteration,
+                    'reference': iter_ref,
+                    'output_dir': iter_output_dir,
+                    'mappings_tsv': iter_mappings_tsv,
+                    'bam_dir': iter_bam_dir,
+                })
+            
+            # Update output_dir to final iteration
+            final_output = self.iteration_outputs[-1]
+            self.output_dir = final_output['output_dir']
+            print(f"\n\033[0;36mIterative refinement complete. Final outputs from iteration {iterations}.\033[0m\n", file=sys.stderr)
+        
         print(f"\nPipeline complete. Outputs saved to: {self.output_dir}\n", file=sys.stderr)
