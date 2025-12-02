@@ -18,10 +18,10 @@ set -euo pipefail
 # Configuration
 # ------------------------------------------------------------------
 SEED_START=1
-SEED_END=1                  # Number of seeds (for error bars) - TEST: 1 seed
+SEED_END=10             # Number of seeds (for error bars)
 SIM_OUTPUT_BASE="${SCRIPT_DIR}/sim_output_iterations"
 REFERENCE="${PARADISM_ROOT}/ref.fa"
-THREADS=9                   # Threads per ParaDISM run (1 seed × 1 aligner × 9 threads = 9 CPUs for test)
+THREADS=9                   # Threads per ParaDISM run (10 seeds × 1 aligner × 9 threads = 90 CPUs)
 NUM_READS=100000
 ERROR_RATE=0.01             # default sequencing error rate (per base)
 MINIMAP2_PROFILE="short"     # sr preset
@@ -34,7 +34,7 @@ FRAG_SD=35                  # Fragment length std dev
 DWGSIM_DIR="${PARADISM_ROOT}/../dwgsim"  # DWGSIM directory
 
 ALIGNERS=("bwa-mem2")
-ITERATIONS=2                # Number of ParaDISM runs (2 = run 2 times, 1 refinement iteration) - TEST
+ITERATIONS=10               # Number of ParaDISM runs (10 = run 10 times, 9 refinement iterations)
 
 # ------------------------------------------------------------------
 # Helpers
