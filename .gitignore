@@ -1,13 +1,9 @@
-sim_reads/
 *.png
 *.tsv
 __pycache__
 error_rate_results
 *.md
 *.fai
-
-output_consensus_005
-
 all_genes*
 simulated*
 ref.fa
@@ -18,5 +14,5 @@ HTS*
 syndip*
 *.vcf
 gnaq_reads
-
 giab*
+*output*
