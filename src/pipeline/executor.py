@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Sequence
+from Bio import SeqIO
 
 from utils.logger import PipelineLogger
 from utils.progress import ProgressRunner
@@ -45,12 +46,117 @@ class PipelineExecutor:
     def _run_progress(self, command: Sequence[str], message: str) -> None:
         self.progress.run_with_progress(command, message)
 
+    def _extract_none_reads_from_tsv(self, tsv_path: Path) -> set[str]:
+        """Extract read IDs that mapped to NONE from a unique_mappings.tsv file."""
+        none_reads = set()
+        with open(tsv_path, 'r') as f:
+            next(f)  # Skip header
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split('\t')
+                read_name = parts[0]
+                gene = parts[1] if len(parts) > 1 else "NONE"
+                # Remove strand suffixes (+/-) if present
+                read_name = read_name.rstrip('+-')
+                # Remove (plus)/(minus) tags from gene if present
+                if " (plus)" in gene or " (minus)" in gene:
+                    gene = gene.replace(" (plus)", "").replace(" (minus)", "")
+                if gene == "NONE":
+                    none_reads.add(read_name)
+        return none_reads
+    
+    def _extract_reads_from_fastq(self, fastq_path: Path, read_ids: set[str], output_path: Path, is_paired: bool = False) -> int:
+        """Extract reads from FASTQ file based on read IDs. Returns count of extracted reads."""
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        count = 0
+        with open(output_path, 'w') as outfile:
+            for rec in SeqIO.parse(fastq_path, "fastq"):
+                # Normalize read ID (remove /1 or /2 suffix for matching)
+                base_id = rec.id
+                if base_id.endswith("/1") or base_id.endswith("/2"):
+                    base_id = base_id[:-2]
+                
+                # Check if this read should be extracted
+                if base_id in read_ids or rec.id in read_ids:
+                    SeqIO.write(rec, outfile, "fastq")
+                    count += 1
+        return count
+    
+    def _merge_tsv_files(self, previous_tsv: Path, new_tsv: Path, output_tsv: Path) -> None:
+        """Merge two TSV files, keeping non-NONE mappings from previous and new mappings from NONE reads."""
+        previous_mappings = {}
+        previous_was_none = set()
+        
+        # Read previous TSV - keep all mappings, track which were NONE
+        with open(previous_tsv, 'r') as f:
+            header = next(f).strip()
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split('\t')
+                read_name = parts[0]
+                gene = parts[1] if len(parts) > 1 else "NONE"
+                # Remove strand suffixes
+                read_name = read_name.rstrip('+-')
+                # Remove strand tags from gene for comparison
+                gene_clean = gene.replace(" (plus)", "").replace(" (minus)", "")
+                
+                # Store all mappings
+                previous_mappings[read_name] = line
+                if gene_clean == "NONE":
+                    previous_was_none.add(read_name)
+        
+        # Read new TSV - these are mappings from re-aligned NONE reads
+        new_mappings = {}
+        with open(new_tsv, 'r') as f:
+            next(f)  # Skip header
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split('\t')
+                read_name = parts[0]
+                gene = parts[1] if len(parts) > 1 else "NONE"
+                # Remove strand suffixes
+                read_name = read_name.rstrip('+-')
+                new_mappings[read_name] = line
+        
+        # Merge strategy:
+        # 1. Keep all previous non-NONE mappings (they were successful, don't change them)
+        # 2. For reads that were NONE in previous iteration, use new mapping (even if still NONE)
+        merged_mappings = {}
+        
+        # First, add all previous non-NONE mappings
+        for read_name, line in previous_mappings.items():
+            if read_name not in previous_was_none:
+                merged_mappings[read_name] = line
+        
+        # Then, add new mappings for reads that were NONE
+        for read_name, new_line in new_mappings.items():
+            if read_name in previous_was_none:
+                # This read was NONE in previous iteration, use new mapping
+                merged_mappings[read_name] = new_line
+            elif read_name not in merged_mappings:
+                # New read not in previous (shouldn't happen, but handle it)
+                merged_mappings[read_name] = new_line
+        
+        # Write merged TSV
+        output_tsv.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_tsv, 'w') as f:
+            f.write(header + '\n')
+            for read_name in sorted(merged_mappings.keys()):
+                f.write(merged_mappings[read_name] + '\n')
+    
     def _run_single_iteration_refinement(
         self,
         r1: str,
         r2: str | None,
         previous_ref: Path,
         previous_bam_dir: Path,
+        previous_mappings_tsv: Path,
         aligner: str,
         threads: int,
         minimap2_profile: str,
@@ -58,21 +164,56 @@ class PipelineExecutor:
         iteration: int,
     ) -> tuple[Path, Path]:
         """
-        Run one iteration of refinement:
-        1. Call variants from previous iteration's BAMs
-        2. Apply variants to reference
-        3. Re-run full pipeline with updated reference
+        Run one iteration of refinement on NONE reads only:
+        1. Identify reads that mapped to NONE in previous iteration
+        2. Call variants from successfully mapped reads (non-NONE)
+        3. Apply variants to reference
+        4. Re-align only the NONE reads with updated reference
+        5. Merge results: keep previous successful mappings + new mappings from NONE reads
         
         Returns:
             Tuple of (updated_reference_path, iteration_output_directory)
         """
-        print(f"\n\033[0;33m=== Iteration {iteration} ===\033[0m", file=sys.stderr)
+        print(f"\n\033[0;33m=== Iteration {iteration} (refining NONE reads only) ===\033[0m", file=sys.stderr)
         
         # Create iteration directory with all outputs organized together
         iter_output_dir = self.output_dir / f"iteration_{iteration}"
         iter_output_dir.mkdir(exist_ok=True)
         
-        # 1. Call variants and apply to reference (inside iteration directory)
+        # 1. Identify NONE reads from previous iteration
+        print(f"  Identifying NONE reads from previous iteration...", file=sys.stderr)
+        none_reads = self._extract_none_reads_from_tsv(previous_mappings_tsv)
+        print(f"  Found {len(none_reads)} reads mapped to NONE", file=sys.stderr)
+        
+        if len(none_reads) == 0:
+            print(f"  No NONE reads to refine. Skipping iteration {iteration}.", file=sys.stderr)
+            # Copy previous mappings as final output
+            final_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
+            import shutil
+            shutil.copy(previous_mappings_tsv, final_mappings_tsv)
+            return previous_ref, iter_output_dir
+        
+        # 2. Extract NONE reads from original FASTQ files
+        none_r1_path = iter_output_dir / "none_reads_r1.fq"
+        none_r2_path = iter_output_dir / "none_reads_r2.fq" if is_paired else None
+        
+        print(f"  Extracting {len(none_reads)} NONE reads from FASTQ files...", file=sys.stderr)
+        r1_count = self._extract_reads_from_fastq(Path(r1), none_reads, none_r1_path, is_paired)
+        r2_count = 0
+        if is_paired and r2:
+            r2_count = self._extract_reads_from_fastq(Path(r2), none_reads, none_r2_path, is_paired)
+        
+        print(f"  Extracted {r1_count} R1 reads and {r2_count} R2 reads", file=sys.stderr)
+        
+        # Check if we actually extracted any reads
+        if r1_count == 0:
+            print(f"  No reads extracted. Skipping iteration {iteration}.", file=sys.stderr)
+            final_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
+            import shutil
+            shutil.copy(previous_mappings_tsv, final_mappings_tsv)
+            return previous_ref, iter_output_dir
+        
+        # 3. Call variants from successfully mapped reads (non-NONE) and apply to reference
         variant_calling_dir = iter_output_dir / "variant_calling"
         variant_calling_dir.mkdir(exist_ok=True)
         
@@ -92,10 +233,11 @@ class PipelineExecutor:
                 "--output-ref", str(updated_ref),
                 "--per-gene-vcf-dir", str(per_gene_vcf_dir),
             ],
-            f"Refining reference (iteration {iteration})",
+            f"Calling variants from mapped reads (iteration {iteration})",
         )
         
-        # 2. Re-run pipeline with updated reference (ParaDISM outputs go in iteration directory)
+        # 4. Re-align only NONE reads with updated reference
+        print(f"  Re-aligning {len(none_reads)} NONE reads with refined reference...", file=sys.stderr)
         
         # Create temporary executor for this iteration
         iter_executor = PipelineExecutor(
@@ -103,10 +245,10 @@ class PipelineExecutor:
             prefix=self.prefix,
         )
         
-        # Run full pipeline (will realign because reference changed)
+        # Run pipeline on NONE reads only
         iter_executor.run_pipeline(
-            r1=r1,
-            r2=r2,
+            r1=str(none_r1_path),
+            r2=str(none_r2_path) if none_r2_path else None,
             ref=str(updated_ref),
             aligner=aligner,
             threads=threads,
@@ -115,6 +257,17 @@ class PipelineExecutor:
             show_header=False,
             iterations=0,  # No nested iterations
         )
+        
+        # 5. Merge results: keep previous successful mappings + new mappings from NONE reads
+        new_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
+        final_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
+        
+        print(f"  Merging previous successful mappings with new NONE read mappings...", file=sys.stderr)
+        self._merge_tsv_files(previous_mappings_tsv, new_mappings_tsv, final_mappings_tsv)
+        
+        # Update BAM directory to include merged results (we'll need to regenerate BAMs)
+        # For now, we'll keep the new BAM directory, but ideally we'd merge BAMs too
+        # This is a limitation - BAM merging would require more complex logic
         
         return updated_ref, iter_output_dir
 
@@ -378,6 +531,7 @@ class PipelineExecutor:
                     r2=r2,
                     previous_ref=self.iteration_outputs[-1]['reference'],
                     previous_bam_dir=self.iteration_outputs[-1]['bam_dir'],
+                    previous_mappings_tsv=self.iteration_outputs[-1]['mappings_tsv'],
                     aligner=aligner,
                     threads=threads,
                     minimap2_profile=minimap2_profile,

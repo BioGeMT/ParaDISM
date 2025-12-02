@@ -19,6 +19,10 @@ from typing import Optional
 VARIANT_MIN_ALT = 5
 VARIANT_PLOIDY = 2
 VARIANT_FILTER_SNPS_ONLY = True
+# Quality filtering thresholds
+VARIANT_MIN_QUAL = 20  # Minimum quality score (Phred-scaled)
+VARIANT_MIN_DP = 10    # Minimum total depth
+VARIANT_MIN_AF = 0.05  # Minimum allele frequency (5%)
 
 
 def check_tool(tool_name: str) -> bool:
@@ -125,7 +129,8 @@ def call_variants_from_bams(
         # Filter to SNPs only (matching existing ParaDISM approach)
         if VARIANT_FILTER_SNPS_ONLY:
             # Use bcftools to filter SNPs - fail fast if it fails
-            with open(gene_vcf, "w") as vcf_out:
+            snps_vcf = gene_vcf_tmp.with_suffix(".snps.vcf")
+            with open(snps_vcf, "w") as vcf_out:
                 result = subprocess.run(
                     ["bcftools", "view", "-v", "snps", str(gene_vcf_tmp)],
                     stdout=vcf_out,
@@ -133,6 +138,19 @@ def call_variants_from_bams(
                     check=True,
                 )
             gene_vcf_tmp.unlink()
+            
+            # Apply quality filters: QUAL, DP (from INFO), AF (from INFO)
+            # Filter expression: QUAL >= min_qual AND INFO/DP >= min_dp AND INFO/AF >= min_af
+            # Note: DP and AF are INFO fields in FreeBayes output
+            filter_expr = f"QUAL >= {VARIANT_MIN_QUAL} && INFO/DP >= {VARIANT_MIN_DP} && INFO/AF >= {VARIANT_MIN_AF}"
+            with open(gene_vcf, "w") as vcf_out:
+                result = subprocess.run(
+                    ["bcftools", "filter", "-i", filter_expr, str(snps_vcf)],
+                    stdout=vcf_out,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                )
+            snps_vcf.unlink()
         else:
             gene_vcf_tmp.rename(gene_vcf)
         
