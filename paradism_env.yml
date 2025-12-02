@@ -4,21 +4,20 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  # Core runtime
+  
   - python=3.11
   - mafft
   - bowtie2
   - bwa-mem2
   - minimap2
-          - samtools
-          - freebayes
-          - bcftools
-          - htslib  # Provides bgzip, tabix, etc.
-          - gsl=2.5  # Required for bcftools compatibility
+  - samtools
+  - freebayes
+  - bcftools
+  - htslib 
+  - gsl=2.5 
   - biopython
   - pysam
   - rich
-  # Data analysis and plotting
   - pandas
   - scikit-learn
   - matplotlib

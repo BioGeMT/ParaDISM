@@ -18,7 +18,7 @@ set -euo pipefail
 # Configuration
 # ------------------------------------------------------------------
 SEED_START=1
-SEED_END=1
+SEED_END=1000
 SIM_OUTPUT_BASE="${SCRIPT_DIR}/sim_output"
 REFERENCE="${PARADISM_ROOT}/ref.fa"
 THREADS=1                   # Threads per ParaDISM run (30 seeds × 3 aligners × 1 thread = 90 CPUs)
