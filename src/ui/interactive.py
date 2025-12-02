@@ -463,6 +463,28 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
             except ValueError:
                 console.print("[red]Invalid input. Please enter a positive integer.[/red]")
 
+        console.print()
+
+        # Ask for iterations (optional) - after thread selection
+        iterations = 1
+        while True:
+            choice = console.input("[green]Number of ParaDISM runs (1 = no refinement, 2 = 1 refinement iteration, default: 1):[/green] ").strip()
+            if not choice:
+                iterations = 1
+                break
+            try:
+                iterations = int(choice)
+                if iterations < 1:
+                    raise ValueError
+                if iterations > 1:
+                    console.print(f"[green]✓[/green] Iterations: [cyan]{iterations}[/cyan] (will run ParaDISM {iterations} times)")
+                    console.print("[yellow]⚠ Note: Each refinement iteration calls variants, updates reference, and re-runs ParaDISM[/yellow]")
+                else:
+                    console.print(f"[green]✓[/green] Iterations: [cyan]1[/cyan] (no refinement, single run)")
+                break
+            except ValueError:
+                console.print("[red]Invalid input. Please enter a positive integer (>= 1).[/red]")
+
     console.print()
 
     validations = []
@@ -500,7 +522,8 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         threads=threads,
         sam_file=Path(sam_path).name if sam_path else None,
         minimap2_profile=minimap2_profile if aligner == "minimap2" else None,
-        output_dir=output_dir
+        output_dir=output_dir,
+        iterations=iterations,
     )
 
     console.print()
@@ -508,7 +531,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
 
     # Create output directory if it doesn't exist
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-
+    
     executor = PipelineExecutor(output_dir=output_dir)
     executor.run_pipeline(
         r1=r1_path,
@@ -517,8 +540,16 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         aligner=aligner,
         threads=threads,
         sam=sam_path,
-        minimap2_profile=minimap2_profile
+        minimap2_profile=minimap2_profile,
+        show_header=True,
+        iterations=iterations,
     )
+    
+    # Print iteration summary if iterations > 1 (refinement was used)
+    if iterations > 1 and executor.iteration_outputs:
+        console.print("\n[cyan]Iteration Summary:[/cyan]")
+        for iter_info in executor.iteration_outputs:
+            console.print(f"  Iteration {iter_info['iteration']}: {iter_info['output_dir']}")
 
     console.print("[green]═══════════════════════════════════════════════════════[/green]")
     console.print("[green]Pipeline Complete![/green]")

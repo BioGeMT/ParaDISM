@@ -69,7 +69,14 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         sam=args.sam,
         minimap2_profile=profile,
         show_header=True,
+        iterations=args.iterations,
     )
+    
+    # Print iteration summary if iterations > 1 (refinement was used)
+    if args.iterations > 1 and executor.iteration_outputs:
+        print("\n\033[0;36mIteration Summary:\033[0m", file=sys.stderr)
+        for iter_info in executor.iteration_outputs:
+            print(f"  Iteration {iter_info['iteration']}: {iter_info['output_dir']}", file=sys.stderr)
 
 
 class CustomHelpFormatter(argparse.RawDescriptionHelpFormatter):
@@ -154,6 +161,15 @@ Examples:
         metavar="PREFIX",
         default=None,
         help="Prefix for output files (default: derived from output directory name)",
+    )
+    optional.add_argument(
+        "--iterations",
+        metavar="N",
+        type=int,
+        default=1,
+        help="Number of ParaDISM runs (default: 1 = no refinement). "
+             "iterations=1 runs ParaDISM once, iterations=2 runs twice (1 refinement iteration), etc. "
+             "Each refinement iteration calls variants, updates the reference, and re-runs ParaDISM.",
     )
     optional.add_argument(
         "--input-dir",

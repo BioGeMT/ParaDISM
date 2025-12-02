@@ -347,10 +347,11 @@ def display_pipeline_config(
         lines.append(f"  Aligner:    [cyan]{aligner_display}[/cyan]")
         lines.append(f"  Threads:    [cyan]{threads}[/cyan] cores")
     
-    if iterations > 0:
-        lines.append(f"  Iterations: [cyan]{iterations}[/cyan] [dim](iterative refinement enabled)[/dim]")
+    if iterations > 1:
+        refinement_iterations = iterations - 1
+        lines.append(f"  Iterations: [cyan]{iterations}[/cyan] [dim]({refinement_iterations} refinement iteration(s))[/dim]")
     else:
-        lines.append(f"  Iterations: [dim]0 (disabled)[/dim]")
+        lines.append(f"  Iterations: [cyan]1[/cyan] [dim](no refinement)[/dim]")
 
     lines.append("")
 

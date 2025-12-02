@@ -129,13 +129,13 @@ class PipelineExecutor:
         sam: str | Path | None = None,
         minimap2_profile: str = "short",
         show_header: bool = True,
-        iterations: int = 0,
+        iterations: int = 1,
     ) -> None:
         """Execute the complete pipeline (supports both paired-end and single-end).
         
         Args:
-            iterations: Number of iterative refinement iterations (0 = disabled).
-                        Each iteration calls variants, updates reference, and re-runs ParaDISM.
+            iterations: Number of ParaDISM runs (1 = no refinement, 2 = 1 refinement iteration, etc.).
+                        Each refinement iteration calls variants, updates reference, and re-runs ParaDISM.
         """
 
         if show_header:
@@ -343,9 +343,13 @@ class PipelineExecutor:
         })
         
         # Iterative refinement
-        if iterations > 0:
-            print(f"\n\033[0;36mStarting iterative refinement ({iterations} iteration(s))...\033[0m\n", file=sys.stderr)
-            for iteration in range(1, iterations + 1):
+        # iterations=1 means run once (no refinement)
+        # iterations=2 means run twice (1 refinement iteration)
+        # So refinement_iterations = iterations - 1
+        refinement_iterations = iterations - 1
+        if refinement_iterations > 0:
+            print(f"\n\033[0;36mStarting iterative refinement ({refinement_iterations} iteration(s))...\033[0m\n", file=sys.stderr)
+            for iteration in range(1, refinement_iterations + 1):
                 iter_ref, iter_output_dir = self._run_single_iteration_refinement(
                     r1=r1,
                     r2=r2,
@@ -372,6 +376,6 @@ class PipelineExecutor:
             # Update output_dir to final iteration
             final_output = self.iteration_outputs[-1]
             self.output_dir = final_output['output_dir']
-            print(f"\n\033[0;36mIterative refinement complete. Final outputs from iteration {iterations}.\033[0m\n", file=sys.stderr)
+            print(f"\n\033[0;36mIterative refinement complete. Final outputs from iteration {refinement_iterations}.\033[0m\n", file=sys.stderr)
         
         print(f"\nPipeline complete. Outputs saved to: {self.output_dir}\n", file=sys.stderr)
