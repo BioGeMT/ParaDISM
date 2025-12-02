@@ -5,9 +5,9 @@ set -euo pipefail
 # Configuration
 DATA_DIR="/mnt/STORAGE-BioGeMT-01/pkd_data"
 REFERENCE="ref.fa"
-ALIGNER="minimap2"
-THREADS=16
-OUTPUT_BASE="HTS_minimap2_output"
+ALIGNER="bwa"
+THREADS=64
+OUTPUT_BASE="HTS_bwa_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 # Only used when ALIGNER=minimap2 (valid presets: short, pacbio-hifi, pacbio-clr, ont-q20, ont-standard)
 MINIMAP2_PROFILE="short"
