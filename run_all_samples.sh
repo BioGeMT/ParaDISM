@@ -85,7 +85,7 @@ for sample in "${SAMPLES[@]}"; do
 
     # Run mapper.py with time command, save all output to log
     mapper_cmd=(
-        python mapper.py
+        python paradism.py
         --read1 "$r1_file"
         --read2 "$r2_file"
         --reference "$REFERENCE"
