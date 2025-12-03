@@ -108,7 +108,7 @@ for ((batch_start=0; batch_start<total_samples; batch_start+=SAMPLES_PER_BATCH))
                 --aligner "$ALIGNER"
                 --threads "$THREADS"
                 --output-dir "$output_dir"
-                --iterations 2
+                --iterations 10
             )
 
             if [[ "$ALIGNER" == "minimap2" ]]; then
