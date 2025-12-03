@@ -67,6 +67,7 @@ Optional:
 - `--sam`: Existing alignment (skips alignment stage)
 - `--output-dir`: Destination directory (default: `./output`)
 - `--prefix`: Prefix for output files (default: derived from output directory name)
+- `--iterations`: Total ParaDISM runs (default: 1). Use >1 to enable iterative refinement.
 
 Paired‑end vs single‑end
 - For paired‑end runs, provide both `--read1` and `--read2`.
@@ -94,6 +95,10 @@ python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
 python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
   --output-dir results --prefix custom_prefix
   # Output files will be prefixed with "custom_prefix_"
+
+# Two pipeline runs (one refinement iteration) realigns only previously NONE-mapped reads
+python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+  --iterations 2
 ```
 
 ### SAM Requirements
@@ -124,3 +129,12 @@ output_dir/                                   # Output directory
 ```
 
 **Note:** Intermediate files (MSA, SAM, indices) are created during processing but cleaned up automatically at the end. Only the final outputs listed above are retained.
+
+## Iterative Refinement
+
+Set `--iterations` to run ParaDISM multiple times. The first run produces mappings and per-gene BAMs. Each refinement iteration:
+- Calls variants from previously mapped (non-NONE) reads, filters SNPs, and applies them to the reference.
+- Re-aligns only reads that were labeled `NONE` against the updated reference.
+- Merges results so prior successful mappings remain unchanged.
+
+The loop stops early if there are no reads to rescue, no variants to apply, or no reads were reassigned in the latest iteration; otherwise it runs up to the requested iteration count. Final outputs come from the last completed iteration directory.
