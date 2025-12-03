@@ -18,10 +18,10 @@ set -euo pipefail
 # Configuration
 # ------------------------------------------------------------------
 SEED_START=1
-SEED_END=50            # Number of seeds (for error bars)
+SEED_END=50             # Number of seeds (for error bars)
 SIM_OUTPUT_BASE="${SCRIPT_DIR}/sim_output_iterations"
 REFERENCE="${PARADISM_ROOT}/ref.fa"
-THREADS=1                   # Threads per ParaDISM run (100 seeds × 1 aligner × 1 thread = 100 CPUs)
+THREADS=1                   # Threads per ParaDISM run (10 seeds × 1 aligner × 1 thread = 10 CPUs)
 NUM_READS=100000
 ERROR_RATE=0.01             # default sequencing error rate (per base)
 MINIMAP2_PROFILE="short"     # sr preset
@@ -46,6 +46,28 @@ format_error_suffix() {
     echo "${formatted/./_}"
 }
 
+find_latest_iteration_dir() {
+    local base="$1"
+    local latest=""
+    local latest_num=0
+
+    shopt -s nullglob
+    for path in "${base}"/iteration_*; do
+        [[ -d "$path" ]] || continue
+        local suffix="${path##*/iteration_}"
+        if [[ "$suffix" =~ ^([0-9]+)$ ]]; then
+            local num="${BASH_REMATCH[1]}"
+            if (( num > latest_num )); then
+                latest_num=$num
+                latest="$path"
+            fi
+        fi
+    done
+    shopt -u nullglob
+
+    echo "$latest"
+}
+
 run_mapper() {
     local aligner="$1"
     local r1="$2"
@@ -61,11 +83,17 @@ run_mapper() {
     # Run mapper (may exit with status 1 even if successful)
     "${cmd[@]}" || true
     
-    # Verify output file was created (this is the real success indicator)
-    # Final iteration number = ITERATIONS (1-based indexing)
-    local expected_output="$output_dir/iteration_${ITERATIONS}/${prefix}_unique_mappings.tsv"
-    if [ ! -f "$expected_output" ]; then
-        echo "ERROR: Expected output file not found: $expected_output" >&2
+    # Verify output file was created; allow early convergence (final iteration may be < ITERATIONS)
+    local final_iter_dir
+    final_iter_dir=$(find_latest_iteration_dir "$output_dir")
+    if [[ -z "$final_iter_dir" ]]; then
+        echo "ERROR: No iteration directories found under $output_dir" >&2
+        exit 1
+    fi
+
+    local expected_output="${final_iter_dir}/${prefix}_unique_mappings.tsv"
+    if [[ ! -f "$expected_output" ]]; then
+        echo "ERROR: Expected output file not found after convergence: $expected_output" >&2
         exit 1
     fi
 }
@@ -236,4 +264,3 @@ echo "Simulation complete!"
 echo "Results saved to: ${SIM_OUTPUT_BASE}/"
 echo "Iteration plots saved to: ${SIM_OUTPUT_BASE}/iteration_plots/"
 echo "=============================="
-

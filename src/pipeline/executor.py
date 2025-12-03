@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 import time
+import shutil
 from pathlib import Path
 from typing import Sequence
 from Bio import SeqIO
@@ -306,9 +307,7 @@ class PipelineExecutor:
 
         return updated_ref, iter_output_dir, False  # Not converged: made progress
 
-    # ------------------------------------------------------------------ #
-    # Public API
-    # ------------------------------------------------------------------ #
+
     def run_pipeline(
         self,
         r1: str | Path,
@@ -574,6 +573,18 @@ class PipelineExecutor:
                     iteration=iteration,
                 )
 
+                if converged:
+                    # Remove the empty convergence directory so final outputs remain at the last productive iteration
+                    if iter_output_dir.exists():
+                        try:
+                            shutil.rmtree(iter_output_dir)
+                            print(f"  Removed iteration_{iteration} (no new outputs)", file=sys.stderr)
+                        except OSError as exc:
+                            print(f"  Warning: could not remove {iter_output_dir}: {exc}", file=sys.stderr)
+                    final_iteration = self.iteration_outputs[-1]['iteration']
+                    print(f"\n\033[0;36m✓ Pipeline converged after checking iteration {iteration}; final outputs remain from iteration {final_iteration}.\033[0m\n", file=sys.stderr)
+                    break
+                
                 iter_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
                 iter_bam_dir = iter_output_dir / f"{self.prefix}_bam"
 
@@ -584,11 +595,6 @@ class PipelineExecutor:
                     'mappings_tsv': iter_mappings_tsv,
                     'bam_dir': iter_bam_dir,
                 })
-
-                # Check for convergence - stop early if no progress was made
-                if converged:
-                    print(f"\n\033[0;36m✓ Pipeline converged after {iteration} iterations.\033[0m\n", file=sys.stderr)
-                    break
 
             # Update output_dir to final iteration
             final_output = self.iteration_outputs[-1]
