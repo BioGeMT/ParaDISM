@@ -102,12 +102,19 @@ def extract_metrics_from_summary(summary_path: Path) -> dict:
     
     # Get predictions
     ground_truth = df['Ground_Truth']
-    mapper_pred = df['Mapper_Prediction']
-    
+
+    # Handle both 'Mapper_Prediction' and 'ParaDISM_Prediction' column names
+    if 'Mapper_Prediction' in df.columns:
+        mapper_pred = df['Mapper_Prediction']
+    elif 'ParaDISM_Prediction' in df.columns:
+        mapper_pred = df['ParaDISM_Prediction']
+    else:
+        raise KeyError("Could not find Mapper_Prediction or ParaDISM_Prediction column")
+
     # Find direct prediction column
     direct_pred_col = None
     for col in df.columns:
-        if col.endswith('_Prediction') and col != 'Mapper_Prediction':
+        if col.endswith('_Prediction') and col not in ['Mapper_Prediction', 'ParaDISM_Prediction']:
             direct_pred_col = col
             break
     

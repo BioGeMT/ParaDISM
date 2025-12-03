@@ -94,12 +94,15 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
     for ((i=batch_start; i<batch_end; i++)); do
         seed=${seed_array[$i]}
         (
+            # Activate conda environment in subshell for background process
+            if [ -f "${HOME}/miniconda3/etc/profile.d/conda.sh" ]; then
+                source "${HOME}/miniconda3/etc/profile.d/conda.sh"
+                conda activate paradism_env 2>/dev/null
+            fi
+
             echo "=============================="
             echo "Processing seed: $seed"
             echo "=============================="
-    echo "=============================="
-    echo "Processing seed: $seed"
-    echo "=============================="
 
     seed_dir="$SIM_OUTPUT_BASE/seed_${seed}"
     mkdir -p "$seed_dir"

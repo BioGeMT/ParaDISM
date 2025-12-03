@@ -162,7 +162,7 @@ class PipelineExecutor:
         minimap2_profile: str,
         is_paired: bool,
         iteration: int,
-    ) -> tuple[Path, Path]:
+    ) -> tuple[Path, Path, bool]:
         """
         Run one iteration of refinement on NONE reads only:
         1. Identify reads that mapped to NONE in previous iteration
@@ -170,9 +170,10 @@ class PipelineExecutor:
         3. Apply variants to reference
         4. Re-align only the NONE reads with updated reference
         5. Merge results: keep previous successful mappings + new mappings from NONE reads
-        
+
         Returns:
-            Tuple of (updated_reference_path, iteration_output_directory)
+            Tuple of (updated_reference_path, iteration_output_directory, converged)
+            where converged=True indicates no progress was made (should stop iterating)
         """
         print(f"\n\033[0;33m=== Iteration {iteration} (refining NONE reads only) ===\033[0m", file=sys.stderr)
         
@@ -186,12 +187,12 @@ class PipelineExecutor:
         print(f"  Found {len(none_reads)} reads mapped to NONE", file=sys.stderr)
         
         if len(none_reads) == 0:
-            print(f"  No NONE reads to refine. Skipping iteration {iteration}.", file=sys.stderr)
+            print(f"  No NONE reads to refine. Pipeline has converged.", file=sys.stderr)
             # Copy previous mappings as final output
             final_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
             import shutil
             shutil.copy(previous_mappings_tsv, final_mappings_tsv)
-            return previous_ref, iter_output_dir
+            return previous_ref, iter_output_dir, True  # Converged: no NONE reads left
         
         # 2. Extract NONE reads from original FASTQ files
         none_r1_path = iter_output_dir / "none_reads_r1.fq"
@@ -207,34 +208,57 @@ class PipelineExecutor:
         
         # Check if we actually extracted any reads
         if r1_count == 0:
-            print(f"  No reads extracted. Skipping iteration {iteration}.", file=sys.stderr)
+            print(f"  No reads extracted. Pipeline has converged.", file=sys.stderr)
             final_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
             import shutil
             shutil.copy(previous_mappings_tsv, final_mappings_tsv)
-            return previous_ref, iter_output_dir
+            return previous_ref, iter_output_dir, True  # Converged: no reads to process
         
         # 3. Call variants from successfully mapped reads (non-NONE) and apply to reference
         variant_calling_dir = iter_output_dir / "variant_calling"
         variant_calling_dir.mkdir(exist_ok=True)
-        
+
         per_gene_vcf_dir = variant_calling_dir / "per_gene_vcfs"
         per_gene_vcf_dir.mkdir(exist_ok=True)
-        
+
         vcf_output = variant_calling_dir / "variants.vcf"
         updated_ref = variant_calling_dir / "updated_ref.fa"
-        
-        self._run_progress(
-            [
-                "python",
-                str(self.pipeline_dir / "variant_refinement.py"),
-                "--bam-dir", str(previous_bam_dir),
-                "--reference", str(previous_ref),
-                "--output-vcf", str(vcf_output),
-                "--output-ref", str(updated_ref),
-                "--per-gene-vcf-dir", str(per_gene_vcf_dir),
-            ],
-            f"Calling variants from mapped reads (iteration {iteration})",
-        )
+
+        # Run variant calling and check for convergence (exit code 2 = no variants)
+        variant_cmd = [
+            "python",
+            str(self.pipeline_dir / "variant_refinement.py"),
+            "--bam-dir", str(previous_bam_dir),
+            "--reference", str(previous_ref),
+            "--output-vcf", str(vcf_output),
+            "--output-ref", str(updated_ref),
+            "--per-gene-vcf-dir", str(per_gene_vcf_dir),
+        ]
+
+        import subprocess
+        print(f"  Calling variants from mapped reads (iteration {iteration})...", file=sys.stderr)
+        result = subprocess.run(variant_cmd, capture_output=True, text=True)
+
+        # Log output
+        self.logger.write(result.stdout or "")
+        self.logger.write(result.stderr or "")
+
+        # Check exit status
+        if result.returncode == 2:
+            # No variants found - pipeline has converged
+            print(f"  \033[0;33mNo variants found. Pipeline has converged.\033[0m", file=sys.stderr)
+            print(f"  Stopping refinement at iteration {iteration} (no further improvement possible).", file=sys.stderr)
+            final_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
+            import shutil
+            shutil.copy(previous_mappings_tsv, final_mappings_tsv)
+            return previous_ref, iter_output_dir, True  # Converged: no variants to refine
+        elif result.returncode != 0:
+            # Real error occurred
+            print(f"\033[0;31m✗\033[0m \033[0;31mCalling variants from mapped reads (iteration {iteration})\033[0m", file=sys.stderr)
+            print(f"Error occurred. Check log: {self.logger.path}", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"\033[0;36m✓\033[0m \033[0;36mCalling variants from mapped reads (iteration {iteration})\033[0m", file=sys.stderr)
         
         # 4. Re-align only NONE reads with updated reference
         print(f"  Re-aligning {len(none_reads)} NONE reads with refined reference...", file=sys.stderr)
@@ -261,15 +285,26 @@ class PipelineExecutor:
         # 5. Merge results: keep previous successful mappings + new mappings from NONE reads
         new_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
         final_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
-        
+
         print(f"  Merging previous successful mappings with new NONE read mappings...", file=sys.stderr)
         self._merge_tsv_files(previous_mappings_tsv, new_mappings_tsv, final_mappings_tsv)
-        
+
+        # 6. Check if we made any progress (did any NONE reads get re-assigned?)
+        new_none_reads = self._extract_none_reads_from_tsv(final_mappings_tsv)
+        reads_rescued = len(none_reads) - len(new_none_reads)
+
+        if reads_rescued == 0:
+            print(f"  \033[0;33mNo reads were rescued from NONE. Pipeline has converged.\033[0m", file=sys.stderr)
+            print(f"  Stopping refinement at iteration {iteration} (no progress made).", file=sys.stderr)
+            return updated_ref, iter_output_dir, True  # Converged: no progress made
+        else:
+            print(f"  \033[0;32mRescued {reads_rescued} reads from NONE ({len(new_none_reads)} still NONE)\033[0m", file=sys.stderr)
+
         # Update BAM directory to include merged results (we'll need to regenerate BAMs)
         # For now, we'll keep the new BAM directory, but ideally we'd merge BAMs too
         # This is a limitation - BAM merging would require more complex logic
-        
-        return updated_ref, iter_output_dir
+
+        return updated_ref, iter_output_dir, False  # Not converged: made progress
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -524,9 +559,9 @@ class PipelineExecutor:
         # So refinement_iterations = iterations - 1
         refinement_iterations = iterations - 1
         if refinement_iterations > 0:
-            print(f"\n\033[0;36mStarting iterative refinement ({refinement_iterations} iteration(s))...\033[0m\n", file=sys.stderr)
+            print(f"\n\033[0;36mStarting iterative refinement (up to {refinement_iterations} iteration(s))...\033[0m\n", file=sys.stderr)
             for iteration in range(2, iterations + 1):
-                iter_ref, iter_output_dir = self._run_single_iteration_refinement(
+                iter_ref, iter_output_dir, converged = self._run_single_iteration_refinement(
                     r1=r1,
                     r2=r2,
                     previous_ref=self.iteration_outputs[-1]['reference'],
@@ -538,10 +573,10 @@ class PipelineExecutor:
                     is_paired=is_paired,
                     iteration=iteration,
                 )
-                
+
                 iter_mappings_tsv = iter_output_dir / f"{self.prefix}_unique_mappings.tsv"
                 iter_bam_dir = iter_output_dir / f"{self.prefix}_bam"
-                
+
                 self.iteration_outputs.append({
                     'iteration': iteration,
                     'reference': iter_ref,
@@ -549,10 +584,16 @@ class PipelineExecutor:
                     'mappings_tsv': iter_mappings_tsv,
                     'bam_dir': iter_bam_dir,
                 })
-            
+
+                # Check for convergence - stop early if no progress was made
+                if converged:
+                    print(f"\n\033[0;36m✓ Pipeline converged after {iteration} iterations.\033[0m\n", file=sys.stderr)
+                    break
+
             # Update output_dir to final iteration
             final_output = self.iteration_outputs[-1]
+            final_iteration = final_output['iteration']
             self.output_dir = final_output['output_dir']
-            print(f"\n\033[0;36mIterative refinement complete. Final outputs from iteration {iterations}.\033[0m\n", file=sys.stderr)
+            print(f"\n\033[0;36mIterative refinement complete. Final outputs from iteration {final_iteration}.\033[0m\n", file=sys.stderr)
         
         print(f"\nPipeline complete. Outputs saved to: {self.output_dir}\n", file=sys.stderr)

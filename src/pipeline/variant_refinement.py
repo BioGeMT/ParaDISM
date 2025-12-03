@@ -165,11 +165,40 @@ def call_variants_from_bams(
             f.write("##fileformat=VCFv4.2\n")
             f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
         return
-    
+
     print(f"  Merging {len(per_gene_vcfs)} per-gene VCFs...", file=sys.stderr)
-    
+
     output_vcf.parent.mkdir(parents=True, exist_ok=True)
-    
+
+    # If only one VCF, just copy it (no need to merge)
+    if len(per_gene_vcfs) == 1:
+        print(f"  Only one gene with variants, copying VCF directly...", file=sys.stderr)
+        import shutil
+        shutil.copy(per_gene_vcfs[0], output_vcf)
+
+        # Still need to compress and index for bcftools consensus
+        vcf_gz = output_vcf.with_suffix(".vcf.gz")
+        print(f"  Compressing VCF for bcftools consensus...", file=sys.stderr)
+        try:
+            subprocess.run(
+                ["bgzip", "-c", str(output_vcf)],
+                stdout=open(vcf_gz, "wb"),
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+            subprocess.run(
+                ["bcftools", "index", str(vcf_gz)],
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+            print(f"  Compressed VCF saved to: {vcf_gz}", file=sys.stderr)
+        except subprocess.CalledProcessError as e:
+            print(f"Error: bgzip/index failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"  Combined VCF saved to: {output_vcf}", file=sys.stderr)
+        return
+
     # bcftools merge requires bgzipped VCFs - compress per-gene VCFs first
     print(f"  Compressing per-gene VCFs for merging...", file=sys.stderr)
     compressed_vcfs = []
@@ -192,7 +221,7 @@ def call_variants_from_bams(
         except subprocess.CalledProcessError as e:
             print(f"Error: Failed to compress {vcf_file}: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
             sys.exit(1)
-    
+
     # Merge VCFs using bcftools merge - fail fast if it fails
     # Use --force-samples to handle duplicate sample names across per-gene VCFs
     merged_vcf = output_vcf.with_suffix(".merged.vcf")
@@ -207,7 +236,7 @@ def call_variants_from_bams(
     except subprocess.CalledProcessError as e:
         print(f"Error: bcftools merge failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
         sys.exit(1)
-    
+
     # Sort VCF - fail fast if it fails
     try:
         with open(output_vcf, "w") as sorted_out:
@@ -254,14 +283,17 @@ def apply_variants_to_reference(
     reference: Path,
     vcf: Path,
     output_ref: Path,
-) -> None:
+) -> bool:
     """
     Apply variants to reference using bcftools consensus.
-    
+
     Args:
         reference: Input reference FASTA
         vcf: Variants VCF file (uncompressed)
         output_ref: Output path for updated reference
+
+    Returns:
+        True if variants were applied, False if no variants found
     """
     if not check_tool("bcftools"):
         print("Error: bcftools not found. Please install bcftools.", file=sys.stderr)
@@ -295,7 +327,7 @@ def apply_variants_to_reference(
             stderr=subprocess.DEVNULL,
             check=False,
         )
-        return
+        return False
     
     print(f"  Applying variants to reference...", file=sys.stderr)
     
@@ -321,7 +353,7 @@ def apply_variants_to_reference(
     except subprocess.CalledProcessError as e:
         print(f"Error: bcftools consensus failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
         sys.exit(1)
-    
+
     # Index the new reference - fail fast if it fails
     try:
         subprocess.run(
@@ -332,8 +364,9 @@ def apply_variants_to_reference(
     except subprocess.CalledProcessError as e:
         print(f"Error: samtools faidx failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
         sys.exit(1)
-    
+
     print(f"  Updated reference saved to: {output_ref}", file=sys.stderr)
+    return True
 
 
 def main():
@@ -368,19 +401,23 @@ def main():
     )
     
     args = parser.parse_args()
-    
+
     call_variants_from_bams(
         bam_dir=Path(args.bam_dir),
         reference=Path(args.reference),
         output_vcf=Path(args.output_vcf),
         per_gene_vcf_dir=Path(args.per_gene_vcf_dir),
     )
-    
-    apply_variants_to_reference(
+
+    has_variants = apply_variants_to_reference(
         reference=Path(args.reference),
         vcf=Path(args.output_vcf),
         output_ref=Path(args.output_ref),
     )
+
+    # Exit with status 2 if no variants found (for caller to detect convergence)
+    if not has_variants:
+        sys.exit(2)
 
 
 if __name__ == "__main__":
