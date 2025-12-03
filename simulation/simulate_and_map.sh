@@ -15,26 +15,27 @@ fi
 set -euo pipefail
 
 # ------------------------------------------------------------------
-# Configuration
+# Configuration (can override via env, e.g. SEED_END=10 ITERATIONS=10 ALIGNERS="bwa-mem2")
 # ------------------------------------------------------------------
-SEED_START=1
-SEED_END=1000
-SIM_OUTPUT_BASE="${SCRIPT_DIR}/sim_output"
-REFERENCE="${PARADISM_ROOT}/ref.fa"
-THREADS=1                   # Threads per ParaDISM run (30 seeds × 3 aligners × 1 thread = 90 CPUs)
-NUM_READS=100000
-ERROR_RATE=0.01             # default sequencing error rate (per base)
-MINIMAP2_PROFILE="short"     # sr preset
-SNP_RATE=0.005              # DWGSIM SNP rate (per base)
-INDEL_RATE=0.0005           # DWGSIM indel rate (per base)
-INDEL_EXT=0.5               # DWGSIM indel extension probability
-READ_LEN=150                # Read length
-FRAG_MEAN=350               # Mean fragment length
-FRAG_SD=35                  # Fragment length std dev
-DWGSIM_DIR="${PARADISM_ROOT}/../dwgsim"  # DWGSIM directory
+SEED_START=${SEED_START:-1}
+SEED_END=${SEED_END:-1000}
+SIM_OUTPUT_BASE="${SIM_OUTPUT_BASE:-${SCRIPT_DIR}/sim_output}"
+REFERENCE="${REFERENCE:-${PARADISM_ROOT}/ref.fa}"
+THREADS=${THREADS:-1}                   # Threads per ParaDISM run (30 seeds × 3 aligners × 1 thread = 90 CPUs)
+NUM_READS=${NUM_READS:-100000}
+ERROR_RATE=${ERROR_RATE:-0.01}             # default sequencing error rate (per base)
+MINIMAP2_PROFILE="${MINIMAP2_PROFILE:-short}"     # sr preset
+SNP_RATE=${SNP_RATE:-0.005}              # DWGSIM SNP rate (per base)
+INDEL_RATE=${INDEL_RATE:-0.0005}           # DWGSIM indel rate (per base)
+INDEL_EXT=${INDEL_EXT:-0.5}               # DWGSIM indel extension probability
+READ_LEN=${READ_LEN:-150}                # Read length
+FRAG_MEAN=${FRAG_MEAN:-350}               # Mean fragment length
+FRAG_SD=${FRAG_SD:-35}                  # Fragment length std dev
+DWGSIM_DIR="${DWGSIM_DIR:-${PARADISM_ROOT}/../dwgsim}"  # DWGSIM directory
 
-ALIGNERS=("bwa-mem2" "bowtie2" "minimap2")
-ITERATIONS=10                # Number of ParaDISM runs (2 = run twice, 1 refinement iteration)
+ALIGNERS_STR="${ALIGNERS:-bwa-mem2 bowtie2 minimap2}"  # Space- or comma-separated
+IFS=', ' read -r -a ALIGNERS <<< "$ALIGNERS_STR"
+ITERATIONS=${ITERATIONS:-10}                # Number of ParaDISM runs (2 = run twice, 1 refinement iteration)
 
 # ------------------------------------------------------------------
 # Helpers
@@ -44,6 +45,28 @@ format_error_suffix() {
     local formatted
     formatted=$(printf "%.3f" "$rate")
     echo "${formatted/./_}"
+}
+
+find_latest_iteration_dir() {
+    local base="$1"
+    local latest=""
+    local latest_num=0
+
+    shopt -s nullglob
+    for path in "${base}"/iteration_*; do
+        [[ -d "$path" ]] || continue
+        local suffix="${path##*/iteration_}"
+        if [[ "$suffix" =~ ^([0-9]+)$ ]]; then
+            local num="${BASH_REMATCH[1]}"
+            if (( num > latest_num )); then
+                latest_num=$num
+                latest="$path"
+            fi
+        fi
+    done
+    shopt -u nullglob
+
+    echo "$latest"
 }
 
 run_mapper() {
@@ -60,10 +83,17 @@ run_mapper() {
 
     # Run mapper (may exit with status 1 even if successful)
     "${cmd[@]}" || true
-    
+
     # Verify output file was created (this is the real success indicator)
-    # Final iteration number = ITERATIONS (1-based indexing)
-    local expected_output="$output_dir/iteration_${ITERATIONS}/${prefix}_unique_mappings.tsv"
+    # Allow early convergence - just check that at least one iteration exists
+    local final_iter_dir
+    final_iter_dir=$(find_latest_iteration_dir "$output_dir")
+    if [[ -z "$final_iter_dir" ]]; then
+        echo "ERROR: No iteration directories found under $output_dir" >&2
+        exit 1
+    fi
+
+    local expected_output="${final_iter_dir}/${prefix}_unique_mappings.tsv"
     if [ ! -f "$expected_output" ]; then
         echo "ERROR: Expected output file not found: $expected_output" >&2
         exit 1
@@ -198,15 +228,22 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
                     samtools index "$base_bam"
 
                     # Use final iteration's mappings for ParaDISM comparison
-                    # iterations=1 means no refinement (use iteration 1)
-                    # iterations=2 means 1 refinement iteration (use iteration 2)
-                    # So final iteration number = ITERATIONS
-                    mapper_tsv="$paradism_output/iteration_${ITERATIONS}/${paradism_prefix}_unique_mappings.tsv"
-                    if [[ ! -f "$mapper_tsv" ]]; then
-                        echo "Warning: Final iteration ${ITERATIONS} mappings not found: $mapper_tsv" >&2
-                        echo "Falling back to iteration 1 mappings..." >&2
-                        mapper_tsv="$paradism_output/iteration_1/${paradism_prefix}_unique_mappings.tsv"
+                    # Find the actual last iteration that was produced (handles early convergence)
+                    final_iter_dir=$(find_latest_iteration_dir "$paradism_output")
+                    if [[ -z "$final_iter_dir" ]]; then
+                        echo "ERROR: No iteration directories found under $paradism_output" >&2
+                        exit 1
                     fi
+
+                    mapper_tsv="${final_iter_dir}/${paradism_prefix}_unique_mappings.tsv"
+                    if [[ ! -f "$mapper_tsv" ]]; then
+                        echo "ERROR: Expected output file not found: $mapper_tsv" >&2
+                        exit 1
+                    fi
+
+                    # Extract iteration number for logging
+                    final_iter_num="${final_iter_dir##*/iteration_}"
+                    echo "  Using final iteration ${final_iter_num} for analysis" >&2
                     
                     analysis_dir="$aligner_dir/read_mapping_analysis"
                     output_prefix="seed_${seed}_${aligner}"
@@ -281,3 +318,23 @@ python "${SCRIPT_DIR}/aggregate_results.py" \
 
 echo "Aggregation complete!"
 
+# ------------------------------------------------------------------
+# Plot iteration progression per aligner (auto-detects iteration counts per seed)
+# ------------------------------------------------------------------
+echo "=============================="
+echo "Creating iteration progression plots..."
+echo "=============================="
+
+PLOT_DIR="${SIM_OUTPUT_BASE}/iteration_plots"
+mkdir -p "$PLOT_DIR"
+
+for aligner in "${ALIGNERS[@]}"; do
+    python "${SCRIPT_DIR}/plot_iteration_progression.py" \
+        --sim-output-base "$SIM_OUTPUT_BASE" \
+        --seed-start "$SEED_START" \
+        --seed-end "$SEED_END" \
+        --output-dir "$PLOT_DIR" \
+        --aligner "$aligner"
+done
+
+echo "Iteration plots saved to: $PLOT_DIR"

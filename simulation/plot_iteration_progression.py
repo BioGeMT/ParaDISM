@@ -7,6 +7,7 @@ Shows ParaDISM improvement vs constant BWA-MEM2 baseline.
 import argparse
 import sys
 from pathlib import Path
+import re
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -156,8 +157,25 @@ def extract_metrics_from_summary(summary_path: Path) -> dict:
     }
 
 
-def collect_iteration_metrics_for_seed(analysis_dir: Path, iterations: int, seed: int, aligner: str) -> tuple[list, list, list, list, list, list]:
-    """Collect metrics for each iteration."""
+def find_max_iteration(analysis_dir: Path, seed: int, aligner: str) -> int:
+    """Find the highest iteration with a summary CSV for this seed/aligner."""
+    pattern = re.compile(rf"seed_{seed}_{aligner}_iter(\d+)_summary\.csv$")
+    max_iter = 0
+    if analysis_dir.exists():
+        for path in analysis_dir.glob(f"seed_{seed}_{aligner}_iter*_summary.csv"):
+            match = pattern.search(path.name)
+            if match:
+                try:
+                    num = int(match.group(1))
+                    if num > max_iter:
+                        max_iter = num
+                except ValueError:
+                    continue
+    return max_iter
+
+
+def collect_iteration_metrics_for_seed(analysis_dir: Path, seed: int, aligner: str) -> tuple[list, list, list, list, list, list]:
+    """Collect metrics for each iteration found on disk (no padding beyond max)."""
     paradism_precision = []
     paradism_recall = []
     paradism_specificity = []
@@ -165,33 +183,17 @@ def collect_iteration_metrics_for_seed(analysis_dir: Path, iterations: int, seed
     bwa_recall = []
     bwa_specificity = []
     
+    max_iter = find_max_iteration(analysis_dir, seed, aligner)
+    if max_iter == 0:
+        print(f"Warning: No iteration summaries found for seed {seed} ({aligner}) in {analysis_dir}", file=sys.stderr)
+        return (paradism_precision, paradism_recall, paradism_specificity,
+                bwa_precision, bwa_recall, bwa_specificity)
+    
     bwa_prec_base = None
     bwa_rec_base = None
     bwa_spec_base = None
     
-    # Iteration 1 (initial run)
-    iter1_csv = analysis_dir / f"seed_{seed}_{aligner}_iter1_summary.csv"
-    if iter1_csv.exists():
-        metrics = extract_metrics_from_summary(iter1_csv)
-        if metrics:
-            paradism_precision.append(metrics['mapper']['precision'])
-            paradism_recall.append(metrics['mapper']['recall'])
-            paradism_specificity.append(metrics['mapper']['specificity'])
-            
-            # BWA baseline (constant from iteration 1)
-            bwa_prec_base = metrics['direct']['precision']
-            bwa_rec_base = metrics['direct']['recall']
-            bwa_spec_base = metrics['direct']['specificity']
-            
-            bwa_precision.append(bwa_prec_base)
-            bwa_recall.append(bwa_rec_base)
-            bwa_specificity.append(bwa_spec_base)
-    else:
-        print(f"Warning: Iteration 1 CSV not found: {iter1_csv}", file=sys.stderr)
-        return ([], [], [], [], [], [])
-    
-    # Iterations 2 to N (refinement iterations)
-    for iter_num in range(2, iterations + 1):
+    for iter_num in range(1, max_iter + 1):
         iter_csv = analysis_dir / f"seed_{seed}_{aligner}_iter{iter_num}_summary.csv"
         if iter_csv.exists():
             metrics = extract_metrics_from_summary(iter_csv)
@@ -200,30 +202,20 @@ def collect_iteration_metrics_for_seed(analysis_dir: Path, iterations: int, seed
                 paradism_recall.append(metrics['mapper']['recall'])
                 paradism_specificity.append(metrics['mapper']['specificity'])
                 
-                # BWA stays constant (from iteration 0)
+                if iter_num == 1:
+                    bwa_prec_base = metrics['direct']['precision']
+                    bwa_rec_base = metrics['direct']['recall']
+                    bwa_spec_base = metrics['direct']['specificity']
+                
+                # BWA baseline stays constant across iterations for this seed
                 bwa_precision.append(bwa_prec_base)
                 bwa_recall.append(bwa_rec_base)
                 bwa_specificity.append(bwa_spec_base)
             else:
-                # If metrics extraction failed, use previous values
-                if paradism_precision:
-                    paradism_precision.append(paradism_precision[-1])
-                    paradism_recall.append(paradism_recall[-1])
-                    paradism_specificity.append(paradism_specificity[-1])
-                    bwa_precision.append(bwa_prec_base)
-                    bwa_recall.append(bwa_rec_base)
-                    bwa_specificity.append(bwa_spec_base)
+                print(f"Warning: Could not parse metrics for {iter_csv}", file=sys.stderr)
         else:
-            # If iteration file missing, use previous values
-            if paradism_precision:
-                paradism_precision.append(paradism_precision[-1])
-                paradism_recall.append(paradism_recall[-1])
-                paradism_specificity.append(paradism_specificity[-1])
-                bwa_precision.append(bwa_prec_base)
-                bwa_recall.append(bwa_rec_base)
-                bwa_specificity.append(bwa_spec_base)
-            else:
-                print(f"Warning: Iteration {iter_num} CSV not found: {iter_csv}", file=sys.stderr)
+            # Missing iteration file; stop at the last available
+            break
     
     return (paradism_precision, paradism_recall, paradism_specificity,
             bwa_precision, bwa_recall, bwa_specificity)
@@ -233,37 +225,45 @@ def collect_metrics_across_seeds(
     sim_output_base: Path,
     seed_start: int,
     seed_end: int,
-    iterations: int,
     aligner: str
 ) -> tuple[list, list, list, list, list, list]:
     """Collect metrics across all seeds and calculate mean/std for error bars."""
     import statistics
-    
-    # Collect metrics for each seed
-    all_para_prec = [[] for _ in range(iterations)]
-    all_para_rec = [[] for _ in range(iterations)]
-    all_para_spec = [[] for _ in range(iterations)]
-    all_bwa_prec = [[] for _ in range(iterations)]
-    all_bwa_rec = [[] for _ in range(iterations)]
-    all_bwa_spec = [[] for _ in range(iterations)]
-    
+
+    # Determine maximum iteration observed across seeds
+    max_iter_overall = 0
+    per_seed_metrics = {}
     for seed in range(seed_start, seed_end + 1):
         analysis_dir = sim_output_base / f"seed_{seed}" / aligner / "read_mapping_analysis"
         (para_prec, para_rec, para_spec,
          bwa_prec, bwa_rec, bwa_spec) = collect_iteration_metrics_for_seed(
-            analysis_dir, iterations, seed, aligner
+            analysis_dir, seed, aligner
         )
-        
-        if para_prec:
-            for i in range(len(para_prec)):
-                all_para_prec[i].append(para_prec[i])
-                all_para_rec[i].append(para_rec[i])
-                all_para_spec[i].append(para_spec[i])
-                all_bwa_prec[i].append(bwa_prec[i])
-                all_bwa_rec[i].append(bwa_rec[i])
-                all_bwa_spec[i].append(bwa_spec[i])
-    
-    # Calculate mean and std for each iteration
+
+        per_seed_metrics[seed] = (para_prec, para_rec, para_spec, bwa_prec, bwa_rec, bwa_spec)
+        max_iter_overall = max(max_iter_overall, len(para_prec))
+
+    if max_iter_overall == 0:
+        return ([], [], [], [], [], [], [], [], [], [], [], [], 0)
+
+    # Collect metrics for each iteration index only from seeds that have that iteration
+    all_para_prec = [[] for _ in range(max_iter_overall)]
+    all_para_rec = [[] for _ in range(max_iter_overall)]
+    all_para_spec = [[] for _ in range(max_iter_overall)]
+    all_bwa_prec = [[] for _ in range(max_iter_overall)]
+    all_bwa_rec = [[] for _ in range(max_iter_overall)]
+    all_bwa_spec = [[] for _ in range(max_iter_overall)]
+
+    for seed, (para_prec, para_rec, para_spec, bwa_prec, bwa_rec, bwa_spec) in per_seed_metrics.items():
+        for i in range(len(para_prec)):
+            all_para_prec[i].append(para_prec[i])
+            all_para_rec[i].append(para_rec[i])
+            all_para_spec[i].append(para_spec[i])
+            all_bwa_prec[i].append(bwa_prec[i])
+            all_bwa_rec[i].append(bwa_rec[i])
+            all_bwa_spec[i].append(bwa_spec[i])
+
+    # Calculate mean and std for each iteration (only over seeds that reached that iteration)
     para_prec_mean = []
     para_prec_std = []
     para_rec_mean = []
@@ -277,7 +277,7 @@ def collect_metrics_across_seeds(
     bwa_spec_mean = []
     bwa_spec_std = []
     
-    for i in range(iterations):
+    for i in range(max_iter_overall):
         # ParaDISM metrics
         if all_para_prec[i]:
             para_prec_mean.append(statistics.mean(all_para_prec[i]))
@@ -287,11 +287,11 @@ def collect_metrics_across_seeds(
             para_spec_mean.append(statistics.mean(all_para_spec[i]))
             para_spec_std.append(statistics.stdev(all_para_spec[i]) if len(all_para_spec[i]) > 1 else 0.0)
         else:
-            para_prec_mean.append(0.0)
+            para_prec_mean.append(np.nan)
             para_prec_std.append(0.0)
-            para_rec_mean.append(0.0)
+            para_rec_mean.append(np.nan)
             para_rec_std.append(0.0)
-            para_spec_mean.append(0.0)
+            para_spec_mean.append(np.nan)
             para_spec_std.append(0.0)
         
         # BWA metrics
@@ -303,11 +303,11 @@ def collect_metrics_across_seeds(
             bwa_spec_mean.append(statistics.mean(all_bwa_spec[i]))
             bwa_spec_std.append(statistics.stdev(all_bwa_spec[i]) if len(all_bwa_spec[i]) > 1 else 0.0)
         else:
-            bwa_prec_mean.append(0.0)
+            bwa_prec_mean.append(np.nan)
             bwa_prec_std.append(0.0)
-            bwa_rec_mean.append(0.0)
+            bwa_rec_mean.append(np.nan)
             bwa_rec_std.append(0.0)
-            bwa_spec_mean.append(0.0)
+            bwa_spec_mean.append(np.nan)
             bwa_spec_std.append(0.0)
     
     return (
@@ -316,7 +316,8 @@ def collect_metrics_across_seeds(
         para_spec_mean, para_spec_std,
         bwa_prec_mean, bwa_prec_std,
         bwa_rec_mean, bwa_rec_std,
-        bwa_spec_mean, bwa_spec_std
+        bwa_spec_mean, bwa_spec_std,
+        max_iter_overall
     )
 
 
@@ -325,8 +326,8 @@ def create_iteration_plots(
     seed_start: int,
     seed_end: int,
     output_dir: Path,
-    iterations: int,
-    aligner: str
+    aligner: str,
+    iterations: int | None = None,
 ) -> None:
     """Create plots showing metric progression across iterations with error bars."""
     
@@ -337,17 +338,41 @@ def create_iteration_plots(
         para_spec_mean, para_spec_std,
         bwa_prec_mean, bwa_prec_std,
         bwa_rec_mean, bwa_rec_std,
-        bwa_spec_mean, bwa_spec_std
+        bwa_spec_mean, bwa_spec_std,
+        max_iter_overall
     ) = collect_metrics_across_seeds(
-        sim_output_base, seed_start, seed_end, iterations, aligner
+        sim_output_base, seed_start, seed_end, aligner
     )
     
     if not para_prec_mean:
         print(f"Error: No metrics found", file=sys.stderr)
         return
+
+    # Determine how many iterations to plot: auto-detect unless explicitly capped
+    target_iterations = iterations if iterations and iterations > 0 else max_iter_overall
+    if target_iterations > max_iter_overall:
+        print(f"Warning: requested iterations={target_iterations} exceeds observed max={max_iter_overall}; capping to {max_iter_overall}", file=sys.stderr)
+        target_iterations = max_iter_overall
+
+    # Truncate metrics to the chosen iteration count
+    def trim(arr: list[float]) -> list[float]:
+        return arr[:target_iterations]
+
+    para_prec_mean = trim(para_prec_mean)
+    para_prec_std = trim(para_prec_std)
+    para_rec_mean = trim(para_rec_mean)
+    para_rec_std = trim(para_rec_std)
+    para_spec_mean = trim(para_spec_mean)
+    para_spec_std = trim(para_spec_std)
+    bwa_prec_mean = trim(bwa_prec_mean)
+    bwa_prec_std = trim(bwa_prec_std)
+    bwa_rec_mean = trim(bwa_rec_mean)
+    bwa_rec_std = trim(bwa_rec_std)
+    bwa_spec_mean = trim(bwa_spec_mean)
+    bwa_spec_std = trim(bwa_spec_std)
     
-    # Create iteration numbers (1 to iterations, 1-based indexing)
-    iter_nums = list(range(1, iterations + 1))
+    # Create iteration numbers (1 to target_iterations, 1-based indexing)
+    iter_nums = list(range(1, target_iterations + 1))
     
     # Set font sizes
     plt.rcParams.update({
@@ -482,15 +507,15 @@ def main():
         help='Output directory for plots'
     )
     parser.add_argument(
-        '--iterations',
-        type=int,
-        required=True,
-        help='Number of iterations'
-    )
-    parser.add_argument(
         '--aligner',
         default='bwa-mem2',
         help='Aligner name'
+    )
+    parser.add_argument(
+        '--iterations',
+        type=int,
+        default=0,
+        help='Number of iterations to plot (0 = auto-detect maximum per seed and cap to overall max)'
     )
     
     args = parser.parse_args()
@@ -500,11 +525,10 @@ def main():
         args.seed_start,
         args.seed_end,
         args.output_dir,
-        args.iterations,
-        args.aligner
+        args.aligner,
+        args.iterations
     )
 
 
 if __name__ == '__main__':
     main()
-

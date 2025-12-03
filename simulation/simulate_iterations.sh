@@ -34,7 +34,7 @@ FRAG_SD=35                  # Fragment length std dev
 DWGSIM_DIR="${PARADISM_ROOT}/../dwgsim"  # DWGSIM directory
 
 ALIGNERS=("bwa-mem2")
-ITERATIONS=10               # Number of ParaDISM runs (10 = run 10 times, 9 refinement iterations)
+ITERATIONS=2               # Number of ParaDISM runs (10 = run 10 times, 9 refinement iterations)
 
 # ------------------------------------------------------------------
 # Helpers
