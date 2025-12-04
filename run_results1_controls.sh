@@ -8,13 +8,13 @@ set -euo pipefail
 DATA_BASE="/mnt/ngs-data/Results 1"
 REFERENCE="ref.fa"
 ALIGNER="minimap2"
-THREADS=4
+THREADS=1
 ITERATIONS=10
-OUTPUT_BASE="HTS_results1_output"
+OUTPUT_BASE="HTS_cntrl_minimap2_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 MINIMAP2_PROFILE="short"  # only used if ALIGNER=minimap2
 
-# Samples to run (exclude ones already processed elsewhere)
+# Samples to run (exclude HTS004, HTS006, HTS008, HTS009)
 SAMPLES=(
     "HTS003"
     "HTS005"
@@ -32,6 +32,21 @@ SAMPLES=(
     "HTS020"
     "HTS021"
     "HTS022"
+    "HTS023"
+    "HTS024"
+    "HTS025"
+    "HTS026"
+    "HTS027"
+    "HTS028"
+    "HTS029"
+    "HTS030"
+    "HTS031"
+    "HTS032"
+    "HTS033"
+    "HTS034"
+    "HTS035"
+    "HTS036"
+ 
 )
 
 # Check reference
