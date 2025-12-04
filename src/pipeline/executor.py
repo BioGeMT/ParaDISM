@@ -734,3 +734,22 @@ class PipelineExecutor:
                 threads=threads,
                 minimap2_profile=minimap2_profile,
             )
+        elif iterations > 0:
+            # No refinement requested; generate final outputs from iteration 1
+            final_output = self.iteration_outputs[-1] if self.iteration_outputs else {
+                'iteration': 1,
+                'reference': Path(ref),
+                'output_dir': self.output_dir,
+                'mappings_tsv': unique_mappings_tsv,
+                'bam_dir': bam_dir,
+            }
+            self.output_dir = final_output['output_dir']
+            self._generate_final_outputs(
+                final_mappings_tsv=final_output['mappings_tsv'],
+                final_ref=final_output['reference'],
+                original_r1=r1,
+                original_r2=r2,
+                aligner=aligner,
+                threads=threads,
+                minimap2_profile=minimap2_profile,
+            )
