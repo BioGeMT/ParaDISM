@@ -7,7 +7,7 @@ set -euo pipefail
 
 DATA_BASE="/mnt/ngs-data/Results 1"
 REFERENCE="ref.fa"
-ALIGNER="bwa-mem2"
+ALIGNER="minimap2"
 THREADS=4
 ITERATIONS=10
 OUTPUT_BASE="HTS_results1_output"

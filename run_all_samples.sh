@@ -5,7 +5,7 @@ set -euo pipefail
 # Configuration
 DATA_DIR="/mnt/STORAGE-BioGeMT-01/pkd_data"
 REFERENCE="ref.fa"
-ALIGNER="bwa-mem2"
+ALIGNER="minimap2"
 THREADS=4
 OUTPUT_BASE="HTS_bwa_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
