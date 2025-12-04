@@ -8,7 +8,7 @@ set -euo pipefail
 DATA_BASE="/mnt/ngs-data/Results 1"
 REFERENCE="ref.fa"
 ALIGNER="bwa-mem2"
-THREADS=2
+THREADS=4
 ITERATIONS=10
 OUTPUT_BASE="HTS_results1_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
@@ -43,7 +43,7 @@ fi
 mkdir -p "$LOG_DIR"
 echo "Logs will be saved to: $LOG_DIR/"
 
-SAMPLES_PER_BATCH=8
+SAMPLES_PER_BATCH=16
 total_samples=${#SAMPLES[@]}
 
 for ((batch_start=0; batch_start<total_samples; batch_start+=SAMPLES_PER_BATCH)); do
