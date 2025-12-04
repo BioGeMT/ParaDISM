@@ -326,6 +326,14 @@ python "${SCRIPT_DIR}/aggregate_results.py" \
     --aligners "${ALIGNERS[@]}" \
     --output-dir "${SIM_OUTPUT_BASE}/aggregated_results"
 
+# Per-seed overall (ParaDISM vs direct aligner)
+python "${SCRIPT_DIR}/aggregate_per_seed_overall.py" \
+    --sim-output-base "$SIM_OUTPUT_BASE" \
+    --seed-start "$SEED_START" \
+    --seed-end "$SEED_END" \
+    --aligners "${ALIGNERS[@]}" \
+    --output "${SIM_OUTPUT_BASE}/aggregated_results/per_seed_overall_metrics.csv"
+
 echo "Aggregation complete!"
 
 # ------------------------------------------------------------------
