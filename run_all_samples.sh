@@ -24,10 +24,8 @@ echo "Logs will be saved to: $LOG_DIR/"
 
 SAMPLES=(
     "HTS009"
-    "HTS131_L1"
-    "HTS131_L2"
-    "HTS132_L1"
-    "HTS132_L2"
+    "HTS131"
+    "HTS132"
     "HTS158"
     "HTS159"
     "HTS160"
@@ -71,19 +69,9 @@ for ((batch_start=0; batch_start<total_samples; batch_start+=SAMPLES_PER_BATCH))
                 r1_file="$DATA_DIR/${sample}_R1.fq"
                 r2_file="$DATA_DIR/${sample}_R2.fq"
 
-                # For HTS131 and HTS132, merge lane-split files if present
-                if [[ "$sample" == "HTS131_L1" || "$sample" == "HTS131_L2" ]]; then
-                    base="HTS131"
-                    r1_merged="$OUTPUT_BASE/${base}_merged_R1.fq"
-                    r2_merged="$OUTPUT_BASE/${base}_merged_R2.fq"
-                    if [[ ! -f "$r1_merged" || ! -f "$r2_merged" ]]; then
-                        cat "$DATA_DIR/${base}_L1_R1.fq" "$DATA_DIR/${base}_L2_R1.fq" > "$r1_merged"
-                        cat "$DATA_DIR/${base}_L1_R2.fq" "$DATA_DIR/${base}_L2_R2.fq" > "$r2_merged"
-                    fi
-                    r1_file="$r1_merged"
-                    r2_file="$r2_merged"
-                elif [[ "$sample" == "HTS132_L1" || "$sample" == "HTS132_L2" ]]; then
-                    base="HTS132"
+                # For HTS131 and HTS132, merge L1/L2 lanes once and reuse
+                if [[ "$sample" == "HTS131" || "$sample" == "HTS132" ]]; then
+                    base="$sample"
                     r1_merged="$OUTPUT_BASE/${base}_merged_R1.fq"
                     r2_merged="$OUTPUT_BASE/${base}_merged_R2.fq"
                     if [[ ! -f "$r1_merged" || ! -f "$r2_merged" ]]; then
