@@ -6,7 +6,7 @@ set -euo pipefail
 DATA_DIR="/mnt/STORAGE-BioGeMT-01/pkd_data"
 REFERENCE="ref.fa"
 ALIGNER="bwa-mem2"
-THREADS=2                   
+THREADS=2
 OUTPUT_BASE="HTS_bwa_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 # Only used when ALIGNER=minimap2 (valid presets: short, pacbio-hifi, pacbio-clr, ont-q20, ont-standard)
@@ -54,11 +54,11 @@ for ((batch_start=0; batch_start<total_samples; batch_start+=SAMPLES_PER_BATCH))
     if [[ $batch_end -gt $total_samples ]]; then
         batch_end=$total_samples
     fi
-    
+
     echo "=========================================="
     echo "Processing samples batch: ${batch_start} to $((batch_end - 1))"
     echo "=========================================="
-    
+
     # Process all samples in this batch in parallel
     for ((i=batch_start; i<batch_end; i++)); do
         sample="${SAMPLES[$i]}"
@@ -70,6 +70,29 @@ for ((batch_start=0; batch_start<total_samples; batch_start+=SAMPLES_PER_BATCH))
             else
                 r1_file="$DATA_DIR/${sample}_R1.fq"
                 r2_file="$DATA_DIR/${sample}_R2.fq"
+
+                # For HTS131 and HTS132, merge lane-split files if present
+                if [[ "$sample" == "HTS131_L1" || "$sample" == "HTS131_L2" ]]; then
+                    base="HTS131"
+                    r1_merged="$OUTPUT_BASE/${base}_merged_R1.fq"
+                    r2_merged="$OUTPUT_BASE/${base}_merged_R2.fq"
+                    if [[ ! -f "$r1_merged" || ! -f "$r2_merged" ]]; then
+                        cat "$DATA_DIR/${base}_L1_R1.fq" "$DATA_DIR/${base}_L2_R1.fq" > "$r1_merged"
+                        cat "$DATA_DIR/${base}_L1_R2.fq" "$DATA_DIR/${base}_L2_R2.fq" > "$r2_merged"
+                    fi
+                    r1_file="$r1_merged"
+                    r2_file="$r2_merged"
+                elif [[ "$sample" == "HTS132_L1" || "$sample" == "HTS132_L2" ]]; then
+                    base="HTS132"
+                    r1_merged="$OUTPUT_BASE/${base}_merged_R1.fq"
+                    r2_merged="$OUTPUT_BASE/${base}_merged_R2.fq"
+                    if [[ ! -f "$r1_merged" || ! -f "$r2_merged" ]]; then
+                        cat "$DATA_DIR/${base}_L1_R1.fq" "$DATA_DIR/${base}_L2_R1.fq" > "$r1_merged"
+                        cat "$DATA_DIR/${base}_L1_R2.fq" "$DATA_DIR/${base}_L2_R2.fq" > "$r2_merged"
+                    fi
+                    r1_file="$r1_merged"
+                    r2_file="$r2_merged"
+                fi
             fi
 
             output_dir="$OUTPUT_BASE/$sample"
@@ -136,7 +159,7 @@ for ((batch_start=0; batch_start<total_samples; batch_start+=SAMPLES_PER_BATCH))
             echo "Completed: $sample (Status: $status, Time: ${hours}h ${minutes}m ${seconds}s, Log: $log_file)"
         ) &
     done
-    
+
     # Wait for all samples in this batch to complete
     wait
     echo "=========================================="
