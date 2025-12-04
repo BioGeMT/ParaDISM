@@ -377,16 +377,14 @@ def create_iteration_plots(
     # Set font sizes
     plt.rcParams.update({
         'font.size': 14,
-        'axes.titlesize': 18,
         'axes.labelsize': 16,
         'xtick.labelsize': 14,
         'ytick.labelsize': 14,
         'legend.fontsize': 14,
         'font.weight': 'bold',
-        'axes.titleweight': 'bold',
         'axes.labelweight': 'bold'
     })
-    
+
     # Create figure with 3 subplots
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     
@@ -402,11 +400,9 @@ def create_iteration_plots(
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[0].set_xlabel('Iteration', weight='bold')
     axes[0].set_ylabel('Precision', weight='bold')
-    axes[0].set_title(f'Precision Across Iterations (n={seed_end - seed_start + 1} seeds)', weight='bold')
     axes[0].set_xlim([0.5, iterations + 0.5])
     axes[0].set_ylim([0, 1.05])
     axes[0].grid(alpha=0.3)
-    axes[0].legend()
     axes[0].set_xticks(iter_nums)
     
     # Plot 2: Recall
@@ -421,11 +417,9 @@ def create_iteration_plots(
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[1].set_xlabel('Iteration', weight='bold')
     axes[1].set_ylabel('Recall', weight='bold')
-    axes[1].set_title(f'Recall Across Iterations (n={seed_end - seed_start + 1} seeds)', weight='bold')
     axes[1].set_xlim([0.5, iterations + 0.5])
     axes[1].set_ylim([0, 1.05])
     axes[1].grid(alpha=0.3)
-    axes[1].legend()
     axes[1].set_xticks(iter_nums)
     
     # Plot 3: Specificity
@@ -440,13 +434,15 @@ def create_iteration_plots(
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[2].set_xlabel('Iteration', weight='bold')
     axes[2].set_ylabel('Specificity', weight='bold')
-    axes[2].set_title(f'Specificity Across Iterations (n={seed_end - seed_start + 1} seeds)', weight='bold')
     axes[2].set_xlim([0.5, iterations + 0.5])
     axes[2].set_ylim([0, 1.05])
     axes[2].grid(alpha=0.3)
-    axes[2].legend()
     axes[2].set_xticks(iter_nums)
     
+    # Single legend outside panels
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', ncol=2, frameon=False)
+
     plt.tight_layout()
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f'iteration_progression_{aligner}.png'

@@ -51,12 +51,6 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         console.print("[red]✗ --minimap2-profile must be provided when --aligner minimap2[/red]")
         sys.exit(1)
 
-    # Show mode info
-    mode = "paired-end" if args.read2 else "single-end"
-    console.print(f"[cyan]Running in {mode} mode[/cyan]")
-    if not args.read2:
-        console.print("[yellow]⚠ Single-end mode has lower mapping confidence (no mate validation)[/yellow]")
-
     profile = args.minimap2_profile or "short"
 
     executor = PipelineExecutor(output_dir=args.output_dir, prefix=args.prefix)

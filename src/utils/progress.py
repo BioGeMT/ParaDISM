@@ -43,7 +43,7 @@ class ProgressRunner:
             index = 0
             while not stop_event.is_set():
                 char = self.spinner_chars[index % len(self.spinner_chars)]
-                print(f"\r{char} {message}", end="", file=sys.stderr)
+                print(f"\r  {char} {message}", end="", file=sys.stderr)
                 sys.stderr.flush()
                 index += 1
                 time.sleep(0.1)
@@ -63,12 +63,12 @@ class ProgressRunner:
             self.logger.write(result.stderr or "")
             stop_event.set()
             thread.join()
-            print(f"\r\033[0;36m✓\033[0m \033[0;36m{message}\033[0m", file=sys.stderr)
+            print(f"\r  \033[0;36m✓ {message}\033[0m", file=sys.stderr)
             return result
         except subprocess.CalledProcessError:
             stop_event.set()
             thread.join()
-            print(f"\r\033[0;31m✗\033[0m \033[0;31m{message}\033[0m", file=sys.stderr)
+            print(f"\r  \033[0;31m✗ {message}\033[0m", file=sys.stderr)
             print("Error occurred. Check log:", self.logger.path, file=sys.stderr)
             self._tail_log()
             sys.exit(1)
@@ -85,9 +85,9 @@ class ProgressRunner:
         progress_fragment = ""
 
         def render_frame(spinner_char: str, progress_line: str) -> None:
-            formatted_progress = f"  {progress_line}" if progress_line else ""
+            formatted_progress = f"    {progress_line}" if progress_line else ""
             sys.stderr.write("\033[2A\r")
-            sys.stderr.write(f"{spinner_char} {message}\033[K\n")
+            sys.stderr.write(f"  {spinner_char} {message}\033[K\n")
             if formatted_progress:
                 sys.stderr.write(f"{formatted_progress}\033[K\n")
             else:
@@ -95,7 +95,7 @@ class ProgressRunner:
             sys.stderr.flush()
 
         sys.stderr.write("\033[?25l")
-        sys.stderr.write(f"{self.spinner_chars[0]} {message}\n\n")
+        sys.stderr.write(f"  {self.spinner_chars[0]} {message}\n\n")
         sys.stderr.flush()
 
         process = subprocess.Popen(
@@ -188,12 +188,12 @@ class ProgressRunner:
             exit_code = process.wait()
 
             status_line = (
-                f"\033[0;36m✓\033[0m \033[0;36m{message}\033[0m"
+                f"  \033[0;36m✓ {message}\033[0m"
                 if exit_code == 0
-                else f"\033[0;31m✗\033[0m \033[0;31m{message}\033[0m"
+                else f"  \033[0;31m✗ {message}\033[0m"
             )
 
-            formatted_progress_line = f"  {display_progress}" if exit_code != 0 and display_progress else ""
+            formatted_progress_line = f"    {display_progress}" if exit_code != 0 and display_progress else ""
 
             sys.stderr.write("\033[2A\r")
             sys.stderr.write(f"{status_line}\033[K\n")
@@ -212,4 +212,3 @@ class ProgressRunner:
             print("Error occurred. Check log:", self.logger.path, file=sys.stderr)
             self._tail_log()
             sys.exit(1)
-

@@ -404,7 +404,7 @@ def display_pipeline_config(
 
 
 def print_header():
-    """Print the mapper ASCII art header."""
+    """Print the ParaDISM ASCII art header."""
     console.clear()
     header = Text("""
 ██████╗  █████╗ ██████╗  █████╗ ██████╗ ██╗███████╗███╗   ███╗

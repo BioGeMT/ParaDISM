@@ -1,1 +1,1 @@
-"""Utility helpers shared by the homologous-region mapper."""
+"""Utility helpers shared by the ParaDISM homologous-region mapper."""

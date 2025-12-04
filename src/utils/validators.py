@@ -226,7 +226,7 @@ def validate_sam(sam_path: str, sam_metadata: Dict) -> List[Dict]:
             "blocking": False
         })
 
-    # Check for MD tags (required for mapper pipeline)
+    # Check for MD tags (required for the ParaDISM pipeline)
     if not sam_metadata["has_md_tags"]:
         results.append({
             "status": "error",

@@ -84,20 +84,15 @@ run_mapper() {
     # Run mapper (may exit with status 1 even if successful)
     "${cmd[@]}" || true
 
-    # Verify output file was created (this is the real success indicator)
-    # Allow early convergence - just check that at least one iteration exists
-    local final_iter_dir
-    final_iter_dir=$(find_latest_iteration_dir "$output_dir")
-    if [[ -z "$final_iter_dir" ]]; then
-        echo "ERROR: No iteration directories found under $output_dir" >&2
-        exit 1
-    fi
+    # Verify final outputs exist (prefer final_outputs, fall back to last iteration for early convergence)
+    local final_outputs_dir="${output_dir}/final_outputs"
+    local final_tsv="${final_outputs_dir}/${prefix}_unique_mappings.tsv"
 
-    local expected_output="${final_iter_dir}/${prefix}_unique_mappings.tsv"
-    if [ ! -f "$expected_output" ]; then
-        echo "ERROR: Expected output file not found: $expected_output" >&2
+    if [[ ! -f "$final_tsv" ]]; then
+        echo "ERROR: Final outputs TSV not found: $final_tsv" >&2
         exit 1
     fi
+    echo "  Using final outputs TSV: $final_tsv" >&2
 }
 
 # ------------------------------------------------------------------
@@ -235,27 +230,42 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
                         exit 1
                     fi
 
+                    # Run iteration-by-iteration read mapping analysis (for progression plots)
+                    analysis_dir="$aligner_dir/read_mapping_analysis"
+                    mkdir -p "$analysis_dir"
+
+                    # Sorted list of iteration directories
+                    mapfile -t iter_dirs < <(find "$paradism_output" -maxdepth 1 -type d -name 'iteration_*' | sort -t_ -k2,2n)
+                    for iter_dir in "${iter_dirs[@]}"; do
+                        iter_num="${iter_dir##*/iteration_}"
+                        iter_tsv="${iter_dir}/${paradism_prefix}_unique_mappings.tsv"
+                        if [[ -f "$iter_tsv" ]]; then
+                            python "${SCRIPT_DIR}/read_mapping_analysis.py" \
+                                --aligner "$aligner" \
+                                --fastq-r1 "$r1" \
+                                --mapper-tsv "$iter_tsv" \
+                                --direct-sam "$base_bam" \
+                                --analysis-dir "$analysis_dir" \
+                                --output-prefix "${analysis_dir}/seed_${seed}_${aligner}_iter${iter_num}"
+                        fi
+                    done
+
+                    # Also run analysis on the final iteration for aggregate summary
                     mapper_tsv="${final_iter_dir}/${paradism_prefix}_unique_mappings.tsv"
                     if [[ ! -f "$mapper_tsv" ]]; then
                         echo "ERROR: Expected output file not found: $mapper_tsv" >&2
                         exit 1
                     fi
-
-                    # Extract iteration number for logging
                     final_iter_num="${final_iter_dir##*/iteration_}"
                     echo "  Using final iteration ${final_iter_num} for analysis" >&2
-                    
-                    analysis_dir="$aligner_dir/read_mapping_analysis"
-                    output_prefix="seed_${seed}_${aligner}"
-
                     python "${SCRIPT_DIR}/read_mapping_analysis.py" \
                         --aligner "$aligner" \
                         --fastq-r1 "$r1" \
                         --mapper-tsv "$mapper_tsv" \
                         --direct-sam "$base_bam" \
                         --analysis-dir "$analysis_dir" \
-                        --output-prefix "$output_prefix"
-                    
+                        --output-prefix "seed_${seed}_${aligner}"
+
                     echo "--- Completed aligner: $aligner (seed $seed) ---"
                     echo "  ParaDISM time: ${formatted_time} (${paradism_duration} seconds)"
                 ) &

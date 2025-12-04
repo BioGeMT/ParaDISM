@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive workflow for the homologous-region mapper."""
+"""Interactive workflow for the ParaDISM mapper."""
 
 import sys
 import os

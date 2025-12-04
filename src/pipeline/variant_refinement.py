@@ -126,9 +126,7 @@ def call_variants_from_bams(
                     print(f"  FreeBayes stderr: {error_details}", file=sys.stderr)
                 sys.exit(1)
         
-        # Filter to SNPs only (matching existing ParaDISM approach)
         if VARIANT_FILTER_SNPS_ONLY:
-            # Use bcftools to filter SNPs - fail fast if it fails
             snps_vcf = gene_vcf_tmp.with_suffix(".snps.vcf")
             with open(snps_vcf, "w") as vcf_out:
                 result = subprocess.run(
@@ -138,24 +136,23 @@ def call_variants_from_bams(
                     check=True,
                 )
             gene_vcf_tmp.unlink()
-            
-            # Apply quality filters: QUAL, DP (from INFO), AF (from INFO)
-            # Filter expression: QUAL >= min_qual AND INFO/DP >= min_dp AND INFO/AF >= min_af
-            # Note: DP and AF are INFO fields in FreeBayes output
-            filter_expr = f"QUAL >= {VARIANT_MIN_QUAL} && INFO/DP >= {VARIANT_MIN_DP} && INFO/AF >= {VARIANT_MIN_AF}"
-            with open(gene_vcf, "w") as vcf_out:
-                result = subprocess.run(
-                    ["bcftools", "filter", "-i", filter_expr, str(snps_vcf)],
-                    stdout=vcf_out,
-                    stderr=subprocess.PIPE,
-                    check=True,
-                )
-            snps_vcf.unlink()
+            snps_vcf.rename(gene_vcf)
         else:
             gene_vcf_tmp.rename(gene_vcf)
         
-        if gene_vcf.exists() and gene_vcf.stat().st_size > 100:  # Non-empty VCF
+        # Only keep VCFs that contain at least one variant line
+        has_variants = False
+        with open(gene_vcf, "r") as vf:
+            for line in vf:
+                if line.startswith("#"):
+                    continue
+                has_variants = True
+                break
+        if has_variants:
             per_gene_vcfs.append(gene_vcf)
+        else:
+            # Remove empty VCF to avoid merge failures; keep log for reference
+            gene_vcf.unlink(missing_ok=True)
     
     # Merge all per-gene VCFs
     if not per_gene_vcfs:
@@ -223,7 +220,6 @@ def call_variants_from_bams(
             sys.exit(1)
 
     # Merge VCFs using bcftools merge - fail fast if it fails
-    # Use --force-samples to handle duplicate sample names across per-gene VCFs
     merged_vcf = output_vcf.with_suffix(".merged.vcf")
     try:
         with open(merged_vcf, "w") as vcf_out:

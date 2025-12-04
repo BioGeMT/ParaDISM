@@ -1,1 +1,1 @@
-"""Pipeline modules for the homologous-region mapper."""
+"""Pipeline modules for the ParaDISM homologous-region mapper."""
