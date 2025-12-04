@@ -353,6 +353,9 @@ def create_iteration_plots(
     if target_iterations > max_iter_overall:
         print(f"Warning: requested iterations={target_iterations} exceeds observed max={max_iter_overall}; capping to {max_iter_overall}", file=sys.stderr)
         target_iterations = max_iter_overall
+    if target_iterations <= 0:
+        print("Error: No iteration metrics available to plot.", file=sys.stderr)
+        return
 
     # Truncate metrics to the chosen iteration count
     def trim(arr: list[float]) -> list[float]:
@@ -400,7 +403,7 @@ def create_iteration_plots(
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[0].set_xlabel('Iteration', weight='bold')
     axes[0].set_ylabel('Precision', weight='bold')
-    axes[0].set_xlim([0.5, iterations + 0.5])
+    axes[0].set_xlim([0.5, target_iterations + 0.5])
     axes[0].set_ylim([0, 1.05])
     axes[0].grid(alpha=0.3)
     axes[0].set_xticks(iter_nums)
@@ -417,7 +420,7 @@ def create_iteration_plots(
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[1].set_xlabel('Iteration', weight='bold')
     axes[1].set_ylabel('Recall', weight='bold')
-    axes[1].set_xlim([0.5, iterations + 0.5])
+    axes[1].set_xlim([0.5, target_iterations + 0.5])
     axes[1].set_ylim([0, 1.05])
     axes[1].grid(alpha=0.3)
     axes[1].set_xticks(iter_nums)
@@ -434,7 +437,7 @@ def create_iteration_plots(
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[2].set_xlabel('Iteration', weight='bold')
     axes[2].set_ylabel('Specificity', weight='bold')
-    axes[2].set_xlim([0.5, iterations + 0.5])
+    axes[2].set_xlim([0.5, target_iterations + 0.5])
     axes[2].set_ylim([0, 1.05])
     axes[2].grid(alpha=0.3)
     axes[2].set_xticks(iter_nums)
