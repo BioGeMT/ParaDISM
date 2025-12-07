@@ -16,3 +16,8 @@ syndip*
 gnaq_reads
 giab*
 *output*
+simulation_analysis/
+*results*
+*plots*
+simulation_outputs/
+*fastq
