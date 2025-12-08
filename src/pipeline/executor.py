@@ -516,17 +516,17 @@ class PipelineExecutor:
                     ["bwa-mem2", "index", "-p", str(index_base), ref],
                     "Building BWA-MEM2 index",
                 )
-                # Match Bowtie2-like minimum score using BWA-MEM2.
-                # Keep default scoring (match +1, mismatch -4) and set -T 240.
+                # Match Bowtie2/Minimap2 scoring: double match/mismatch to get max 300 for 150bp.
+                # -A 2 (match +2), -B 8 (mismatch -8), -T 240 (80% of max score).
                 if is_paired:
                     self._run_spinner(
-                        f"bwa-mem2 mem -T 240 -t {threads} '{index_base}' '{r1}' '{r2}' > '{sam_output}'",
+                        f"bwa-mem2 mem -A 2 -B 8 -T 240 -t {threads} '{index_base}' '{r1}' '{r2}' > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
                     )
                 else:
                     self._run_spinner(
-                        f"bwa-mem2 mem -T 240 -t {threads} '{index_base}' '{r1}' > '{sam_output}'",
+                        f"bwa-mem2 mem -A 2 -B 8 -T 240 -t {threads} '{index_base}' '{r1}' > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
                     )
