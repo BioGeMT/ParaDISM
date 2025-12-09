@@ -196,7 +196,11 @@ def create_bam_files(
 
             # Align with bwa-mem2
             # Note: Do not use -p flag since FASTQ may contain mix of complete pairs and single mates
-            align_cmd = f"bwa-mem2 mem -A 2 -B 8 -T 240 -t {threads} {index_base} {fastq_file} > {sam_path}"
+            # Note: BWA's -T doesn't filter paired-end reads (known bug), so we post-filter with awk.
+            bwa_min_score = 240
+            # awk filter: keep headers, unmapped reads, and mapped reads with AS >= threshold
+            awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
+            align_cmd = f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} {index_base} {fastq_file} | {awk_filter} > {sam_path}"
             print(f"Running alignment: {align_cmd}", file=sys.stderr)
             subprocess.run(align_cmd, shell=True, check=True)
 

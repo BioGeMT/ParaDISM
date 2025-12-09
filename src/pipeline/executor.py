@@ -518,15 +518,19 @@ class PipelineExecutor:
                 )
                 # Match Bowtie2/Minimap2 scoring: double match/mismatch to get max 300 for 150bp.
                 # -A 2 (match +2), -B 8 (mismatch -8), -T 240 (80% of max score).
+                # Note: BWA's -T doesn't filter paired-end reads (known bug), so we post-filter with awk.
+                bwa_min_score = 240
+                # awk filter: keep headers, unmapped reads, and mapped reads with AS >= threshold
+                awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
                 if is_paired:
                     self._run_spinner(
-                        f"bwa-mem2 mem -A 2 -B 8 -T 240 -t {threads} '{index_base}' '{r1}' '{r2}' > '{sam_output}'",
+                        f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{r1}' '{r2}' | {awk_filter} > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
                     )
                 else:
                     self._run_spinner(
-                        f"bwa-mem2 mem -A 2 -B 8 -T 240 -t {threads} '{index_base}' '{r1}' > '{sam_output}'",
+                        f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{r1}' | {awk_filter} > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
                     )
