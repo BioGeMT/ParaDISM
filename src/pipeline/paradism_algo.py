@@ -42,8 +42,18 @@ def load_msa_mapping(msa_filepath: str) -> Tuple[Dict, Dict, List]:
 def process_read():
     pass
 
-def process_sam(sam_path, ):
+def process_sam(sam_path, msa, msa_maps):
     alignments = AlignmentIterator(sam_path)
+    qname_to_c1 = defaultdict(False)  # does the read pair pass c1?
+    qname_to_c2 = defaultdict(True) # does the read pair pass c2?  
+    for read in alignments:
+        qname = read.sequences[0].id 
+        c1, c2 = process_read(read, msa, msa_maps)
+        if c1:
+            qname_to_c1[qname] = c1
+        if not c2:
+            qname_to_c2[qname] = c2
+            
 
 
 def main():
