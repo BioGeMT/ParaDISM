@@ -17,7 +17,7 @@ SRC_DIR = Path(__file__).parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pipeline.executor import PipelineExecutor
+from pipeline.executor import SimpleParaDISMExecutor
 from ui.interactive import interactive_mode
 from ui.ui_components import console
 
@@ -53,7 +53,7 @@ def run_with_arguments(args: argparse.Namespace) -> None:
 
     profile = args.minimap2_profile or "short"
 
-    executor = PipelineExecutor(output_dir=args.output_dir, prefix=args.prefix)
+    executor = SimpleParaDISMExecutor(output_dir=args.output_dir, prefix=args.prefix)
     executor.run_pipeline(
         r1=args.read1,
         r2=args.read2,
@@ -65,12 +65,6 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         show_header=True,
         iterations=args.iterations,
     )
-    
-    # Print iteration summary if iterations > 1 (refinement was used)
-    if args.iterations > 1 and executor.iteration_outputs:
-        print("\n\033[0;36mIteration Summary:\033[0m", file=sys.stderr)
-        for iter_info in executor.iteration_outputs:
-            print(f"  Iteration {iter_info['iteration']}: {iter_info['output_dir']}", file=sys.stderr)
 
 
 class CustomHelpFormatter(argparse.RawDescriptionHelpFormatter):

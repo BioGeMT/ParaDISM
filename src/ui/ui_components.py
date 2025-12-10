@@ -362,20 +362,26 @@ def display_pipeline_config(
     aligner_display_name = aligner_map.get(aligner, aligner.upper())
     steps = [
         ("1", "Multiple Sequence Alignment"),
-        ("2", f"{aligner_display_name} Index Build"),
-        ("3", "Read Alignment"),
-        ("4", "Mapping of Reference Sequences to MSA"),
-        ("5", "Mapping of Reads to Reference Sequences"),
-        ("6", "Mapping Refinement"),
-        ("7", "Output File Creation")
     ]
+    
+    # Add alignment steps only if not using existing SAM
+    if not sam_file:
+        steps.extend([
+            ("2", f"{aligner_display_name} Alignment"),
+        ])
+    
+    # Add ParaDISM algorithm step
+    step_num = len(steps) + 1
+    steps.append((str(step_num), "ParaDISM Algorithm"))
+    
+    # Add iterative refinement step if iterations > 1
+    if iterations > 1:
+        step_num += 1
+        steps.append((str(step_num), "Iterative Refinement"))
 
-    # Gray out steps 2-3 if using existing SAM
+    # Display steps
     for num, step_name in steps:
-        if sam_file and num in ["2", "3"]:
-            lines.append(f"  [dim]{num}. ⚙  {step_name} (skipped)[/dim]")
-        else:
-            lines.append(f"  {num}. [cyan]⚙[/cyan]  {step_name}")
+        lines.append(f"  {num}. [cyan]⚙[/cyan]  {step_name}")
 
     lines.append("")
 
@@ -384,9 +390,12 @@ def display_pipeline_config(
     output_path = Path(output_dir)
     output_dir_display = str(output_path.resolve())
     lines.append(f"  [cyan]{output_dir_display}/[/cyan]")
-    lines.append("  ├─ [green]unique_mappings.tsv[/green]")
-    lines.append(f"  ├─ [green]fastq/PKD1*.fq[/green] [dim]({ref_sequences} files)[/dim]")
-    lines.append(f"  ├─ [green]bam/PKD1*.bam + .bai[/green] [dim]({ref_sequences * 2} files)[/dim]")
+    # Derive prefix from output directory name (defaults to "output")
+    prefix_name = output_path.name if output_path.name != "." else "output"
+    lines.append(f"  ├─ [green]final_outputs/{prefix_name}_fastq/PKD1*.fq[/green] [dim]({ref_sequences} files)[/dim]")
+    lines.append(f"  ├─ [green]final_outputs/{prefix_name}_bam/PKD1*.bam + .bai[/green] [dim]({ref_sequences * 2} files)[/dim]")
+    if iterations > 1:
+        lines.append(f"  ├─ [dim]iteration_*/[/dim] [dim](intermediate iterations)[/dim]")
     lines.append("  └─ [dim]pipeline_YYYYMMDD_HHMMSS.log[/dim]")
 
     # Create panel

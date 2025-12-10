@@ -1,9 +1,13 @@
 import argparse
-from typing import Dict, List
+import os
+import subprocess
+from subprocess import DEVNULL
 from collections import defaultdict
 from Bio import AlignIO
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
 from Bio.Align.sam import AlignmentIterator
-from msa_processing import map_seqcoords_to_alncoords
+from .msa_processing import map_seqcoords_to_alncoords
 
 
 def load_msa(msa_fasta_path: str):
@@ -153,16 +157,18 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
 
 
 
-def process_sam(sam_path, msa, seq_to_aln, gene_names, output_path):
+def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
     """
     Process SAM file and assign reads to genes based on c1/c2 conditions.
+    
+    Returns:
+        dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
     """
     # Track c1/c2 per read pair per gene
     qname_to_c1 = {gene: defaultdict(bool) for gene in gene_names}
     qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
     all_qnames = set()
 
-    reads_processed = 0
     for alignment in AlignmentIterator(sam_path):
         qname = alignment.query.id
         all_qnames.add(qname)
@@ -175,26 +181,179 @@ def process_sam(sam_path, msa, seq_to_aln, gene_names, output_path):
             if not c2_dict[gene]:
                 qname_to_c2[gene][qname] = False
 
-        reads_processed += 1
-
     # Assign reads to genes
-    with open(output_path, 'w') as out_f:
-        out_f.write('Read_Name\tAssignment\n')
+    assignments = {}
+    for qname in all_qnames:
+        passing_genes = []
+        for gene in gene_names:
+            c1 = qname_to_c1[gene][qname]
+            c2 = qname_to_c2[gene][qname]
+            if c1 and c2:
+                passing_genes.append(gene)
 
-        for qname in sorted(all_qnames):
-            passing_genes = []
-            for gene in gene_names:
-                c1 = qname_to_c1[gene][qname]
-                c2 = qname_to_c2[gene][qname]
-                if c1 and c2:
-                    passing_genes.append(gene)
+        if len(passing_genes) == 1:
+            assignments[qname] = passing_genes[0]
+        else:
+            assignments[qname] = "NONE"
 
-            if len(passing_genes) == 1:
-                assignment = passing_genes[0]
+    return assignments
+
+
+def _base_read_id(read_id: str) -> str:
+    """Normalize read ID to match SAM read IDs."""
+    if read_id.endswith("/1") or read_id.endswith("/2"):
+        return read_id[:-2]
+    return read_id
+
+
+def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str | None, 
+                       fastq_dir: str, prefix: str = "") -> list[str]:
+    """Write per-gene FASTQ files directly from assignments dict."""
+    os.makedirs(fastq_dir, exist_ok=True)
+    
+    # Load FASTQ records
+    r1_records = {}
+    for rec in SeqIO.parse(r1_path, "fastq"):
+        r1_records[_base_read_id(rec.id)] = rec
+
+    r2_records = {}
+    if r2_path:
+        for rec in SeqIO.parse(r2_path, "fastq"):
+            r2_records[_base_read_id(rec.id)] = rec
+
+    # Organize reads by gene
+    gene_collection = defaultdict(list)
+    is_paired = r2_path is not None
+
+    for read_name, gene in assignments.items():
+        if gene == "NONE":
+            continue
+
+        # Add R1
+        r1 = r1_records.get(read_name)
+        if r1 is not None:
+            if is_paired:
+                gene_collection[gene].append(SeqRecord(
+                    r1.seq,
+                    id=f"{read_name}/1",
+                    description="",
+                    letter_annotations=r1.letter_annotations
+                ))
             else:
-                assignment = "NONE"
+                gene_collection[gene].append(SeqRecord(
+                    r1.seq,
+                    id=read_name,
+                    description="",
+                    letter_annotations=r1.letter_annotations
+                ))
 
-            out_f.write(f'{qname}\t{assignment}\n')
+        # Add R2 if paired-end
+        if is_paired:
+            r2 = r2_records.get(read_name)
+            if r2 is not None:
+                gene_collection[gene].append(SeqRecord(
+                    r2.seq,
+                    id=f"{read_name}/2",
+                    description="",
+                    letter_annotations=r2.letter_annotations
+                ))
+
+    # Write FASTQ files
+    processed_genes = []
+    for gene, records in gene_collection.items():
+        if not records:
+            continue
+
+        filename = f"{prefix}_{gene}.fq" if prefix else f"{gene}.fq"
+        output_file = os.path.join(fastq_dir, filename)
+
+        with open(output_file, "w") as out_f:
+            SeqIO.write(records, out_f, "fastq")
+
+        processed_genes.append(gene)
+
+    return processed_genes
+
+
+def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_dir: str,
+                     aligner: str = 'bwa-mem2', threads: int = 4, minimap2_profile: str = 'short',
+                     prefix: str = "") -> None:
+    """Create BAM files for each gene."""
+    ref_db = {}
+    for record in SeqIO.parse(ref_fasta, "fasta"):
+        gene_name = record.id.split()[0]
+        ref_db[gene_name] = str(record.seq)
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    for gene in genes:
+        if gene not in ref_db:
+            continue
+
+        fastq_filename = f"{prefix}_{gene}.fq" if prefix else f"{gene}.fq"
+        fastq_file = os.path.join(fastq_dir, fastq_filename)
+
+        if not os.path.exists(fastq_file):
+            continue
+
+        bam_filename_base = f"{prefix}_{gene}" if prefix else gene
+        tmp_ref = os.path.join(output_dir, f"{bam_filename_base}_ref.fa")
+        index_base = os.path.join(output_dir, f"{bam_filename_base}_index")
+        sam_path = os.path.join(output_dir, f"{bam_filename_base}.sam")
+        bam_path = os.path.join(output_dir, f"{bam_filename_base}.bam")
+        sorted_bam = os.path.join(output_dir, f"{bam_filename_base}.sorted.bam")
+
+        # Write per-gene reference
+        with open(tmp_ref, "w") as f:
+            f.write(f">{gene}\n{ref_db[gene]}\n")
+
+        # Build index and align (suppress verbose output)
+        if aligner == 'bowtie2':
+            subprocess.run(f"bowtie2-build {tmp_ref} {index_base}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            subprocess.run(f"bowtie2 --local --score-min G,40,40 -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+        elif aligner == 'bwa-mem2':
+            subprocess.run(f"bwa-mem2 index -p {index_base} {tmp_ref}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            bwa_min_score = 240
+            awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
+            subprocess.run(f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} {index_base} {fastq_file} | {awk_filter} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+        elif aligner == 'minimap2':
+            preset_map = {
+                'short': 'sr',
+                'pacbio-hifi': 'map-hifi',
+                'pacbio-clr': 'map-pb',
+                'ont-q20': 'lr:hq',
+                'ont-standard': 'map-ont',
+            }
+            preset = preset_map.get(minimap2_profile, 'sr')
+            score_threshold = "-s 240" if preset == "sr" else ""
+            index_mmi = f"{index_base}.mmi"
+            subprocess.run(f"minimap2 -x {preset} -d {index_mmi} {tmp_ref}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            subprocess.run(f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} {index_mmi} {fastq_file} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+
+        # Convert to BAM (suppress verbose output)
+        subprocess.run(f"samtools view -b {sam_path} > {bam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+        subprocess.run(f"samtools sort -o {sorted_bam} {bam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+        subprocess.run(f"samtools index {sorted_bam}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+
+        # Cleanup
+        os.remove(tmp_ref)
+        os.remove(sam_path)
+        os.remove(bam_path)
+
+        if aligner == 'bowtie2':
+            for ext in ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2', '.rev.2.bt2']:
+                index_file = f"{index_base}{ext}"
+                if os.path.exists(index_file):
+                    os.remove(index_file)
+        elif aligner == 'bwa-mem2':
+            for ext in ['.0123', '.amb', '.ann', '.bwt.2bit.64', '.pac']:
+                index_file = f"{index_base}{ext}"
+                if os.path.exists(index_file):
+                    os.remove(index_file)
+        elif aligner == 'minimap2':
+            index_mmi = f"{index_base}.mmi"
+            if os.path.exists(index_mmi):
+                os.remove(index_mmi)
 
 
 def main():
@@ -206,10 +365,26 @@ def main():
                         help='Input SAM/BAM file')
     parser.add_argument('--msa', required=True,
                         help='Input MSA FASTA file')
-    parser.add_argument('--output', required=True,
-                        help='Output file for unique mapping results')
-    parser.add_argument('--single-end', action='store_true',
-                        help='Treat input as single-end reads')
+    parser.add_argument('--r1', required=True,
+                        help='R1 FASTQ file (or single-end reads)')
+    parser.add_argument('--r2', required=False, default=None,
+                        help='R2 FASTQ file (optional, for paired-end)')
+    parser.add_argument('--ref', required=True,
+                        help='Reference FASTA file')
+    parser.add_argument('--fastq-dir', required=True,
+                        help='Output directory for gene-specific FASTQ files')
+    parser.add_argument('--bam-dir', required=True,
+                        help='Output directory for BAM files')
+    parser.add_argument('--aligner', default='bwa-mem2',
+                        choices=['bwa-mem2', 'bowtie2', 'minimap2'],
+                        help='Aligner to use')
+    parser.add_argument('--threads', type=int, default=4,
+                        help='Number of threads')
+    parser.add_argument('--minimap2-profile', default='short',
+                        choices=['short', 'pacbio-hifi', 'pacbio-clr', 'ont-q20', 'ont-standard'],
+                        help='Minimap2 profile')
+    parser.add_argument('--prefix', default='',
+                        help='Prefix for output files')
 
     args = parser.parse_args()
 
@@ -217,7 +392,30 @@ def main():
     all_chars = set(''.join(str(alnseqrec.seq) for alnseqrec in msa))
     assert all(char.isupper() or char == '-' for char in all_chars), 'MSA needs to be uppercase'
 
-    process_sam(args.sam, msa, seq_to_aln, gene_names, args.output)
+    assignments = process_sam_to_dict(args.sam, msa, seq_to_aln, gene_names)
+    
+    # Write FASTQ files
+    genes = write_fastq_outputs(
+        assignments,
+        args.r1,
+        args.r2,
+        args.fastq_dir,
+        args.prefix
+    )
+    
+    # Create BAM files
+    if genes:
+        create_bam_files(
+            genes,
+            args.ref,
+            args.fastq_dir,
+            args.bam_dir,
+            args.aligner,
+            args.threads,
+            args.minimap2_profile,
+            args.prefix
+        )
+
 
 
 if __name__ == '__main__':
