@@ -15,7 +15,7 @@ from Bio import SeqIO
 
 from utils.logger import PipelineLogger
 from utils.progress import ProgressRunner
-from .paradism_algo_NEW import load_msa, process_sam_to_dict, write_fastq_outputs, create_bam_files
+from .paradism_algo_NEW import load_msa, process_sam_to_dict_simple, write_fastq_outputs, create_bam_files
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 
@@ -286,7 +286,7 @@ class SimpleParaDISMExecutor:
         # Run ParaDISM on NONE reads
         def _run_paradism_iteration():
             iter_msa_obj, iter_seq_to_aln, iter_gene_names = load_msa(str(iter_msa))
-            new_assignments = process_sam_to_dict(str(iter_sam), iter_msa_obj, iter_seq_to_aln, iter_gene_names)
+            new_assignments = process_sam_to_dict_simple(str(iter_sam), iter_msa_obj, iter_seq_to_aln, iter_gene_names)
             
             # Write outputs for this iteration
             iter_genes = self._write_fastq_outputs(new_assignments, str(none_r1_path), str(none_r2_path) if none_r2_path else None, iter_fastq_dir)
@@ -461,7 +461,7 @@ class SimpleParaDISMExecutor:
         # Run ParaDISM algorithm directly (not via subprocess) to get assignments dict
         def _run_paradism():
             msa_obj, seq_to_aln, gene_names = load_msa(str(msa_output))
-            assignments = process_sam_to_dict(str(sam_output), msa_obj, seq_to_aln, gene_names)
+            assignments = process_sam_to_dict_simple(str(sam_output), msa_obj, seq_to_aln, gene_names)
             genes = write_fastq_outputs(assignments, r1, r2, str(fastq_dir), self.prefix)
             if genes:
                 create_bam_files(genes, ref, str(fastq_dir), str(bam_dir), aligner, threads, minimap2_profile, self.prefix)
