@@ -3,7 +3,7 @@ import sys
 from typing import Dict, List, Tuple
 from collections import defaultdict
 from Bio.Align.sam import AlignmentIterator
-
+from Bio import AlignIO
 
 
 def load_msa_mapping(msa_filepath: str) -> Tuple[Dict, Dict, List]:
@@ -62,6 +62,8 @@ def main():
 
     args = parser.parse_args()
 
+    msa = AlignIO(args.msa, 'fasta')
+    
     sequence_positions, sequence_bases, gene_names = load_msa_mapping(args.msa)
 
 
