@@ -113,6 +113,22 @@ def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[st
 
     return assignment, has_both_strands, strand_info
 
+def process_current_read(read_base_name: str, read_scenarios: Dict, gene_names: List,
+                         paired_mode: bool, out_f) -> None:
+    """Process a completed read pair and write result to output."""
+    if not read_base_name or read_base_name not in read_scenarios:
+        return
+
+    unique_gene, has_both, strand_info = find_unique_mapping_snp_only(
+        read_scenarios[read_base_name],
+        gene_names
+    )
+    label = unique_gene
+    if paired_mode and unique_gene != "NONE" and not has_both:
+        label = f"{unique_gene} ({strand_info})"
+    out_f.write(f'{read_base_name}\t{label}\n')
+    del read_scenarios[read_base_name]
+
 def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: Dict,
                                    sequence_bases: Dict, gene_names: List, output_file: str,
                                    batch_size: int = 10000, paired_mode: bool = True) -> None:
@@ -124,28 +140,6 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
         current_read_base = None
         reads_processed = 0
         read_scenarios = defaultdict(lambda: {'plus': [], 'minus': []})
-
-        def process_current_read():
-            nonlocal current_read_base, reads_processed, read_scenarios
-
-            if current_read_base and current_read_base in read_scenarios:
-                unique_gene, has_both, strand_info = find_unique_mapping_snp_only(
-                    read_scenarios[current_read_base],
-                    gene_names
-                )
-                label = unique_gene
-                if paired_mode and unique_gene != "NONE" and not has_both:
-                    label = f"{unique_gene} ({strand_info})"
-                out_f.write(f'{current_read_base}\t{label}\n')
-                del read_scenarios[current_read_base]
-                reads_processed += 1
-
-                if reads_processed % 100 == 0:
-                    sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}")
-                    sys.stdout.flush()
-
-                if reads_processed % batch_size == 0:
-                    gc.collect()
 
         with open(read_map_filepath, 'r') as input_file:
             next(input_file)  # Skip header
@@ -161,7 +155,13 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
 
                 read_base_name = read_name.rstrip('+-')
                 if read_base_name != current_read_base:
-                    process_current_read()
+                    process_current_read(current_read_base, read_scenarios, gene_names, paired_mode, out_f)
+                    reads_processed += 1 if current_read_base else 0
+                    if reads_processed % 100 == 0:
+                        sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}")
+                        sys.stdout.flush()
+                    if reads_processed % batch_size == 0:
+                        gc.collect()
                     current_read_base = read_base_name
 
                 # Only process matches and mismatches (skip insertions and deletions)
@@ -186,7 +186,8 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
                             read_scenarios[read_base_name][strand][0].append(row_dict)
 
             # Process final read
-            process_current_read()
+            process_current_read(current_read_base, read_scenarios, gene_names, paired_mode, out_f)
+            reads_processed += 1 if current_read_base else 0
 
             sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}\n")
             sys.stdout.flush()
