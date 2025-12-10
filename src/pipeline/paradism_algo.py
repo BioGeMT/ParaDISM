@@ -108,13 +108,10 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
     The name of the mapped gene or NONE if no gene could be uniquely assigned.  
     """
     ref_gene = alignment.target.id
-    gene_idx_map = {g: i for i, g in enumerate(gene_names)}
-
-    if ref_gene not in gene_idx_map:
-        raise ValueError('ref_gene not in gene_idx_map')
-
-    ref_idx = gene_idx_map[ref_gene]
-
+    try:
+        ref_idx = gene_names.index(ref_gene)
+    except ValueError:
+        raise ValueError('Reference gene name from read alignment not in the gene names list from MSA')
     # Calculate c1 and c2 for each gene
     c1_gene_id = -1
     c2_pass = True
@@ -134,25 +131,25 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
                 c1_gene_id = -1 # reset - no match
                 break  # c1 failed - stop checking
 
-        if c1_gene_id != -1: # c1 passed, check c2 
-            for aln_col_id in range(alignment.shape[1]):
-                query_pos, target_pos = alignment.indices[:, aln_col_id]
-                if query_pos == -1: continue
-                if target_pos == -1: continue
-                msa_col_id = seq_to_aln[ref_idx][target_pos]
-                msa_column = msa[:, msa_col_id]
-                # Take query (read) nt and the c1_target nt
-                # where c1_target is the gene that passed c1 
-                query_nt = alignment[0, aln_col_id].upper()
-                target_nt = msa_column[c1_gene_id]
-                if query_nt != target_nt: # mismatch
-                    if query_nt in msa_column: # match to other gene
-                        c2_pass = False
-                        break # no need to check further
-        if c1_gene_id != -1 and c2_pass:
-            return gene_names[c1_gene_id]
-        else:
-            return "NONE"
+    if c1_gene_id != -1: # c1 passed, check c2 
+        for aln_col_id in range(alignment.shape[1]):
+            query_pos, target_pos = alignment.indices[:, aln_col_id]
+            if query_pos == -1: continue
+            if target_pos == -1: continue
+            msa_col_id = seq_to_aln[ref_idx][target_pos]
+            msa_column = msa[:, msa_col_id]
+            # Take query (read) nt and the c1_target nt
+            # where c1_target is the gene that passed c1 
+            query_nt = alignment[0, aln_col_id].upper()
+            target_nt = msa_column[c1_gene_id]
+            if query_nt != target_nt: # mismatch
+                if query_nt in msa_column: # match to other gene
+                    c2_pass = False
+                    break # no need to check further
+    if c1_gene_id != -1 and c2_pass:
+        return gene_names[c1_gene_id]
+    else:
+        return "NONE"
 
 
 
@@ -225,7 +222,6 @@ def process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names):
             # we don't need to do anything
         else:
             assignments[qname] = assigned_gene
-
     return assignments
 
 
