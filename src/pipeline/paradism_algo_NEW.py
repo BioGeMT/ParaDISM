@@ -103,6 +103,7 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
 def process_read_simple(alignment, msa, seq_to_aln, gene_names):
     """
     Process a single read alignment and check c1/c2 conditions for each gene.
+    Optimized version that uses alignment.aligned to skip gaps and processes c1/c2 in single pass.
 
     Returns: str
     The name of the mapped gene or NONE if no gene could be uniquely assigned.  
@@ -112,40 +113,86 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
         ref_idx = gene_names.index(ref_gene)
     except ValueError:
         raise ValueError('Reference gene name from read alignment not in the gene names list from MSA')
+    
     # Calculate c1 and c2 for each gene
     c1_gene_id = -1
     c2_pass = True
     
-    for aln_col_id in range(alignment.shape[1]):
-        query_pos, target_pos = alignment.indices[:, aln_col_id]
-        if query_pos == -1: continue
-        if target_pos == -1: continue
-        msa_col_id = seq_to_aln[ref_idx][target_pos]
-        msa_column = msa[:, msa_col_id]
-        query_nt = alignment[1, aln_col_id].upper()
-        matching_genes = [gene_id for gene_id, nt in enumerate(msa_column) if nt == query_nt]
-        if len(matching_genes) == 1: # Unique matching gene
-            if c1_gene_id == -1: # No match seen yet - first match
-                c1_gene_id = matching_genes[0]
-            elif c1_gene_id != matching_genes[0]: # conflicting matches
-                c1_gene_id = -1 # reset - no match
-                break  # c1 failed - stop checking
-
-    if c1_gene_id != -1: # c1 passed, check c2 
-        for aln_col_id in range(alignment.shape[1]):
-            query_pos, target_pos = alignment.indices[:, aln_col_id]
-            if query_pos == -1: continue
-            if target_pos == -1: continue
-            msa_col_id = seq_to_aln[ref_idx][target_pos]
-            msa_column = msa[:, msa_col_id]
-            # Take query (read) nt and the c1_target nt
-            # where c1_target is the gene that passed c1 
-            query_nt = alignment[1, aln_col_id].upper()
-            target_nt = msa_column[c1_gene_id]
-            if query_nt != target_nt: # mismatch
-                if query_nt in msa_column: # match to other gene
-                    c2_pass = False
-                    break # no need to check further
+    # Get aligned positions from BioPython alignment (skips gaps efficiently)
+    target_intervals = alignment.aligned[0]
+    query_intervals = alignment.aligned[1]
+    query_seq = str(alignment.query.seq)
+    
+    # First pass: find c1 (unique matching gene)
+    for target_interval, query_interval in zip(target_intervals, query_intervals):
+        t_start, t_end = target_interval
+        q_start, q_end = query_interval
+        
+        # Only process segments where both sequences advance equally (SNPs/matches, skip indels)
+        if (t_end - t_start) != (q_end - q_start):
+            continue
+        
+        for offset in range(t_end - t_start):
+            ref_pos = t_start + offset  # 0-based ref position
+            query_pos = q_start + offset
+            
+            if ref_pos >= len(seq_to_aln[ref_idx]):
+                continue
+            
+            msa_col_id = seq_to_aln[ref_idx][ref_pos]
+            read_base = query_seq[query_pos].upper()
+            
+            # Check which genes match at this position
+            matching_genes = []
+            for gene_idx, gene_name in enumerate(gene_names):
+                gene_base = str(msa[gene_idx, msa_col_id]).upper()
+                if gene_base != '-' and read_base == gene_base:
+                    matching_genes.append(gene_idx)
+            
+            if len(matching_genes) == 1:  # Unique matching gene
+                if c1_gene_id == -1:  # No match seen yet - first match
+                    c1_gene_id = matching_genes[0]
+                elif c1_gene_id != matching_genes[0]:  # conflicting matches
+                    c1_gene_id = -1  # reset - no match
+                    break  # c1 failed - stop checking
+        if c1_gene_id == -1:
+            break  # Already failed c1, no need to continue
+    
+    # Second pass: check c2 for the gene that passed c1 (if any)
+    if c1_gene_id != -1:
+        for target_interval, query_interval in zip(target_intervals, query_intervals):
+            t_start, t_end = target_interval
+            q_start, q_end = query_interval
+            
+            # Only process segments where both sequences advance equally
+            if (t_end - t_start) != (q_end - q_start):
+                continue
+            
+            for offset in range(t_end - t_start):
+                ref_pos = t_start + offset
+                query_pos = q_start + offset
+                
+                if ref_pos >= len(seq_to_aln[ref_idx]):
+                    continue
+                
+                msa_col_id = seq_to_aln[ref_idx][ref_pos]
+                read_base = query_seq[query_pos].upper()
+                target_base = str(msa[c1_gene_id, msa_col_id]).upper()
+                
+                if read_base != target_base:  # mismatch
+                    # Check if read matches any other gene at this position
+                    for gene_idx in range(len(gene_names)):
+                        if gene_idx == c1_gene_id:
+                            continue
+                        gene_base = str(msa[gene_idx, msa_col_id]).upper()
+                        if gene_base != '-' and read_base == gene_base:
+                            c2_pass = False
+                            break
+                    if not c2_pass:
+                        break
+            if not c2_pass:
+                break
+    
     if c1_gene_id != -1 and c2_pass:
         return gene_names[c1_gene_id]
     else:

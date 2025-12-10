@@ -13,7 +13,7 @@ dependencies:
   - freebayes
   - bcftools
   - htslib 
-  - gsl=2.5 
+  - gsl=2.7 
   - biopython
   - pysam
   - rich
