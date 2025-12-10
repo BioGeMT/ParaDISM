@@ -96,6 +96,62 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
 
     return c1_dict, c2_dict
 
+def process_read_simple(alignment, msa, seq_to_aln, gene_names):
+    """
+    Process a single read alignment and check c1/c2 conditions for each gene.
+
+    Returns:
+        c1_dict: {gene: bool} - True if read has unique pos for this gene
+        c2_dict: {gene: bool} - True if read has no contradictions for this gene
+    """
+    ref_gene = alignment.target.id
+    gene_idx_map = {g: i for i, g in enumerate(gene_names)}
+
+    if ref_gene not in gene_idx_map:
+        raise ValueError('ref_gene not in gene_idx_map')
+
+    ref_idx = gene_idx_map[ref_gene]
+
+    # Calculate c1 and c2 for each gene
+    c1_gene_id = -1
+    c2_pass = True
+    
+    for aln_col_id in range(alignment.shape[1]):
+        query_pos, target_pos = alignment.indices[:, aln_col_id]
+        if query_pos == -1: continue
+        if target_pos == -1: continue
+        msa_col_id = seq_to_aln[ref_idx][target_pos]
+        msa_column = msa[:, msa_col_id]
+        query_nt = alignment[0, aln_col_id].upper()
+        matching_genes = [gene_id for gene_id, nt in enumerate(msa_column) if nt == query_nt]
+        if len(matching_genes) == 1: # Unique matching gene
+            if c1_gene_id == -1: # No match seen yet - first match
+                c1_gene_id == matching_genes[0]
+            elif c1_gene_id != matching_genes[0]: # conflicting matches
+                c1_gene_id = -1 # reset - no match
+                break  # c1 failed - stop checking
+
+        if c1_gene_id != -1: # c1 passed, check c2 
+            for aln_col_id in range(alignment.shape[1]):
+                query_pos, target_pos = alignment.indices[:, aln_col_id]
+                if query_pos == -1: continue
+                if target_pos == -1: continue
+                msa_col_id = seq_to_aln[ref_idx][target_pos]
+                msa_column = msa[:, msa_col_id]
+                # Take query (read) nt and the c1_target nt
+                # where c1_target is the gene that passed c1 
+                query_nt = alignment[0, aln_col_id].upper()
+                target_nt = msa_column[c1_gene_id]
+                if query_nt != target_nt: # mismatch
+                    if query_nt in msa_column: # match to other gene
+                        c2_pass = False
+                        break # no need to check further
+        if c1_gene_id != -1 and c2_pass:
+            return gene_names[c1_gene_id]
+        else:
+            return None
+
+
 
 def process_sam(sam_path, msa, seq_to_aln, gene_names, output_path):
     """
@@ -158,6 +214,8 @@ def main():
     args = parser.parse_args()
 
     msa, seq_to_aln, gene_names = load_msa(args.msa)
+    all_chars = set(''.join(str(alnseqrec.seq) for alnseqrec in msa))
+    assert all(char.isupper() or char == '-' for char in all_chars), 'MSA needs to be uppercase'
 
     process_sam(args.sam, msa, seq_to_aln, gene_names, args.output)
 
