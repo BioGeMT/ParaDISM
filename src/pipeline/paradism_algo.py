@@ -1,6 +1,7 @@
 import argparse
 import os
 import subprocess
+import gzip
 from subprocess import DEVNULL
 from collections import defaultdict
 from Bio import AlignIO
@@ -238,15 +239,23 @@ def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str 
     """Write per-gene FASTQ files directly from assignments dict."""
     os.makedirs(fastq_dir, exist_ok=True)
     
-    # Load FASTQ records
+    # Load FASTQ records (handle compressed files)
     r1_records = {}
-    for rec in SeqIO.parse(r1_path, "fastq"):
-        r1_records[_base_read_id(rec.id)] = rec
+    r1_handle = gzip.open(r1_path, "rt") if r1_path.endswith(".gz") else open(r1_path, "rt")
+    try:
+        for rec in SeqIO.parse(r1_handle, "fastq"):
+            r1_records[_base_read_id(rec.id)] = rec
+    finally:
+        r1_handle.close()
 
     r2_records = {}
     if r2_path:
-        for rec in SeqIO.parse(r2_path, "fastq"):
-            r2_records[_base_read_id(rec.id)] = rec
+        r2_handle = gzip.open(r2_path, "rt") if r2_path.endswith(".gz") else open(r2_path, "rt")
+        try:
+            for rec in SeqIO.parse(r2_handle, "fastq"):
+                r2_records[_base_read_id(rec.id)] = rec
+        finally:
+            r2_handle.close()
 
     # Organize reads by gene
     gene_collection = defaultdict(list)

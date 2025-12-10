@@ -8,6 +8,7 @@ import time
 import subprocess
 import threading
 import shutil
+import gzip
 from pathlib import Path
 from typing import Sequence
 from Bio import SeqIO
@@ -80,17 +81,24 @@ class SimpleParaDISMExecutor:
         """Extract reads from FASTQ file based on read IDs. Returns count of extracted reads."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         count = 0
+        
+        # Handle compressed input files
+        fastq_handle = gzip.open(fastq_path, "rt") if str(fastq_path).endswith(".gz") else open(fastq_path, "rt")
+        
         with open(output_path, 'w') as outfile:
-            for rec in SeqIO.parse(fastq_path, "fastq"):
-                # Normalize read ID (remove /1 or /2 suffix for matching)
-                base_id = rec.id
-                if base_id.endswith("/1") or base_id.endswith("/2"):
-                    base_id = base_id[:-2]
-                
-                # Check if this read should be extracted
-                if base_id in read_ids or rec.id in read_ids:
-                    SeqIO.write(rec, outfile, "fastq")
-                    count += 1
+            try:
+                for rec in SeqIO.parse(fastq_handle, "fastq"):
+                    # Normalize read ID (remove /1 or /2 suffix for matching)
+                    base_id = rec.id
+                    if base_id.endswith("/1") or base_id.endswith("/2"):
+                        base_id = base_id[:-2]
+                    
+                    # Check if this read should be extracted
+                    if base_id in read_ids or rec.id in read_ids:
+                        SeqIO.write(rec, outfile, "fastq")
+                        count += 1
+            finally:
+                fastq_handle.close()
         return count
 
     def _merge_assignments(self, previous_assignments: dict[str, str], new_assignments: dict[str, str]) -> dict[str, str]:
