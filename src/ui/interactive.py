@@ -5,7 +5,7 @@ import sys
 import os
 from pathlib import Path
 
-from pipeline.executor import PipelineExecutor
+from pipeline.executor import SimpleParaDISMExecutor
 from ui.ui_components import (
     display_file_pairs,
     display_validation_results,
@@ -532,7 +532,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     # Create output directory if it doesn't exist
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
-    executor = PipelineExecutor(output_dir=output_dir)
+    executor = SimpleParaDISMExecutor(output_dir=output_dir)
     executor.run_pipeline(
         r1=r1_path,
         r2=r2_path,
@@ -544,12 +544,6 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         show_header=True,
         iterations=iterations,
     )
-    
-    # Print iteration summary if iterations > 1 (refinement was used)
-    if iterations > 1 and executor.iteration_outputs:
-        console.print("\n[cyan]Iteration Summary:[/cyan]")
-        for iter_info in executor.iteration_outputs:
-            console.print(f"  Iteration {iter_info['iteration']}: {iter_info['output_dir']}")
 
     console.print("[green]═══════════════════════════════════════════════════════[/green]")
     console.print("[green]Pipeline Complete![/green]")
@@ -557,7 +551,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     console.print()
     console.print("[cyan]Outputs:[/cyan]")
     output_path = Path(output_dir)
-    console.print(f"  • Unique mappings: [green]{output_path}/unique_mappings.tsv[/green]")
-    console.print(f"  • Gene-specific FASTQs: [green]{output_path}/fastq/[/green]")
-    console.print(f"  • Gene-specific BAMs: [green]{output_path}/bam/[/green]")
+    prefix_name = output_path.name if output_path.name != "." else "output"
+    console.print(f"  • Gene-specific FASTQs: [green]{output_path}/final_outputs/{prefix_name}_fastq/[/green]")
+    console.print(f"  • Gene-specific BAMs: [green]{output_path}/final_outputs/{prefix_name}_bam/[/green]")
     console.print()
