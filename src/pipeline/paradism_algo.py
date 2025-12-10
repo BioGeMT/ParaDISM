@@ -32,6 +32,9 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
         c1_dict: {gene: bool} - True if read has unique pos for this gene
         c2_dict: {gene: bool} - True if read has no contradictions for this gene
     """
+    if alignment.target is None:
+        return {g: False for g in gene_names}, {g: True for g in gene_names}
+    
     ref_gene = alignment.target.id
     gene_idx_map = {g: i for i, g in enumerate(gene_names)}
 
@@ -114,6 +117,8 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
     all_qnames = set()
 
     for alignment in AlignmentIterator(sam_path):
+        if alignment.target is None:
+            continue  # Skip unmapped reads
         qname = alignment.query.id
         all_qnames.add(qname)
 

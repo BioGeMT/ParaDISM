@@ -32,6 +32,9 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names, gene_idx_map):
     Returns: str
     The name of the mapped gene or NONE if no gene could be uniquely assigned.  
     """
+    if alignment.target is None:
+        return "NONE"
+    
     ref_gene = alignment.target.id
     try:
         ref_idx = gene_idx_map[ref_gene]
@@ -113,6 +116,8 @@ def process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names):
     gene_idx_map = {g: i for i, g in enumerate(gene_names)}
     assignments = {}
     for alignment in AlignmentIterator(sam_path):
+        if alignment.target is None:
+            continue  # Skip unmapped reads
         qname = alignment.query.id
         assigned_gene = process_read_simple(alignment,
                                             msa,
