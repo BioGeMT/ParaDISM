@@ -1,48 +1,40 @@
 import argparse
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from collections import defaultdict
-from Bio.Align.sam import AlignmentIterator
 from Bio import AlignIO
+from Bio.Align.sam import AlignmentIterator
 
 
-def load_msa_mapping(msa_filepath: str) -> Tuple[Dict, Dict, List]:
-    sequence_positions = {}
-    sequence_bases = {}
-    gene_names = []
+def load_msa(msa_fasta_path: str):
+    """
+    Returns:
+        msa: MultipleSeqAlignment object (for base lookup)
+        ref_to_msa: {gene: {ref_pos (1-based): msa_column}}
+        gene_names: list of gene names
+    """
+    msa = AlignIO.read(msa_fasta_path, 'fasta')
+    gene_names = [record.id for record in msa]
+    msa_length = msa.get_alignment_length()
 
-    with open(msa_filepath, 'r') as f:
-        header = next(f).strip().split('\t')
+    ref_to_msa = {gene: {} for gene in gene_names}
+    ref_positions = {gene: 0 for gene in gene_names}
 
-        for col in header:
-            if col.endswith('_Position') and col != 'MSA_Position':
-                gene_name = col.replace('_Position', '')
-                gene_names.append(gene_name)
-                sequence_positions[gene_name] = {}
+    for msa_col in range(msa_length):
+        for i, gene in enumerate(gene_names):
+            base = msa[i, msa_col]
+            if base != '-':
+                ref_positions[gene] += 1
+                ref_to_msa[gene][ref_positions[gene]] = msa_col
 
-        for line in f:
-            fields = line.strip().split('\t')
-            msa_pos = int(fields[0])
-            sequence_bases[msa_pos] = {}
-
-            for gene in gene_names:
-                pos_idx = header.index(f'{gene}_Position')
-                base_idx = header.index(f'{gene}_Base')
-
-                pos = fields[pos_idx]
-                base = fields[base_idx]
-                sequence_bases[msa_pos][gene] = base
-
-                if pos != '-':
-                    sequence_positions[gene][int(pos)] = msa_pos
-
-    return sequence_positions, sequence_bases, gene_names
+    return msa, ref_to_msa, gene_names
 
 
 def process_read():
     pass
 
-def process_sam(sam_path, ):
+
+def process_sam(sam_path):
     alignments = AlignmentIterator(sam_path)
 
 
@@ -54,7 +46,7 @@ def main():
     parser.add_argument('--sam', required=True,
                         help='Input SAM/BAM file')
     parser.add_argument('--msa', required=True,
-                        help='Input MSA mapping TSV file')
+                        help='Input MSA FASTA file')
     parser.add_argument('--output', required=True,
                         help='Output file for unique mapping results')
     parser.add_argument('--single-end', action='store_true',
@@ -62,9 +54,7 @@ def main():
 
     args = parser.parse_args()
 
-    msa = AlignIO(args.msa, 'fasta')
-    
-    sequence_positions, sequence_bases, gene_names = load_msa_mapping(args.msa)
+    msa, ref_to_msa, gene_names = load_msa(args.msa)
 
 
 if __name__ == '__main__':
