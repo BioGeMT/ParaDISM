@@ -14,7 +14,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from pipeline.paradism_algo import load_msa, process_sam_to_dict
-from pipeline.paradism_algo_NEW import load_msa as load_msa_new, process_sam_to_dict as process_sam_to_dict_new
+from pipeline.paradism_algo_NEW import load_msa as load_msa_new, process_sam_to_dict_simple as process_sam_to_dict_new
 
 
 def write_assignments_tsv(assignments: dict[str, str], output_path: Path):
