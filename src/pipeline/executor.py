@@ -195,11 +195,6 @@ class SimpleParaDISMExecutor:
             print(f"  No variants found. Stopping refinement at iteration {iteration}.", file=sys.stderr)
             return previous_ref, previous_assignments, True
         
-        self._run_spinner(
-            lambda: None,  # Reference update is already done by variant_refinement.py
-            "Updating reference with detected variants"
-        )
-        
         # 4. Re-align NONE reads with updated reference
         iter_fastq_dir = iter_output_dir / f"{self.prefix}_fastq"
         iter_bam_dir = iter_output_dir / f"{self.prefix}_bam"
