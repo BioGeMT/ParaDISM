@@ -14,6 +14,7 @@ from Bio import SeqIO
 
 from utils.logger import PipelineLogger
 from utils.progress import ProgressRunner
+from .paradism_algo import load_msa, process_sam_to_dict, write_fastq_outputs, create_bam_files
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 
@@ -41,7 +42,6 @@ class SimpleParaDISMExecutor:
         """Run command or callable with spinner. Returns result if callable."""
         if callable(command):
             # It's a Python function - run with spinner wrapper
-            import threading
             stop_event = threading.Event()
             
             def spin():
@@ -178,19 +178,27 @@ class SimpleParaDISMExecutor:
             "--per-gene-vcf-dir", str(per_gene_vcf_dir),
         ]
         
-        result = subprocess.run(variant_cmd, capture_output=True, text=True)
-        self.logger.write(result.stdout or "")
-        self.logger.write(result.stderr or "")
+        def _call_variants():
+            result = subprocess.run(variant_cmd, capture_output=True, text=True)
+            self.logger.write(result.stdout or "")
+            self.logger.write(result.stderr or "")
+            
+            if result.returncode == 2:
+                # No variants found - converged
+                return None  # Signal convergence
+            elif result.returncode != 0:
+                raise RuntimeError("Variant calling failed")
+            return True
         
-        if result.returncode == 2:
-            # No variants found - converged
+        variant_result = self._run_spinner(_call_variants, "Calling variants from mapped reads")
+        if variant_result is None:
             print(f"  No variants found. Stopping refinement at iteration {iteration}.", file=sys.stderr)
             return previous_ref, previous_assignments, True
-        elif result.returncode != 0:
-            raise RuntimeError("Variant calling failed")
         
-        print(f"  \033[0;36m✓ Calling variants from mapped reads (iteration {iteration})\033[0m", file=sys.stderr)
-        print(f"  \033[0;36m✓ Updating reference with detected variants (iteration {iteration})\033[0m\n", file=sys.stderr)
+        self._run_spinner(
+            lambda: None,  # Reference update is already done by variant_refinement.py
+            "Updating reference with detected variants"
+        )
         
         # 4. Re-align NONE reads with updated reference
         iter_fastq_dir = iter_output_dir / f"{self.prefix}_fastq"
@@ -200,7 +208,7 @@ class SimpleParaDISMExecutor:
         iter_msa = iter_output_dir / "ref_seq_msa.aln"
         self._run_spinner(
             f"mafft --auto '{updated_ref}' > '{iter_msa}'",
-            f"Creating MSA for iteration {iteration}",
+            "Creating Multiple Sequence Alignment",
             shell=True,
         )
         
@@ -210,38 +218,38 @@ class SimpleParaDISMExecutor:
             iter_index = iter_output_dir / "ref_index"
             self._run_spinner(
                 ["bowtie2-build", str(updated_ref), str(iter_index)],
-                f"Building index for iteration {iteration}",
+                "Building Bowtie2 index",
             )
             if is_paired:
                 self._run_spinner(
                     f"bowtie2 --local --score-min G,40,40 -p {threads} -x '{iter_index}' -1 '{none_r1_path}' -2 '{none_r2_path}' -S '{iter_sam}'",
-                    f"Aligning NONE reads (iteration {iteration})",
+                    "Aligning reads with Bowtie2",
                     shell=True,
                 )
             else:
                 self._run_spinner(
                     f"bowtie2 --local --score-min G,40,40 -p {threads} -x '{iter_index}' -U '{none_r1_path}' -S '{iter_sam}'",
-                    f"Aligning NONE reads (iteration {iteration})",
+                    "Aligning reads with Bowtie2",
                     shell=True,
                 )
         elif aligner == "bwa-mem2":
             iter_index = iter_output_dir / "ref_index"
             self._run_spinner(
                 ["bwa-mem2", "index", "-p", str(iter_index), str(updated_ref)],
-                f"Building index for iteration {iteration}",
+                "Building BWA-MEM2 index",
             )
             bwa_min_score = 240
             awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
             if is_paired:
                 self._run_spinner(
                     f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{iter_index}' '{none_r1_path}' '{none_r2_path}' | {awk_filter} > '{iter_sam}'",
-                    f"Aligning NONE reads (iteration {iteration})",
+                    "Aligning reads with BWA-MEM2",
                     shell=True,
                 )
             else:
                 self._run_spinner(
                     f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{iter_index}' '{none_r1_path}' | {awk_filter} > '{iter_sam}'",
-                    f"Aligning NONE reads (iteration {iteration})",
+                    "Aligning reads with BWA-MEM2",
                     shell=True,
                 )
         elif aligner == "minimap2":
@@ -257,30 +265,28 @@ class SimpleParaDISMExecutor:
             score_threshold = "-s 240" if preset == "sr" else ""
             self._run_spinner(
                 ["minimap2", "-x", preset, "-d", str(iter_index), str(updated_ref)],
-                f"Building index for iteration {iteration}",
+                f"Building minimap2 ({minimap2_profile}) index",
             )
             if is_paired:
                 self._run_spinner(
                     f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{iter_index}' '{none_r1_path}' '{none_r2_path}' > '{iter_sam}'",
-                    f"Aligning NONE reads (iteration {iteration})",
+                    f"Aligning reads with minimap2 ({minimap2_profile})",
                     shell=True,
                 )
             else:
                 self._run_spinner(
                     f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{iter_index}' '{none_r1_path}' > '{iter_sam}'",
-                    f"Aligning NONE reads (iteration {iteration})",
+                    f"Aligning reads with minimap2 ({minimap2_profile})",
                     shell=True,
                 )
         
         # Run ParaDISM on NONE reads
-        from .paradism_algo import load_msa, process_sam_to_dict
         iter_msa_obj, iter_seq_to_aln, iter_gene_names = load_msa(str(iter_msa))
         new_assignments = process_sam_to_dict(str(iter_sam), iter_msa_obj, iter_seq_to_aln, iter_gene_names)
         
         # Write outputs for this iteration
         iter_genes = self._write_fastq_outputs(new_assignments, str(none_r1_path), str(none_r2_path) if none_r2_path else None, iter_fastq_dir)
         if iter_genes:
-            from .paradism_algo import create_bam_files
             create_bam_files(iter_genes, str(updated_ref), str(iter_fastq_dir), str(iter_bam_dir), aligner, threads, minimap2_profile, self.prefix)
         
         # 5. Merge assignments
@@ -302,7 +308,6 @@ class SimpleParaDISMExecutor:
 
     def _write_fastq_outputs(self, assignments: dict[str, str], r1_path: str, r2_path: str | None, fastq_dir: Path) -> list[str]:
         """Write FASTQ outputs from assignments dict. Returns list of genes."""
-        from .paradism_algo import write_fastq_outputs
         return write_fastq_outputs(assignments, r1_path, r2_path, str(fastq_dir), self.prefix)
 
     def run_pipeline(
@@ -451,8 +456,6 @@ class SimpleParaDISMExecutor:
         bam_dir = self.output_dir / f"{self.prefix}_bam"
 
         # Run ParaDISM algorithm directly (not via subprocess) to get assignments dict
-        from .paradism_algo import load_msa, process_sam_to_dict, write_fastq_outputs, create_bam_files
-        
         def _run_paradism():
             msa_obj, seq_to_aln, gene_names = load_msa(str(msa_output))
             assignments = process_sam_to_dict(str(sam_output), msa_obj, seq_to_aln, gene_names)
@@ -596,3 +599,4 @@ class SimpleParaDISMExecutor:
         print("  \033[0;36m✓ Cleaning up intermediate files\033[0m", file=sys.stderr)
         final_outputs_path = original_output_dir / "final_outputs"
         print(f"\n  \033[0;36m✓ Pipeline complete. Final outputs in: {final_outputs_path}\033[0m", file=sys.stderr)
+
