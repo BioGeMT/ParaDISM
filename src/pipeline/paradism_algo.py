@@ -104,9 +104,8 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
     """
     Process a single read alignment and check c1/c2 conditions for each gene.
 
-    Returns:
-        c1_dict: {gene: bool} - True if read has unique pos for this gene
-        c2_dict: {gene: bool} - True if read has no contradictions for this gene
+    Returns: str
+    The name of the mapped gene or NONE if no gene could be uniquely assigned.  
     """
     ref_gene = alignment.target.id
     gene_idx_map = {g: i for i, g in enumerate(gene_names)}
@@ -153,7 +152,7 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
         if c1_gene_id != -1 and c2_pass:
             return gene_names[c1_gene_id]
         else:
-            return None
+            return "NONE"
 
 
 
@@ -195,6 +194,24 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
             assignments[qname] = passing_genes[0]
         else:
             assignments[qname] = "NONE"
+
+    return assignments
+
+
+def process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names):
+    """
+    Process SAM file and assign reads to genes based on c1/c2 conditions.
+    
+    Returns:
+        dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
+    """
+    assignments = {}
+    for alignment in AlignmentIterator(sam_path):
+        qname = alignment.query.id
+        assignments[qname] = process_read_simple(alignment,
+                                                 msa,
+                                                 seq_to_aln,
+                                                 gene_names)
 
     return assignments
 
