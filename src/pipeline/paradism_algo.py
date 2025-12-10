@@ -122,7 +122,7 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
         if target_pos == -1: continue
         msa_col_id = seq_to_aln[ref_idx][target_pos]
         msa_column = msa[:, msa_col_id]
-        query_nt = alignment[0, aln_col_id].upper()
+        query_nt = alignment[1, aln_col_id].upper()
         matching_genes = [gene_id for gene_id, nt in enumerate(msa_column) if nt == query_nt]
         if len(matching_genes) == 1: # Unique matching gene
             if c1_gene_id == -1: # No match seen yet - first match
@@ -140,7 +140,7 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
             msa_column = msa[:, msa_col_id]
             # Take query (read) nt and the c1_target nt
             # where c1_target is the gene that passed c1 
-            query_nt = alignment[0, aln_col_id].upper()
+            query_nt = alignment[1, aln_col_id].upper()
             target_nt = msa_column[c1_gene_id]
             if query_nt != target_nt: # mismatch
                 if query_nt in msa_column: # match to other gene
