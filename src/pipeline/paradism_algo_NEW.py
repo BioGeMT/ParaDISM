@@ -161,34 +161,37 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
         dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
     """
     # Track c1/c2 per read pair per gene
-    # NEW: Delegates to simple version - original implementation commented below
-    # qname_to_c1 = {gene: defaultdict(bool) for gene in gene_names}
-    # qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
-    # all_qnames = set()
-    # for alignment in AlignmentIterator(sam_path):
-    #     qname = alignment.query.id
-    #     all_qnames.add(qname)
-    #     c1_dict, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
-    #     for gene in gene_names:
-    #         if c1_dict[gene]:
-    #             qname_to_c1[gene][qname] = True
-    #         if not c2_dict[gene]:
-    #             qname_to_c2[gene][qname] = False
-    # # Assign reads to genes
-    # assignments = {}
-    # for qname in all_qnames:
-    #     passing_genes = []
-    #     for gene in gene_names:
-    #         c1 = qname_to_c1[gene][qname]
-    #         c2 = qname_to_c2[gene][qname]
-    #         if c1 and c2:
-    #             passing_genes.append(gene)
-    #     if len(passing_genes) == 1:
-    #         assignments[qname] = passing_genes[0]
-    #     else:
-    #         assignments[qname] = "NONE"
-    # return assignments
-    return process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names)
+    qname_to_c1 = {gene: defaultdict(bool) for gene in gene_names}
+    qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
+    all_qnames = set()
+
+    for alignment in AlignmentIterator(sam_path):
+        qname = alignment.query.id
+        all_qnames.add(qname)
+
+        c1_dict, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
+
+        for gene in gene_names:
+            if c1_dict[gene]:
+                qname_to_c1[gene][qname] = True
+            if not c2_dict[gene]:
+                qname_to_c2[gene][qname] = False
+
+    # Assign reads to genes
+    assignments = {}
+    for qname in all_qnames:
+        passing_genes = []
+        for gene in gene_names:
+            c1 = qname_to_c1[gene][qname]
+            c2 = qname_to_c2[gene][qname]
+            if c1 and c2:
+                passing_genes.append(gene)
+
+        if len(passing_genes) == 1:
+            assignments[qname] = passing_genes[0]
+        else:
+            assignments[qname] = "NONE"
+    return assignments
 
 
 def process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names):
