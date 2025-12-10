@@ -100,48 +100,6 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
 
     return c1_dict, c2_dict
 
-def process_read_simple(alignment, msa, seq_to_aln, gene_names, gene_idx_map):
-    """
-    Process a single read alignment and check c1/c2 conditions for each gene.
-
-    Returns: str
-    The name of the mapped gene or NONE if no gene could be uniquely assigned.  
-    """
-    ref_gene = alignment.target.id
-    try:
-        ref_idx = gene_idx_map[ref_gene]
-    except KeyError:
-        raise KeyError('Reference gene name from read alignment not in the gene names list from MSA')
-    # Calculate c1 and c2 for each gene
-    c1_gene_id = -1
-    c2_pass = True
-    
-    for aln_col_id in range(alignment.shape[1]):
-        query_pos, target_pos = alignment.indices[:, aln_col_id]
-        if query_pos == -1: continue
-        if target_pos == -1: continue
-        msa_col_id = seq_to_aln[ref_idx][target_pos]
-        msa_column = msa[:, msa_col_id]
-        query_nt = alignment[1, aln_col_id].upper()
-        if query_nt == 'N': continue
-        matching_genes = [gene_id for gene_id, nt in enumerate(msa_column) if nt == query_nt]
-        if len(matching_genes) == 1: # Unique matching gene
-            if c1_gene_id == -1: # No match seen yet - first match
-                c1_gene_id = matching_genes[0]
-            elif c1_gene_id != matching_genes[0]: # conflicting matches
-                c1_gene_id = -1 # reset - no match
-                break  # c1 failed - stop checking
-        if c1_gene_id != -1: # if we have a candidate target gene
-            if query_nt != msa_column[c1_gene_id] and matching_genes:
-                c2_pass = False 
-                break # no need to check further
-
-    if c1_gene_id != -1 and c2_pass:
-        return gene_names[c1_gene_id]
-    else:
-        return "NONE"
-
-
 
 def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
     """
@@ -182,80 +140,6 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
         else:
             assignments[qname] = "NONE"
     return assignments
-
-
-def process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names):
-    """
-    Process SAM file and assign reads to genes based on c1/c2 conditions.
-    
-    Returns:
-        dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
-    """
-    gene_idx_map = {g:i for i,g in enumerate(gene_names)}
-    assignments = {}
-    for alignment in AlignmentIterator(sam_path):
-        qname = alignment.query.id
-        assigned_gene = process_read_simple(alignment,
-                                            msa,
-                                            seq_to_aln,
-                                            gene_names,
-                                            gene_idx_map)
-        if qname in assignments:
-            # we've already seen the mate of this read
-            if assignments[qname] == "NONE":
-                # one mate could not be uniquely mapped,
-                # but this one can - we go with this one
-                assignments[qname] = assigned_gene
-            elif assignments[qname] != assigned_gene:
-                # two mates have conflicting assignments,
-                # we don't assign
-                assignments[qname] = "NONE"
-            # else: two mates have identical assignments,
-            # we don't need to do anything
-        else:
-            assignments[qname] = assigned_gene
-    return assignments
-
-
-def process_sam_to_dict_simple_parallel(sam_path, msa, seq_to_aln, gene_names, n_jobs):
-    """
-    Process SAM file and assign reads to genes based on c1/c2 conditions.
-    
-    Returns:
-        dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
-    """
-    raise NotImplemented()
-    from joblib import Parallel, delayed # we import here in case someone doesn't have joblib
-    def worker_generator(sam_path, msa, seq_to_aln, gene_names):
-        for alignment in AlignmentIterator(sam_path):
-            qname = alignment.query.id
-            # delayed() may be unnecessary here, try to run without it: 
-            assigned_gene = delayed(process_read_simple)(alignment,
-                                            msa,
-                                            seq_to_aln,
-                                            gene_names)
-            yield (qname, assigned_gene)
-            
-    assignments = {}
-    workers = worker_generator(sam_path, msa, seq_to_aln, gene_names)
-    parallel = Parallel(n_jobs = n_jobs, return_as = 'generator_unordered')
-    for qname, assignment in parallel(workers):
-        if qname in assignments:
-            # we've already seen the mate of this read
-            if assignments[qname] == "NONE":
-                # one mate could not be uniquely mapped,
-                # but this one can - we go with this one
-                assignments[qname] = assigned_gene
-            elif assignments[qname] != assigned_gene:
-                # two mates have conflicting assignments,
-                # we don't assign
-                assignments[qname] = "NONE"
-            # else: two mates have identical assignments,
-            # we don't need to do anything
-        else:
-            assignments[qname] = assigned_gene
-    return assignments
-
 
 
 def _base_read_id(read_id: str) -> str:

@@ -24,82 +24,6 @@ def load_msa(msa_fasta_path: str):
     return msa, seq_to_aln, gene_names
 
 
-def process_read(alignment, msa, seq_to_aln, gene_names):
-    """
-    Process a single read alignment and check c1/c2 conditions for each gene.
-
-    Returns:
-        c1_dict: {gene: bool} - True if read has unique pos for this gene
-        c2_dict: {gene: bool} - True if read has no contradictions for this gene
-    """
-    ref_gene = alignment.target.id
-    gene_idx_map = {g: i for i, g in enumerate(gene_names)}
-
-    if ref_gene not in gene_idx_map:
-        return {g: False for g in gene_names}, {g: True for g in gene_names}
-
-    ref_idx = gene_idx_map[ref_gene]
-
-    all_msa_cols = set()
-    matching = defaultdict(set)  # gene -> set of msa_cols where read matches
-
-    # Get aligned positions from BioPython alignment
-    # alignment.aligned returns (target_intervals, query_intervals)
-    target_intervals = alignment.aligned[0]
-    query_intervals = alignment.aligned[1]
-    query_seq = str(alignment.query.seq)
-
-    for target_interval, query_interval in zip(target_intervals, query_intervals):
-        t_start, t_end = target_interval
-        q_start, q_end = query_interval
-
-        # Only process segments where both sequences advance equally (SNPs/matches, skip indels)
-        if (t_end - t_start) != (q_end - q_start):
-            continue
-
-        for offset in range(t_end - t_start):
-            ref_pos = t_start + offset  # 0-based ref position
-            query_pos = q_start + offset
-
-            if ref_pos >= len(seq_to_aln[ref_idx]):
-                continue
-
-            msa_col = seq_to_aln[ref_idx][ref_pos]
-            read_base = query_seq[query_pos].upper()
-
-            all_msa_cols.add(msa_col)
-
-            # Check which genes match at this position
-            for gene in gene_names:
-                gene_idx = gene_idx_map[gene]
-                gene_base = str(msa[gene_idx, msa_col]).upper()
-                if gene_base != '-' and read_base == gene_base:
-                    matching[gene].add(msa_col)
-
-    # Calculate c1 and c2 for each gene
-    c1_dict = {}
-    c2_dict = {}
-
-    for gene in gene_names:
-        # c1: exists a position where read matches this gene only
-        c1 = any(
-            msa_col in matching[gene] and
-            all(msa_col not in matching[g] for g in gene_names if g != gene)
-            for msa_col in all_msa_cols
-        )
-
-        # c2: for all positions, read matches this gene OR matches no other gene
-        c2 = all(
-            msa_col in matching[gene] or
-            all(msa_col not in matching[g] for g in gene_names if g != gene)
-            for msa_col in all_msa_cols
-        )
-
-        c1_dict[gene] = c1
-        c2_dict[gene] = c2
-
-    return c1_dict, c2_dict
-
 def process_read_simple(alignment, msa, seq_to_aln, gene_names, gene_idx_map):
     """
     Process a single read alignment and check c1/c2 conditions for each gene.
@@ -177,48 +101,6 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names, gene_idx_map):
         return gene_names[c1_gene_id]
     else:
         return "NONE"
-
-
-
-def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
-    """
-    Process SAM file and assign reads to genes based on c1/c2 conditions.
-    
-    Returns:
-        dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
-    """
-    # Track c1/c2 per read pair per gene
-    qname_to_c1 = {gene: defaultdict(bool) for gene in gene_names}
-    qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
-    all_qnames = set()
-
-    for alignment in AlignmentIterator(sam_path):
-        qname = alignment.query.id
-        all_qnames.add(qname)
-
-        c1_dict, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
-
-        for gene in gene_names:
-            if c1_dict[gene]:
-                qname_to_c1[gene][qname] = True
-            if not c2_dict[gene]:
-                qname_to_c2[gene][qname] = False
-
-    # Assign reads to genes
-    assignments = {}
-    for qname in all_qnames:
-        passing_genes = []
-        for gene in gene_names:
-            c1 = qname_to_c1[gene][qname]
-            c2 = qname_to_c2[gene][qname]
-            if c1 and c2:
-                passing_genes.append(gene)
-
-        if len(passing_genes) == 1:
-            assignments[qname] = passing_genes[0]
-        else:
-            assignments[qname] = "NONE"
-    return assignments
 
 
 def process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names):
