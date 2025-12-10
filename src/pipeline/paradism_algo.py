@@ -30,7 +30,7 @@ def load_msa(msa_fasta_path: str):
     return msa, ref_to_msa, gene_names
 
 
-def process_read():
+def process_read(read, msa, msa_maps):
     pass
 
 
