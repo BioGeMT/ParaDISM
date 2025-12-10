@@ -2,6 +2,8 @@ import argparse
 import sys
 from typing import Dict, List, Tuple
 from collections import defaultdict
+from Bio.Align.sam import AlignmentIterator
+
 
 
 def load_msa_mapping(msa_filepath: str) -> Tuple[Dict, Dict, List]:
@@ -35,6 +37,13 @@ def load_msa_mapping(msa_filepath: str) -> Tuple[Dict, Dict, List]:
                     sequence_positions[gene][int(pos)] = msa_pos
 
     return sequence_positions, sequence_bases, gene_names
+
+
+def process_read():
+    pass
+
+def process_sam(sam_path, ):
+    alignments = AlignmentIterator(sam_path)
 
 
 def main():
