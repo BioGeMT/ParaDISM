@@ -276,13 +276,17 @@ class SimpleParaDISMExecutor:
                 )
         
         # Run ParaDISM on NONE reads
-        iter_msa_obj, iter_seq_to_aln, iter_gene_names = load_msa(str(iter_msa))
-        new_assignments = process_sam_to_dict(str(iter_sam), iter_msa_obj, iter_seq_to_aln, iter_gene_names)
+        def _run_paradism_iteration():
+            iter_msa_obj, iter_seq_to_aln, iter_gene_names = load_msa(str(iter_msa))
+            new_assignments = process_sam_to_dict(str(iter_sam), iter_msa_obj, iter_seq_to_aln, iter_gene_names)
+            
+            # Write outputs for this iteration
+            iter_genes = self._write_fastq_outputs(new_assignments, str(none_r1_path), str(none_r2_path) if none_r2_path else None, iter_fastq_dir)
+            if iter_genes:
+                create_bam_files(iter_genes, str(updated_ref), str(iter_fastq_dir), str(iter_bam_dir), aligner, threads, minimap2_profile, self.prefix)
+            return new_assignments
         
-        # Write outputs for this iteration
-        iter_genes = self._write_fastq_outputs(new_assignments, str(none_r1_path), str(none_r2_path) if none_r2_path else None, iter_fastq_dir)
-        if iter_genes:
-            create_bam_files(iter_genes, str(updated_ref), str(iter_fastq_dir), str(iter_bam_dir), aligner, threads, minimap2_profile, self.prefix)
+        new_assignments = self._run_spinner(_run_paradism_iteration, "Running ParaDISM algorithm")
         
         # 5. Merge assignments
         merged_assignments = self._merge_assignments(previous_assignments, new_assignments)
@@ -290,10 +294,6 @@ class SimpleParaDISMExecutor:
         # 6. Check convergence
         new_none_reads = self._extract_none_reads_from_assignments(merged_assignments)
         reads_rescued = len(none_reads) - len(new_none_reads)
-        
-        # Restore original logger and progress before returning
-        self.logger = original_logger
-        self.progress = original_progress
         
         if reads_rescued == 0:
             print(f"  No reads were rescued from NONE. Pipeline has converged.", file=sys.stderr)
@@ -481,7 +481,6 @@ class SimpleParaDISMExecutor:
         # Iterative refinement
         refinement_iterations = iterations - 1
         if refinement_iterations > 0:
-            print(f"\n  Starting iterative refinement (up to {refinement_iterations} iteration(s))...\n", file=sys.stderr)
             for iteration in range(2, iterations + 1):
                 current_ref, current_assignments, converged = self._run_single_iteration_refinement(
                     r1=r1,
