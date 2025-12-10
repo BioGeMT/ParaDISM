@@ -1,3 +1,6 @@
+import numpy as np
+
+
 def map_alncoords_to_seqcoords(aln):
     """
     Returns a numpy array in which entry [i,j] is the 
@@ -29,7 +32,22 @@ def map_seqcoords_to_alncoords(aln):
 
 if __name__ == '__main__':
     from Bio import AlignIO
-    path_to_test_alignment = ''
+    path_to_test_alignment = '/homes/dtzim01/ParaDISM/ref_msa.aln'
     test_aln = AlignIO.read(path_to_test_alignment, 'fasta')
-    map_alncoords_to_seqcoords(test_aln)
-    map_seqcoords_to_alncoords(test_aln)
+
+    gene_names = [record.id for record in test_aln]
+    print(f"Genes: {gene_names}")
+    print(f"Alignment length: {test_aln.get_alignment_length()}")
+    print()
+
+    aln_to_seq = map_alncoords_to_seqcoords(test_aln)
+    print("map_alncoords_to_seqcoords (first 10 columns):")
+    print(f"Shape: {aln_to_seq.shape}")
+    for i, gene in enumerate(gene_names):
+        print(f"  {gene}: {aln_to_seq[i, :10]}")
+    print()
+
+    seq_to_aln = map_seqcoords_to_alncoords(test_aln)
+    print("map_seqcoords_to_alncoords (first 10 positions per gene):")
+    for i, gene in enumerate(gene_names):
+        print(f"  {gene}: {seq_to_aln[i][:10]}")
