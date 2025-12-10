@@ -37,28 +37,6 @@ def load_msa_mapping(msa_filepath: str) -> Tuple[Dict, Dict, List]:
 
     return sequence_positions, sequence_bases, gene_names
 
-def process_read_data(read_name: str, read_rows: List[List], sequence_bases: Dict, gene_names: List) -> List[Dict]:
-    """Process read data for SNP-only analysis"""
-    processed_rows = []
-    
-    for scenario in read_rows:
-        scenario_rows = []
-        for row in scenario:
-            read_name, read_pos, msa_pos, read_base = row
-            row_dict = {
-                'Read_Name': read_name,
-                'Read_Position': read_pos,
-                'MSA_Position': msa_pos,
-                'Read_Base': read_base
-            }
-            for gene in gene_names:
-                row_dict[f'{gene}_Base'] = sequence_bases[msa_pos][gene]
-            
-            scenario_rows.append(row_dict)
-        processed_rows.append(scenario_rows)
-    
-    return processed_rows
-
 def find_unique_mapping_snp_only(read_scenarios: Dict[str, List], genes: List[str]) -> Tuple[str, bool, str]:
     """Find unique mapping for SNP-only analysis; returns assignment, strand coverage, and which strand(s) mapped."""
     plus_data = read_scenarios.get('plus', [])
@@ -140,66 +118,30 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
                                    batch_size: int = 10000, paired_mode: bool = True) -> None:
     """Process read mappings for SNP-only analysis (no insertions)"""
 
-    # First pass: count total unique read pairs
-    total_reads = 0
-    seen_bases = set()
-    with open(read_map_filepath, 'r') as f:
-        next(f)  # Skip header
-        for line in f:
-            read_name = line.split('\t')[0].rstrip('+-')
-            if read_name not in seen_bases:
-                seen_bases.add(read_name)
-                total_reads += 1
-
     with open(output_file, 'w') as out_f:
         out_f.write('Read_Name\tUniquely_Mapped\n')
 
         current_read_base = None
         reads_processed = 0
-        
-        match_buffer = []
-        current_read = None
-        current_ref_gene = None
         read_scenarios = defaultdict(lambda: {'plus': [], 'minus': []})
-        
-        def process_buffer():
-            nonlocal match_buffer, current_read, current_ref_gene, read_scenarios
-            
-            if not current_read or not match_buffer:
-                return
-
-            # For SNP-only, we only have one scenario per read (no insertion mapping)
-            base_read_name = current_read.rstrip('+-')
-            strand = 'plus' if current_read.endswith('+') else 'minus'
-            
-            processed = process_read_data(
-                current_read,
-                [match_buffer],  # Single scenario
-                sequence_bases,
-                gene_names
-            )
-            read_scenarios[base_read_name][strand].extend(processed)
-
-            match_buffer.clear()
 
         def process_current_read():
             nonlocal current_read_base, reads_processed, read_scenarios
-            
-            if current_read_base and read_scenarios:
+
+            if current_read_base and current_read_base in read_scenarios:
                 unique_gene, has_both, strand_info = find_unique_mapping_snp_only(
                     read_scenarios[current_read_base],
                     gene_names
                 )
                 label = unique_gene
                 if paired_mode and unique_gene != "NONE" and not has_both:
-                    # Indicate which specific strand mapped
                     label = f"{unique_gene} ({strand_info})"
                 out_f.write(f'{current_read_base}\t{label}\n')
                 del read_scenarios[current_read_base]
                 reads_processed += 1
 
                 if reads_processed % 100 == 0:
-                    sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}/{total_reads:,}")
+                    sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}")
                     sys.stdout.flush()
 
                 if reads_processed % batch_size == 0:
@@ -219,15 +161,8 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
 
                 read_base_name = read_name.rstrip('+-')
                 if read_base_name != current_read_base:
-                    process_buffer()
                     process_current_read()
                     current_read_base = read_base_name
-
-                if read_name != current_read:
-                    if current_read is not None:
-                        process_buffer()
-                    current_read = read_name
-                    current_ref_gene = ref_gene
 
                 # Only process matches and mismatches (skip insertions and deletions)
                 if alignment_type in ['match', 'mismatch']:
@@ -235,15 +170,25 @@ def process_read_mappings_snp_only(read_map_filepath: str, sequence_positions: D
                         ref_pos_int = int(ref_pos)
                         if ref_pos_int in sequence_positions[ref_gene]:
                             msa_pos = sequence_positions[ref_gene][ref_pos_int]
-                            row_data = (read_name, read_pos, msa_pos, read_base)
-                            match_buffer.append(row_data)
+                            strand = 'plus' if read_name.endswith('+') else 'minus'
+                            row_dict = {
+                                'Read_Name': read_name,
+                                'Read_Position': read_pos,
+                                'MSA_Position': msa_pos,
+                                'Read_Base': read_base
+                            }
+                            for gene in gene_names:
+                                row_dict[f'{gene}_Base'] = sequence_bases[msa_pos][gene]
+
+                            # Directly add to scenarios (single scenario per strand)
+                            if not read_scenarios[read_base_name][strand]:
+                                read_scenarios[read_base_name][strand].append([])
+                            read_scenarios[read_base_name][strand][0].append(row_dict)
 
             # Process final read
-            if current_read is not None:
-                process_buffer()
-                process_current_read()
+            process_current_read()
 
-            sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}/{total_reads:,}\n")
+            sys.stdout.write(f"\rPaired reads processed: {reads_processed:,}\n")
             sys.stdout.flush()
 
 def main():
