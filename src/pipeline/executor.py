@@ -535,9 +535,9 @@ class SimpleParaDISMExecutor:
                         self.prefix
                     )
             
-            self._run_spinner(_write_final_outputs, "Writing final outputs")
-            
             print(f"\n  Iterative refinement complete.\n", file=sys.stderr)
+            
+            self._run_spinner(_write_final_outputs, "Writing final outputs")
         
         # Write final outputs for single iteration case
         if iterations == 1:
