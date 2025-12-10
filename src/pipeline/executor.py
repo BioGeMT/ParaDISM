@@ -178,7 +178,6 @@ class SimpleParaDISMExecutor:
             "--per-gene-vcf-dir", str(per_gene_vcf_dir),
         ]
         
-        print(f"  Calling variants from mapped reads (iteration {iteration})...", file=sys.stderr)
         result = subprocess.run(variant_cmd, capture_output=True, text=True)
         self.logger.write(result.stdout or "")
         self.logger.write(result.stderr or "")
