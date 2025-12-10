@@ -129,7 +129,7 @@ def process_read_simple(alignment, msa, seq_to_aln, gene_names):
         matching_genes = [gene_id for gene_id, nt in enumerate(msa_column) if nt == query_nt]
         if len(matching_genes) == 1: # Unique matching gene
             if c1_gene_id == -1: # No match seen yet - first match
-                c1_gene_id == matching_genes[0]
+                c1_gene_id = matching_genes[0]
             elif c1_gene_id != matching_genes[0]: # conflicting matches
                 c1_gene_id = -1 # reset - no match
                 break  # c1 failed - stop checking
@@ -194,7 +194,6 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
             assignments[qname] = passing_genes[0]
         else:
             assignments[qname] = "NONE"
-
     return assignments
 
 
