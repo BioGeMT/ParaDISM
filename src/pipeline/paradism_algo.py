@@ -208,12 +208,27 @@ def process_sam_to_dict_simple(sam_path, msa, seq_to_aln, gene_names):
     assignments = {}
     for alignment in AlignmentIterator(sam_path):
         qname = alignment.query.id
-        assignments[qname] = process_read_simple(alignment,
-                                                 msa,
-                                                 seq_to_aln,
-                                                 gene_names)
+        assigned_gene = process_read_simple(alignment,
+                                            msa,
+                                            seq_to_aln,
+                                            gene_names)
+        if qname in assignments:
+            # we've already seen the mate of this read
+            if assignments[qname] == "NONE":
+                # one mate could not be uniquely mapped,
+                # but this one can - we go with this one
+                assignments[qname] = assigned_gene
+            elif assignments[qname] != assigned_gene:
+                # two mates have conflicting assignments,
+                # we don't assign
+                assignments[qname] = "NONE"
+            # else: two mates have identical assignments,
+            # we don't need to do anything
+        else:
+            assignments[qname] = assigned_gene
 
     return assignments
+
 
 
 def _base_read_id(read_id: str) -> str:
