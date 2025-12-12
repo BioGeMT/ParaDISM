@@ -130,6 +130,9 @@ class SimpleParaDISMExecutor:
         minimap2_profile: str,
         is_paired: bool,
         iteration: int,
+        bowtie2_score_min: str = "G,40,40",
+        bwa_min_score: int = 240,
+        minimap2_min_score: int = 240,
     ) -> tuple[Path, dict[str, str], bool]:
         """
         Run one iteration of refinement on NONE reads only.
@@ -225,13 +228,13 @@ class SimpleParaDISMExecutor:
             )
             if is_paired:
                 self._run_spinner(
-                    f"bowtie2 --local --score-min G,40,40 -p {threads} -x '{iter_index}' -1 '{none_r1_path}' -2 '{none_r2_path}' -S '{iter_sam}'",
+                    f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{iter_index}' -1 '{none_r1_path}' -2 '{none_r2_path}' -S '{iter_sam}'",
                     "Aligning reads with Bowtie2",
                     shell=True,
                 )
             else:
                 self._run_spinner(
-                    f"bowtie2 --local --score-min G,40,40 -p {threads} -x '{iter_index}' -U '{none_r1_path}' -S '{iter_sam}'",
+                    f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{iter_index}' -U '{none_r1_path}' -S '{iter_sam}'",
                     "Aligning reads with Bowtie2",
                     shell=True,
                 )
@@ -241,7 +244,6 @@ class SimpleParaDISMExecutor:
                 ["bwa-mem2", "index", "-p", str(iter_index), str(updated_ref)],
                 "Building BWA-MEM2 index",
             )
-            bwa_min_score = 240
             awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
             if is_paired:
                 self._run_spinner(
@@ -265,7 +267,7 @@ class SimpleParaDISMExecutor:
                 "ont-standard": "map-ont",
             }
             preset = preset_map.get(minimap2_profile, "sr")
-            score_threshold = "-s 240" if preset == "sr" else ""
+            score_threshold = f"-s {minimap2_min_score}" if preset == "sr" else ""
             self._run_spinner(
                 ["minimap2", "-x", preset, "-d", str(iter_index), str(updated_ref)],
                 f"Building minimap2 ({minimap2_profile}) index",
@@ -291,7 +293,7 @@ class SimpleParaDISMExecutor:
             # Write outputs for this iteration
             iter_genes = self._write_fastq_outputs(new_assignments, str(none_r1_path), str(none_r2_path) if none_r2_path else None, iter_fastq_dir)
             if iter_genes:
-                create_bam_files(iter_genes, str(updated_ref), str(iter_fastq_dir), str(iter_bam_dir), aligner, threads, minimap2_profile, self.prefix)
+                create_bam_files(iter_genes, str(updated_ref), str(iter_fastq_dir), str(iter_bam_dir), aligner, threads, minimap2_profile, self.prefix, bowtie2_score_min, bwa_min_score, minimap2_min_score)
             return new_assignments
         
         new_assignments = self._run_spinner(_run_paradism_iteration, "Running ParaDISM algorithm")
@@ -324,11 +326,14 @@ class SimpleParaDISMExecutor:
         minimap2_profile: str | None = None,
         show_header: bool = True,
         iterations: int = 1,
+        threshold: str | None = None,
     ) -> None:
         """Execute the ParaDISM pipeline with optional iterative refinement.
-        
+
         Args:
             iterations: Number of ParaDISM runs (1 = no refinement, 2+ = refinement iterations)
+            threshold: Alignment score threshold. For bwa-mem2/minimap2: integer (e.g., "240").
+                      For bowtie2: score function (e.g., "G,40,40"). Default based on aligner.
         """
 
         is_paired = r2 is not None
@@ -341,10 +346,25 @@ class SimpleParaDISMExecutor:
         # Validate minimap2 profile is provided when using minimap2
         if aligner == "minimap2" and not minimap2_profile:
             raise ValueError("--minimap2-profile must be provided when --aligner minimap2")
-        
+
         # Set default profile for other aligners
         if not minimap2_profile:
             minimap2_profile = "short"
+
+        # Set default thresholds based on aligner if not provided
+        if threshold is None:
+            bowtie2_score_min = "G,40,40"
+            bwa_min_score = 240
+            minimap2_min_score = 240
+        else:
+            if aligner == "bowtie2":
+                bowtie2_score_min = threshold
+                bwa_min_score = 240
+                minimap2_min_score = 240
+            else:
+                bowtie2_score_min = "G,40,40"
+                bwa_min_score = int(threshold)
+                minimap2_min_score = int(threshold)
 
         if show_header:
             mode_text = "paired-end" if is_paired else "single-end"
@@ -392,13 +412,13 @@ class SimpleParaDISMExecutor:
                 )
                 if is_paired:
                     self._run_spinner(
-                        f"bowtie2 --local --score-min G,40,40 -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
+                        f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
                     )
                 else:
                     self._run_spinner(
-                        f"bowtie2 --local --score-min G,40,40 -p {threads} -x '{index_base}' -U '{r1}' -S '{sam_output}'",
+                        f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -U '{r1}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
                     )
@@ -408,7 +428,6 @@ class SimpleParaDISMExecutor:
                     ["bwa-mem2", "index", "-p", str(index_base), ref],
                     "Building BWA-MEM2 index",
                 )
-                bwa_min_score = 240
                 awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
                 if is_paired:
                     self._run_spinner(
@@ -432,7 +451,7 @@ class SimpleParaDISMExecutor:
                     "ont-standard": "map-ont",
                 }
                 preset = preset_map.get(minimap2_profile, "sr")
-                score_threshold = "-s 240" if preset == "sr" else ""
+                score_threshold = f"-s {minimap2_min_score}" if preset == "sr" else ""
 
                 self._run_spinner(
                     ["minimap2", "-x", preset, "-d", str(index_file), ref],
@@ -465,7 +484,7 @@ class SimpleParaDISMExecutor:
             assignments = process_sam_to_dict(str(sam_output), msa_obj, seq_to_aln, gene_names)
             genes = write_fastq_outputs(assignments, r1, r2, str(fastq_dir), self.prefix)
             if genes:
-                create_bam_files(genes, ref, str(fastq_dir), str(bam_dir), aligner, threads, minimap2_profile, self.prefix)
+                create_bam_files(genes, ref, str(fastq_dir), str(bam_dir), aligner, threads, minimap2_profile, self.prefix, bowtie2_score_min, bwa_min_score, minimap2_min_score)
             return assignments
 
         current_assignments = self._run_spinner(
@@ -502,6 +521,9 @@ class SimpleParaDISMExecutor:
                     minimap2_profile=minimap2_profile,
                     is_paired=is_paired,
                     iteration=iteration,
+                    bowtie2_score_min=bowtie2_score_min,
+                    bwa_min_score=bwa_min_score,
+                    minimap2_min_score=minimap2_min_score,
                 )
 
                 if converged:
@@ -541,9 +563,12 @@ class SimpleParaDISMExecutor:
                         aligner,
                         threads,
                         minimap2_profile,
-                        self.prefix
+                        self.prefix,
+                        bowtie2_score_min,
+                        bwa_min_score,
+                        minimap2_min_score
                     )
-            
+
             print(f"\n  Iterative refinement complete.\n", file=sys.stderr)
             
             self._run_spinner(_write_final_outputs, "Writing final outputs")
@@ -570,9 +595,12 @@ class SimpleParaDISMExecutor:
                         aligner,
                         threads,
                         minimap2_profile,
-                        self.prefix
+                        self.prefix,
+                        bowtie2_score_min,
+                        bwa_min_score,
+                        minimap2_min_score
                     )
-            
+
             self._run_spinner(_write_final_outputs, "Writing final outputs")
 
         # 4. Cleanup intermediate files

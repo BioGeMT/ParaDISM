@@ -64,6 +64,7 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         minimap2_profile=profile,
         show_header=True,
         iterations=args.iterations,
+        threshold=args.threshold,
     )
 
 
@@ -163,6 +164,15 @@ Examples:
         metavar="INPUT_DIR",
         default=".",
         help="Input directory for interactive mode file scanning (default: current directory)",
+    )
+    optional.add_argument(
+        "--threshold",
+        metavar="THRESHOLD",
+        default=None,
+        help="Minimum alignment score threshold. "
+             "For bwa-mem2/minimap2: integer score (e.g., 240 for 150bp, 160 for 100bp). "
+             "For bowtie2: score function (e.g., 'G,40,40' for 150bp, 'G,30,30' for 100bp). "
+             "Default: 240 for bwa-mem2/minimap2, 'G,40,40' for bowtie2.",
     )
 
     return parser

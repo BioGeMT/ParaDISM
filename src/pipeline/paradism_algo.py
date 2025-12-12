@@ -217,7 +217,8 @@ def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str 
 
 def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_dir: str,
                      aligner: str = 'bwa-mem2', threads: int = 4, minimap2_profile: str = 'short',
-                     prefix: str = "") -> None:
+                     prefix: str = "", bowtie2_score_min: str = "G,40,40",
+                     bwa_min_score: int = 240, minimap2_min_score: int = 240) -> None:
     """Create BAM files for each gene."""
     ref_db = {}
     for record in SeqIO.parse(ref_fasta, "fasta"):
@@ -250,10 +251,9 @@ def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_di
         # Build index and align (suppress verbose output)
         if aligner == 'bowtie2':
             subprocess.run(f"bowtie2-build {tmp_ref} {index_base}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
-            subprocess.run(f"bowtie2 --local --score-min G,40,40 -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            subprocess.run(f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
         elif aligner == 'bwa-mem2':
             subprocess.run(f"bwa-mem2 index -p {index_base} {tmp_ref}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
-            bwa_min_score = 240
             awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
             subprocess.run(f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} {index_base} {fastq_file} | {awk_filter} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
         elif aligner == 'minimap2':
@@ -265,7 +265,7 @@ def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_di
                 'ont-standard': 'map-ont',
             }
             preset = preset_map.get(minimap2_profile, 'sr')
-            score_threshold = "-s 240" if preset == "sr" else ""
+            score_threshold = f"-s {minimap2_min_score}" if preset == "sr" else ""
             index_mmi = f"{index_base}.mmi"
             subprocess.run(f"minimap2 -x {preset} -d {index_mmi} {tmp_ref}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
             subprocess.run(f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} {index_mmi} {fastq_file} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
