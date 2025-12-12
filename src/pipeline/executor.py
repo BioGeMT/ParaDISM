@@ -335,6 +335,7 @@ class SimpleParaDISMExecutor:
         r1 = str(r1)
         r2 = str(r2) if r2 else None
         ref = str(ref)
+        original_ref = Path(ref)
         sam = str(sam) if sam else None
 
         # Validate minimap2 profile is provided when using minimap2
@@ -534,7 +535,7 @@ class SimpleParaDISMExecutor:
                 if final_genes:
                     create_bam_files(
                         final_genes,
-                        str(final_output['reference']),
+                        str(original_ref),
                         str(final_fastq_dir),
                         str(final_bam_dir),
                         aligner,
@@ -601,4 +602,3 @@ class SimpleParaDISMExecutor:
         print("  \033[0;36m✓ Cleaning up intermediate files\033[0m", file=sys.stderr)
         final_outputs_path = original_output_dir / "final_outputs"
         print(f"\n  \033[0;36m✓ Pipeline complete. Final outputs in: {final_outputs_path}\033[0m", file=sys.stderr)
-

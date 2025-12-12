@@ -156,71 +156,63 @@ def _base_read_id(read_id: str) -> str:
 
 def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str | None, 
                        fastq_dir: str, prefix: str = "") -> list[str]:
-    """Write per-gene FASTQ files directly from assignments dict."""
+    """
+    Write per-gene FASTQ files directly from assignments dict.
+    Streams reads instead of loading entire FASTQs into memory.
+    """
     os.makedirs(fastq_dir, exist_ok=True)
-    
-    # Load FASTQ records
-    r1_records = {}
-    for rec in SeqIO.parse(r1_path, "fastq"):
-        r1_records[_base_read_id(rec.id)] = rec
-
-    r2_records = {}
-    if r2_path:
-        for rec in SeqIO.parse(r2_path, "fastq"):
-            r2_records[_base_read_id(rec.id)] = rec
-
-    # Organize reads by gene
-    gene_collection = defaultdict(list)
     is_paired = r2_path is not None
 
-    for read_name, gene in assignments.items():
-        if gene == "NONE":
-            continue
+    target_genes = {gene for gene in assignments.values() if gene != "NONE"}
+    if not target_genes:
+        return []
 
-        # Add R1
-        r1 = r1_records.get(read_name)
-        if r1 is not None:
-            if is_paired:
-                gene_collection[gene].append(SeqRecord(
-                    r1.seq,
-                    id=f"{read_name}/1",
-                    description="",
-                    letter_annotations=r1.letter_annotations
-                ))
-            else:
-                gene_collection[gene].append(SeqRecord(
-                    r1.seq,
-                    id=read_name,
-                    description="",
-                    letter_annotations=r1.letter_annotations
-                ))
+    handles = {}
+    processed_genes = set()
 
-        # Add R2 if paired-end
-        if is_paired:
-            r2 = r2_records.get(read_name)
-            if r2 is not None:
-                gene_collection[gene].append(SeqRecord(
+    try:
+        for gene in target_genes:
+            filename = f"{prefix}_{gene}.fq" if prefix else f"{gene}.fq"
+            handles[gene] = open(os.path.join(fastq_dir, filename), "w")
+
+        r1_iter = SeqIO.parse(r1_path, "fastq")
+        r2_iter = SeqIO.parse(r2_path, "fastq") if is_paired else None
+
+        for r1 in r1_iter:
+            r2 = next(r2_iter) if r2_iter is not None else None
+
+            base_id = _base_read_id(r1.id)
+            gene = assignments.get(base_id)
+            if gene is None or gene == "NONE":
+                continue
+
+            handle = handles.get(gene)
+            if handle is None:
+                continue
+
+            r1_out = SeqRecord(
+                r1.seq,
+                id=f"{base_id}/1" if is_paired else base_id,
+                description="",
+                letter_annotations=r1.letter_annotations
+            )
+            handle.write(r1_out.format("fastq"))
+
+            if is_paired and r2 is not None:
+                r2_out = SeqRecord(
                     r2.seq,
-                    id=f"{read_name}/2",
+                    id=f"{base_id}/2",
                     description="",
                     letter_annotations=r2.letter_annotations
-                ))
+                )
+                handle.write(r2_out.format("fastq"))
 
-    # Write FASTQ files
-    processed_genes = []
-    for gene, records in gene_collection.items():
-        if not records:
-            continue
+            processed_genes.add(gene)
+    finally:
+        for handle in handles.values():
+            handle.close()
 
-        filename = f"{prefix}_{gene}.fq" if prefix else f"{gene}.fq"
-        output_file = os.path.join(fastq_dir, filename)
-
-        with open(output_file, "w") as out_f:
-            SeqIO.write(records, out_f, "fastq")
-
-        processed_genes.append(gene)
-
-    return processed_genes
+    return sorted(processed_genes)
 
 
 def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_dir: str,
