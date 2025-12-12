@@ -345,6 +345,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     aligner = "bowtie2"
     minimap2_profile = "short"
     threads = 4
+    threshold = None
 
     if not sam_path:
         from rich import box as rbox
@@ -446,6 +447,28 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
 
         console.print()
 
+        # Ask for threshold (optional)
+        threshold = None
+        if aligner == "bowtie2":
+            default_threshold = "G,40,40"
+            threshold_prompt = f"[green]Alignment score threshold (default: {default_threshold} for 150bp, use G,30,30 for 100bp):[/green] "
+        else:
+            default_threshold = "240"
+            threshold_prompt = f"[green]Alignment score threshold (default: {default_threshold} for 150bp, use 160 for 100bp):[/green] "
+
+        while True:
+            choice = console.input(threshold_prompt).strip()
+            if not choice:
+                threshold = None  # Use default
+                console.print(f"[green]✓[/green] Threshold: [cyan]{default_threshold}[/cyan] (default)")
+                break
+            else:
+                threshold = choice
+                console.print(f"[green]✓[/green] Threshold: [cyan]{threshold}[/cyan]")
+                break
+
+        console.print()
+
         max_threads = os.cpu_count() or 1
         while True:
             choice = console.input(f"[green]Number of threads ({max_threads} available):[/green] ").strip()
@@ -543,6 +566,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         minimap2_profile=minimap2_profile,
         show_header=True,
         iterations=iterations,
+        threshold=threshold,
     )
 
     console.print("[green]═══════════════════════════════════════════════════════[/green]")
