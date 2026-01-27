@@ -163,39 +163,40 @@ The loop stops early if:
 - No variants to apply
 - No reads were reassigned in the latest iteration
 
-## Benchmarking
+## GIAB Benchmarking
 
-### GIAB HG002 (PKD1)
-
-Scripts in `benchmark/giab/`:
+Scripts in `giab_benchmark/`:
 
 ```bash
 # Download reads
-bash benchmark/giab/download_giab_hg002_reads.sh
+bash giab_benchmark/download_giab_hg002_reads.sh
 
 # Prepare ground truth VCF
-bash benchmark/giab/prepare_giab_truth.sh
+bash giab_benchmark/prepare_giab_truth.sh
 
 # Run ParaDISM with G30 and G60 thresholds
-bash benchmark/giab/run_giab.sh [threads] [iterations]
+bash giab_benchmark/run_giab.sh [threads] [iterations]
 
 # Call variants with balanced filters
-bash benchmark/giab/call_variants_balanced_filters.sh
+bash giab_benchmark/call_variants_balanced_filters.sh
 
 # Compare variants to ground truth
-python benchmark/giab/compare_variants.py --help
+python giab_benchmark/compare_variants.py --help
 
 # Plot precision/recall comparison
-python benchmark/giab/plot_balanced_comparison.py
+python giab_benchmark/plot_balanced_comparison.py
 ```
 
-### GNAQ
+## GNAQ Analysis
 
-Scripts in `benchmark/gnaq/`:
+Scripts in `gnaq_analysis/`:
 
 ```bash
-# Download GNAQ test reads
-bash benchmark/gnaq/download_gnaq_reads.sh
+# Download GNAQ reads
+bash gnaq_analysis/download_gnaq_reads.sh
+
+# Run GNAQ samples
+bash gnaq_analysis/run_gnaq_samples.sh
 ```
 
 ## Simulation
