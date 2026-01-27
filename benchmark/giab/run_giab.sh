@@ -1,8 +1,14 @@
 #!/bin/bash
 # Run ParaDISM on GIAB HG002 with G30 and G60 thresholds
 # Uses bowtie2, minalt 5, qual filtered
+# Run from ParaDISM root: bash benchmark/run_giab.sh
 
 set -euo pipefail
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+cd "$PROJECT_ROOT"
 
 READS_DIR="giab_hg002_reads"
 REFERENCE="ref.fa"
@@ -84,4 +90,4 @@ echo "  G60: $OUTPUT_G60"
 echo "  G30: $OUTPUT_G30"
 echo ""
 echo "Next: Run variant calling with balanced filters"
-echo "  bash call_variants_balanced_filters.sh"
+echo "  bash benchmark/call_variants_balanced_filters.sh"

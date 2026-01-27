@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Call variants with BALANCED filters for G30 and G60 outputs
 # Filters: QUAL>=500, DP>=30, AF>=0.90, RO<=5, MQMR<=10
-# Rationale: TPs are homozygous (AF=1.0, RO=0), FPs are heterozygous
+# Run from anywhere: bash benchmark/call_variants_balanced_filters.sh
 
 set -euo pipefail
 
-BASE_DIR="/homes/dtzim01/ParaDISM"
-REFERENCE="${BASE_DIR}/ref.fa"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+cd "$PROJECT_ROOT"
+
+REFERENCE="ref.fa"
 
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate paradism_env
@@ -29,12 +32,10 @@ call_variants() {
         local gene_vcf="${variant_dir}/per_gene_vcfs/${gene}.vcf"
         local gene_vcf_tmp="${variant_dir}/per_gene_vcfs/${gene}.tmp.vcf"
 
-        # Call variants with FreeBayes (minalt 5)
         freebayes --bam "$gene_bam" --fasta-reference "$REFERENCE" \
             --ploidy 2 --min-alternate-count 5 --region "$gene" -i 2>/dev/null | \
             bcftools view -v snps > "$gene_vcf_tmp" 2>/dev/null
 
-        # Apply balanced filters
         if [[ -s "$gene_vcf_tmp" ]]; then
             bcftools filter -e "QUAL<500 || INFO/DP<30 || INFO/AF<0.90 || INFO/RO>5 || INFO/MQMR>10" \
                 "$gene_vcf_tmp" > "$gene_vcf" 2>/dev/null || cp "$gene_vcf_tmp" "$gene_vcf"
@@ -43,7 +44,6 @@ call_variants() {
             rm -f "$gene_vcf_tmp"
         fi
 
-        # Keep VCF only if it has variants
         if [[ -f "$gene_vcf" ]] && [[ -s "$gene_vcf" ]]; then
             variant_count=$(grep -v "^#" "$gene_vcf" | wc -l)
             if [[ $variant_count -gt 0 ]]; then
@@ -56,7 +56,6 @@ call_variants() {
         fi
     done
 
-    # Merge per-gene VCFs
     if [[ ${#per_gene_vcfs[@]} -eq 0 ]]; then
         echo "##fileformat=VCFv4.2" > "${variant_dir}/variants.vcf"
         echo -e "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO" >> "${variant_dir}/variants.vcf"
@@ -84,22 +83,20 @@ echo "Variant Calling with Balanced Filters"
 echo "=========================================="
 echo ""
 
-# G60 outputs
-G60_DIR="${BASE_DIR}/giab_hg002_output_bowtie2_G60_min5_qfilters"
+G60_DIR="giab_hg002_output_bowtie2_G60_min5_qfilters"
 if [[ -d "$G60_DIR/final_outputs" ]]; then
     echo "Processing G60..."
-    call_variants "$G60_DIR/final_outputs/giab_hg002_output_bowtie2_G60_min5_qfilters_bam" \
+    call_variants "$G60_DIR/final_outputs/${G60_DIR}_bam" \
                   "$G60_DIR/final_outputs/variant_calling_balanced" \
-                  "giab_hg002_output_bowtie2_G60_min5_qfilters"
+                  "$G60_DIR"
 fi
 
-# G30 outputs
-G30_DIR="${BASE_DIR}/giab_hg002_output_bowtie2_G30_min5_qfilters"
+G30_DIR="giab_hg002_output_bowtie2_G30_min5_qfilters"
 if [[ -d "$G30_DIR/final_outputs" ]]; then
     echo "Processing G30..."
-    call_variants "$G30_DIR/final_outputs/giab_hg002_output_bowtie2_G30_min5_qfilters_bam" \
+    call_variants "$G30_DIR/final_outputs/${G30_DIR}_bam" \
                   "$G30_DIR/final_outputs/variant_calling_balanced" \
-                  "giab_hg002_output_bowtie2_G30_min5_qfilters"
+                  "$G30_DIR"
 fi
 
 echo ""
