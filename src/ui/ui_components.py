@@ -307,6 +307,11 @@ def display_pipeline_config(
     minimap2_profile: Optional[str] = None,
     output_dir: str = "./output",
     iterations: int = 0,
+    min_alternate_count: int = 5,
+    add_quality_filters: bool = False,
+    qual_threshold: int = 20,
+    dp_threshold: int = 10,
+    af_threshold: float = 0.05,
 ) -> None:
     """Display pipeline configuration summary (paired or single-end)."""
     lines = []
@@ -350,6 +355,11 @@ def display_pipeline_config(
     if iterations > 1:
         refinement_iterations = iterations - 1
         lines.append(f"  Iterations: [cyan]{iterations}[/cyan] [dim]({refinement_iterations} refinement iteration(s))[/dim]")
+        lines.append(f"  Min alt count: [cyan]{min_alternate_count}[/cyan]")
+        if add_quality_filters:
+            lines.append(f"  Quality filters: [cyan]QUAL>={qual_threshold}, DP>={dp_threshold}, AF>={af_threshold}[/cyan]")
+        else:
+            lines.append(f"  Quality filters: [cyan]disabled[/cyan]")
     else:
         lines.append(f"  Iterations: [cyan]1[/cyan] [dim](no refinement)[/dim]")
 

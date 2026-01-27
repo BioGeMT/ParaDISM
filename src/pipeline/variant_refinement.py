@@ -14,9 +14,11 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
 
-# Hardcoded defaults (matching existing ParaDISM variant calling)
-VARIANT_MIN_ALT = 5
+# Defaults (can be overridden via command-line arguments)
+VARIANT_MIN_ALT = 5  # Default minimum alternate allele count
 VARIANT_PLOIDY = 2
 VARIANT_FILTER_SNPS_ONLY = True
 # Quality filtering thresholds
@@ -44,6 +46,11 @@ def call_variants_from_bams(
     reference: Path,
     output_vcf: Path,
     per_gene_vcf_dir: Path,
+    min_alternate_count: int = VARIANT_MIN_ALT,
+    apply_quality_filters: bool = False,
+    qual_threshold: int = VARIANT_MIN_QUAL,
+    dp_threshold: int = VARIANT_MIN_DP,
+    af_threshold: float = VARIANT_MIN_AF,
 ) -> None:
     """
     Call variants from per-gene BAM files using FreeBayes.
@@ -68,6 +75,24 @@ def call_variants_from_bams(
     output_vcf = Path(output_vcf)
     
     per_gene_vcf_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure reference is indexed for FreeBayes (required for --region)
+    print(f"  Indexing reference for FreeBayes...", file=sys.stderr)
+    fai_file = reference.with_suffix(reference.suffix + ".fai")
+    if not fai_file.exists():
+        subprocess.run(
+            ["samtools", "faidx", str(reference)],
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        print(f"  Reference indexed: {fai_file}", file=sys.stderr)
+    else:
+        # Re-index to ensure it's up to date
+        subprocess.run(
+            ["samtools", "faidx", str(reference)],
+            stderr=subprocess.PIPE,
+            check=False,  # Don't fail if already indexed
+        )
     
     # Find all per-gene BAM files
     bam_files = list(bam_dir.glob("*.sorted.bam"))
@@ -95,7 +120,30 @@ def call_variants_from_bams(
         
         print(f"  Calling variants for {gene_name}...", file=sys.stderr)
         
+        # Filter BAM by region to ensure alignments match reference bounds
+        # This avoids FreeBayes --region extraction issues
+        filtered_bam = per_gene_vcf_dir / f"{gene_name}.filtered.bam"
+        try:
+            with open(filtered_bam, "wb") as filtered_out:
+                subprocess.run(
+                    ["samtools", "view", "-b", "-F", "4", str(bam_file), gene_name],
+                    stdout=filtered_out,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                )
+            # Index filtered BAM
+            subprocess.run(
+                ["samtools", "index", str(filtered_bam)],
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"Warning: Failed to filter BAM for {gene_name}: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+            # Fall back to original BAM
+            filtered_bam = bam_file
+        
         # Call FreeBayes - fail fast if it fails
+        # Use filtered BAM and specify region to ensure consistency
         with open(gene_vcf_tmp, "w") as vcf_out, open(
             per_gene_vcf_dir / f"{gene_name}.log", "w"
         ) as log_out:
@@ -103,10 +151,10 @@ def call_variants_from_bams(
                 subprocess.run(
                     [
                         "freebayes",
-                        "--bam", str(bam_file),
+                        "--bam", str(filtered_bam),
                         "--fasta-reference", str(reference),
                         "--ploidy", str(VARIANT_PLOIDY),
-                        "--min-alternate-count", str(VARIANT_MIN_ALT),
+                        "--min-alternate-count", str(min_alternate_count),
                         "--region", gene_name,
                         "-i",
                     ],
@@ -126,6 +174,8 @@ def call_variants_from_bams(
                     print(f"  FreeBayes stderr: {error_details}", file=sys.stderr)
                 sys.exit(1)
         
+        # Apply filters: SNPs only (always), quality filters (optional)
+        filtered_vcf = gene_vcf_tmp
         if VARIANT_FILTER_SNPS_ONLY:
             snps_vcf = gene_vcf_tmp.with_suffix(".snps.vcf")
             with open(snps_vcf, "w") as vcf_out:
@@ -136,9 +186,33 @@ def call_variants_from_bams(
                     check=True,
                 )
             gene_vcf_tmp.unlink()
-            snps_vcf.rename(gene_vcf)
+            filtered_vcf = snps_vcf
+        
+        # Apply quality filters (QUAL, DP, AF) only if requested
+        if apply_quality_filters:
+            # FreeBayes outputs: DP (depth), AO (alternate observations), RO (reference observations)
+            # AF may be present, or we calculate from AO/(AO+RO) or AO/DP
+            quality_filtered_vcf = filtered_vcf.with_suffix(".quality.vcf")
+            # Filter: QUAL >= threshold, DP >= threshold, and AF >= threshold
+            # Use INFO/DP for depth, and calculate AF from AO/(AO+RO) if AF not present
+            filter_expr = f"QUAL>={qual_threshold} && INFO/DP>={dp_threshold} && (INFO/AF>={af_threshold} || (INFO/AO && INFO/RO && INFO/AO/(INFO/AO+INFO/RO)>={af_threshold}))"
+            with open(quality_filtered_vcf, "w") as vcf_out:
+                result = subprocess.run(
+                    ["bcftools", "filter", "-i", filter_expr, str(filtered_vcf)],
+                    stdout=vcf_out,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                )
+            
+            # Clean up intermediate files
+            if filtered_vcf != gene_vcf_tmp:
+                filtered_vcf.unlink()
+            
+            # Rename final filtered VCF to gene_vcf
+            quality_filtered_vcf.rename(gene_vcf)
         else:
-            gene_vcf_tmp.rename(gene_vcf)
+            # No quality filters - just rename SNP-filtered VCF (or original if no SNP filter)
+            filtered_vcf.rename(gene_vcf)
         
         # Only keep VCFs that contain at least one variant line
         has_variants = False
@@ -350,6 +424,23 @@ def apply_variants_to_reference(
         print(f"Error: bcftools consensus failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
         sys.exit(1)
 
+    # Clean FASTA headers to ensure FreeBayes compatibility
+    # bcftools consensus may preserve or create headers that FreeBayes doesn't like
+    print(f"  Cleaning FASTA headers for FreeBayes compatibility...", file=sys.stderr)
+    try:
+        records = []
+        for record in SeqIO.parse(str(output_ref), "fasta"):
+            # Create new record with simple header (just the ID, no description)
+            new_record = SeqRecord(record.seq, id=record.id, description="")
+            records.append(new_record)
+        
+        # Write cleaned records back to file
+        SeqIO.write(records, str(output_ref), "fasta")
+        print(f"  Headers cleaned successfully", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: Failed to clean FASTA headers: {e}", file=sys.stderr)
+        print(f"  Continuing anyway - this may cause FreeBayes errors", file=sys.stderr)
+
     # Index the new reference - fail fast if it fails
     try:
         subprocess.run(
@@ -395,7 +486,36 @@ def main():
         required=True,
         help="Directory to save per-gene VCF files",
     )
-    
+    parser.add_argument(
+        "--min-alternate-count",
+        type=int,
+        default=VARIANT_MIN_ALT,
+        help=f"Minimum alternate allele count for FreeBayes (default: {VARIANT_MIN_ALT})",
+    )
+    parser.add_argument(
+        "--add-qfilters",
+        action="store_true",
+        help="Apply quality filters. By default, only SNP filtering is applied.",
+    )
+    parser.add_argument(
+        "--qual-threshold",
+        type=int,
+        default=VARIANT_MIN_QUAL,
+        help=f"Minimum QUAL score for quality filtering (default: {VARIANT_MIN_QUAL})",
+    )
+    parser.add_argument(
+        "--dp-threshold",
+        type=int,
+        default=VARIANT_MIN_DP,
+        help=f"Minimum depth (DP) for quality filtering (default: {VARIANT_MIN_DP})",
+    )
+    parser.add_argument(
+        "--af-threshold",
+        type=float,
+        default=VARIANT_MIN_AF,
+        help=f"Minimum allele frequency (AF) for quality filtering (default: {VARIANT_MIN_AF})",
+    )
+
     args = parser.parse_args()
 
     call_variants_from_bams(
@@ -403,6 +523,11 @@ def main():
         reference=Path(args.reference),
         output_vcf=Path(args.output_vcf),
         per_gene_vcf_dir=Path(args.per_gene_vcf_dir),
+        min_alternate_count=args.min_alternate_count,
+        apply_quality_filters=args.add_qfilters,
+        qual_threshold=args.qual_threshold,
+        dp_threshold=args.dp_threshold,
+        af_threshold=args.af_threshold,
     )
 
     has_variants = apply_variants_to_reference(

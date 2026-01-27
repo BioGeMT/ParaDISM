@@ -1,24 +1,51 @@
-*.png
-*.tsv
-__pycache__
-error_rate_results
-*.md
+# Build artifacts
+__pycache__/
+*.pyc
+
+# Index files
 *.fai
-all_genes*
-simulated*
-ref.fa
+
+# Output directories
+*output*/
 analysis/
-*output*
-HTS*
-*log*
-syndip*
-*.vcf
-gnaq_reads
-giab*
-*output*
 simulation_analysis/
-*results*
-*plots*
 simulation_outputs/
-*fastq
-run*
+error_rate_results/
+
+# Data files (large)
+*.fastq
+*.fq
+*.sam
+*.bam
+*.bai
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.vcf.gz.csi
+
+# Test/temp data
+giab_hg002_reads/
+giab_hg002_vcf/
+gnaq_reads/
+HTS*/
+syndip*/
+dwgsim/
+references/
+
+# Results and plots (generated)
+*.tsv
+*.csv
+*.png
+*.pdf
+*results*/
+*plots*/
+
+# Logs
+*.log
+
+# Reference (tracked separately or generated)
+ref.fa
+
+# Temp files
+.nfs*
+Untitled

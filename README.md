@@ -1,6 +1,6 @@
 # ParaDISM: Paralog Disambiguating Mapper
 
-A read-mapping and refinement workflow for highly homologous genomic regions. The pipeline aligns reads (paired-end or single-end), maps alignments back to a multiple‑sequence alignment (MSA), refines to uniquely supported mappings, and produces gene‑specific FASTQ/BAM outputs.
+A read-mapping and refinement workflow for highly homologous genomic regions. The pipeline aligns reads (paired-end or single-end), maps alignments back to a multiple-sequence alignment (MSA), refines to uniquely supported mappings, and produces gene-specific FASTQ/BAM outputs.
 
 ## Prerequisites
 
@@ -18,28 +18,33 @@ conda activate paradism_env
 Run without arguments to launch the guided CLI:
 
 ```bash
-python mapper.py
+python paradism.py
 ```
 
 Or specify a custom input directory:
 
 ```bash
-python mapper.py --input-dir /path/to/data
+python paradism.py --input-dir /path/to/data
 ```
 
 You'll be prompted to:
-- Select sequencing mode (Paired‑End or Single‑End)
+- Select sequencing mode (Paired-End or Single-End)
 - Pick FASTQ file(s) accordingly (R1/R2 or a single FASTQ)
 - Choose reference FASTA
 - Optionally use an existing SAM (skips alignment)
 - Pick an aligner (`bowtie2`, `bwa-mem2`, `minimap2`)
 - Configure threads and minimap2 profile (if using minimap2)
+- Set alignment score threshold
+- Configure iterations for iterative refinement
+- Set variant calling options (when iterations > 1):
+  - Minimum alternate allele count
+  - Quality filters (QUAL, DP, AF thresholds)
 
- **Note:** By default, interactive mode scans the current working directory for input files. Use `--input-dir` to specify a different directory to scan. Place your inputs in the specified directory (or current directory if not specified) so they appear in the selection lists.
+**Note:** By default, interactive mode scans the current working directory for input files. Use `--input-dir` to specify a different directory to scan.
 
 ### Argument-Driven Mode
 ```bash
-python mapper.py --read1 <forward_reads.fq> \
+python paradism.py --read1 <forward_reads.fq> \
                  [--read2 <reverse_reads.fq>] \
                  --reference <reference.fa> \
                  [--aligner ALIGNER] \
@@ -47,19 +52,26 @@ python mapper.py --read1 <forward_reads.fq> \
                  [--minimap2-profile PROFILE] \
                  [--sam existing.sam] \
                  [--output-dir OUTPUT] \
-                 [--prefix PREFIX]
+                 [--prefix PREFIX] \
+                 [--iterations N] \
+                 [--threshold THRESHOLD] \
+                 [--min-alternate-count N] \
+                 [--add-quality-filters] \
+                 [--qual-threshold N] \
+                 [--dp-threshold N] \
+                 [--af-threshold F]
 ```
 
-Required:
-- `--read1`: R1 FASTQ file
-- `--read2`: R2 FASTQ file (for paired-end mode)
+**Required:**
+- `--read1`: R1 FASTQ file (or single-end reads)
 - `--reference`: Reference FASTA
 
-Optional:
-- `--aligner`: `bwa-mem2` (default), `bowtie2`, or `minimap2`
+**Optional - General:**
+- `--read2`: R2 FASTQ file (for paired-end mode)
+- `--aligner`: `bowtie2` (default), `bwa-mem2`, or `minimap2`
 - `--threads`: Number of alignment threads (default: 4)
 - `--minimap2-profile` (required with minimap2): one of
-  - `short` (short‑read Illumina)
+  - `short` (short-read Illumina)
   - `pacbio-hifi`
   - `pacbio-clr`
   - `ont-q20`
@@ -67,74 +79,122 @@ Optional:
 - `--sam`: Existing alignment (skips alignment stage)
 - `--output-dir`: Destination directory (default: `./output`)
 - `--prefix`: Prefix for output files (default: derived from output directory name)
+- `--threshold`: Alignment score threshold (aligner-specific). For example: `G,40,40` (bowtie2) or `240` (bwa-mem2/minimap2).
+
+**Optional - Iterative Refinement:**
 - `--iterations`: Total ParaDISM runs (default: 1). Use >1 to enable iterative refinement.
+- `--min-alternate-count`: Minimum alternate allele count for FreeBayes variant calling (default: 5)
+- `--add-quality-filters`: Enable quality filtering during variant calling
+- `--qual-threshold`: Minimum QUAL score for quality filtering (default: 20)
+- `--dp-threshold`: Minimum depth (DP) for quality filtering (default: 10)
+- `--af-threshold`: Minimum allele frequency (AF) for quality filtering (default: 0.05)
 
-Paired‑end vs single‑end
-- For paired‑end runs, provide both `--read1` and `--read2`.
-- If `--read2` is omitted, the pipeline runs in single‑end mode.
+**Paired-end vs single-end:**
+- For paired-end runs, provide both `--read1` and `--read2`.
+- If `--read2` is omitted, the pipeline runs in single-end mode.
 
-Examples:
+### Examples
+
 ```bash
-# Paired-end short reads, default aligner (BWA-MEM2)
-python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa
+# Paired-end short reads, default aligner (Bowtie2)
+python paradism.py --read1 r1.fq --read2 r2.fq --reference ref.fa
 
 # Single-end long reads with minimap2 (PacBio HiFi)
-python mapper.py --read1 hifi.fq --reference ref.fa \
+python paradism.py --read1 hifi.fq --reference ref.fa \
   --aligner minimap2 --minimap2-profile pacbio-hifi
 
-# Single-end long reads with minimap2 (ONT Q20+)
-python mapper.py --read1 ont_q20.fq --reference ref.fa \
-  --aligner minimap2 --minimap2-profile ont-q20
-
 # Using custom output directory (prefix auto-derived)
-python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+python paradism.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
   --output-dir sample_001
-  # Output files will be prefixed with "sample_001_"
 
-# Explicitly specify a different prefix
-python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
-  --output-dir results --prefix custom_prefix
-  # Output files will be prefixed with "custom_prefix_"
-
-# Two pipeline runs (one refinement iteration) realigns only previously NONE-mapped reads
-python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+# Two pipeline runs with iterative refinement
+python paradism.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
   --iterations 2
+
+# Iterative refinement with custom variant calling parameters
+python paradism.py --read1 r1.fq --read2 r2.fq --reference ref.fa \
+  --iterations 5 \
+  --min-alternate-count 5 \
+  --add-quality-filters \
+  --qual-threshold 20 \
+  --dp-threshold 10 \
+  --af-threshold 0.05
 ```
 
 ### SAM Requirements
 When skipping alignment via `--sam`, ensure the SAM:
 - Contains a valid header
 - Has at least one mapped read
-- Includes MD tags (`samtools calmd` can add them). The pipeline requests MD tags during alignment (e.g., `minimap2 --MD`).
+- Includes MD tags (`samtools calmd` can add them)
 
 ## Output Layout
 
 By default, output files are prefixed with the output directory name. For example, if `--output-dir SAMPLE_NAME`, all final outputs will be prefixed with `SAMPLE_NAME_`.
 
 ```
-output_dir/                                   # Output directory
-├── prefix_pipeline_YYYYMMDD_HHMMSS.log      # Run log (sections + streamed output)
-├── prefix_unique_mappings.tsv               # Final unique mapping table
-├── prefix_fastq/                            # Gene-specific FASTQs directory
-│   ├── prefix_gene1.fq                      # Gene 1 reads
-│   ├── prefix_gene2.fq                      # Gene 2 reads
-│   ├── prefix_gene3.fq                      # Gene 3 reads
-│   └── ...                                  # Additional genes
-└── prefix_bam/                              # Gene-specific BAMs directory
-    ├── prefix_gene1.sorted.bam              # Gene 1 alignments
-    ├── prefix_gene1.sorted.bam.bai          # BAM index
-    ├── prefix_gene2.sorted.bam              # Gene 2 alignments
-    ├── prefix_gene2.sorted.bam.bai
-    └── ...                                  # Additional genes
+output_dir/
+├── prefix_pipeline_YYYYMMDD_HHMMSS.log      # Run log
+├── iteration_1/                             # Iteration outputs (when iterations > 1)
+├── iteration_2/                             # Additional iterations
+└── final_outputs/
+    ├── prefix_fastq/                        # Gene-specific FASTQs
+    │   ├── prefix_gene1.fq
+    │   ├── prefix_gene2.fq
+    │   └── ...
+    └── prefix_bam/                          # Gene-specific BAMs
+        ├── prefix_gene1.sorted.bam
+        ├── prefix_gene1.sorted.bam.bai
+        └── ...
 ```
 
-**Note:** Intermediate files (MSA, SAM, indices) are created during processing but cleaned up automatically at the end. Only the final outputs listed above are retained.
+**Note:** Intermediate files (MSA, SAM, indices) are created during processing but cleaned up automatically. Only final outputs are retained.
 
 ## Iterative Refinement
 
 Set `--iterations` to run ParaDISM multiple times. The first run produces mappings and per-gene BAMs. Each refinement iteration:
-- Calls variants from previously mapped (non-NONE) reads, filters SNPs, and applies them to the reference.
-- Re-aligns only reads that were labeled `NONE` against the updated reference.
-- Merges results so prior successful mappings remain unchanged.
+1. Calls variants from previously mapped (non-NONE) reads using FreeBayes
+2. Optionally applies quality filters (QUAL, DP, AF thresholds)
+3. Updates the reference with called variants
+4. Re-aligns only reads that were labeled `NONE` against the updated reference
+5. Merges results so prior successful mappings remain unchanged
 
-The loop stops early if there are no reads to rescue, no variants to apply, or no reads were reassigned in the latest iteration; otherwise it runs up to the requested iteration count. Final outputs come from the last completed iteration directory.
+The loop stops early if:
+- No reads remain to rescue
+- No variants to apply
+- No reads were reassigned in the latest iteration
+
+## GIAB Benchmarking
+
+Scripts for running GIAB HG002 benchmarks:
+
+```bash
+# Download GIAB HG002 reads
+bash download_giab_hg002_reads.sh
+
+# Prepare ground truth VCF
+bash prepare_giab_truth.sh
+
+# Run ParaDISM with G30 and G60 thresholds
+bash run_giab.sh [threads] [iterations]
+
+# Call variants with balanced filters
+bash call_variants_balanced_filters.sh
+```
+
+## Simulation
+
+```bash
+bash simulation/run_dwgsim_simulation.sh
+bash simulation/simulate_and_map.sh
+```
+
+## Docker (Optional)
+
+```bash
+# Build locally
+docker build -t paradism:latest .
+
+# Run
+docker run -v /path/to/data:/data paradism:latest \
+  --read1 /data/r1.fq --read2 /data/r2.fq --reference /data/ref.fa
+```

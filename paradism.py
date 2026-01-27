@@ -53,7 +53,15 @@ def run_with_arguments(args: argparse.Namespace) -> None:
 
     profile = args.minimap2_profile or "short"
 
-    executor = SimpleParaDISMExecutor(output_dir=args.output_dir, prefix=args.prefix)
+    executor = SimpleParaDISMExecutor(
+        output_dir=args.output_dir,
+        prefix=args.prefix,
+        min_alternate_count=args.min_alternate_count,
+        add_quality_filters=args.add_quality_filters,
+        qual_threshold=args.qual_threshold,
+        dp_threshold=args.dp_threshold,
+        af_threshold=args.af_threshold,
+    )
     executor.run_pipeline(
         r1=args.read1,
         r2=args.read2,
@@ -173,6 +181,40 @@ Examples:
              "For bwa-mem2/minimap2: integer score (e.g., 240 for 150bp, 160 for 100bp). "
              "For bowtie2: score function (e.g., 'G,40,40' for 150bp, 'G,30,30' for 100bp). "
              "Default: 240 for bwa-mem2/minimap2, 'G,40,40' for bowtie2.",
+    )
+    optional.add_argument(
+        "--min-alternate-count",
+        metavar="N",
+        type=int,
+        default=5,
+        help="Minimum alternate allele count for FreeBayes variant calling (default: 5). "
+             "Lower values (e.g., 2-3) increase recall but may decrease precision.",
+    )
+    optional.add_argument(
+        "--add-quality-filters",
+        action="store_true",
+        help="Apply quality filters during variant calling iterations",
+    )
+    optional.add_argument(
+        "--qual-threshold",
+        metavar="N",
+        type=int,
+        default=20,
+        help="Minimum QUAL score for quality filtering (default: 20)",
+    )
+    optional.add_argument(
+        "--dp-threshold",
+        metavar="N",
+        type=int,
+        default=10,
+        help="Minimum depth (DP) for quality filtering (default: 10)",
+    )
+    optional.add_argument(
+        "--af-threshold",
+        metavar="F",
+        type=float,
+        default=0.05,
+        help="Minimum allele frequency (AF) for quality filtering (default: 0.05)",
     )
 
     return parser

@@ -23,10 +23,15 @@ PIPELINE_DIR = Path(__file__).resolve().parent
 class SimpleParaDISMExecutor:
     """Simple executor that runs alignment, MSA, and ParaDISM algorithm."""
 
-    def __init__(self, output_dir: str | Path = "./output", pipeline_dir: str | Path | None = None, prefix: str | None = None) -> None:
+    def __init__(self, output_dir: str | Path = "./output", pipeline_dir: str | Path | None = None, prefix: str | None = None, min_alternate_count: int = 5, add_quality_filters: bool = False, qual_threshold: int = 20, dp_threshold: int = 10, af_threshold: float = 0.05) -> None:
         self.output_dir = Path(output_dir)
         self.pipeline_dir = Path(pipeline_dir) if pipeline_dir else PIPELINE_DIR
         self.output_dir.mkdir(exist_ok=True)
+        self.min_alternate_count = min_alternate_count
+        self.add_quality_filters = add_quality_filters
+        self.qual_threshold = qual_threshold
+        self.dp_threshold = dp_threshold
+        self.af_threshold = af_threshold
 
         # Use provided prefix, or extract from output directory name
         if prefix is not None:
@@ -187,7 +192,13 @@ class SimpleParaDISMExecutor:
             "--output-vcf", str(vcf_output),
             "--output-ref", str(updated_ref),
             "--per-gene-vcf-dir", str(per_gene_vcf_dir),
+            "--min-alternate-count", str(self.min_alternate_count),
+            "--qual-threshold", str(self.qual_threshold),
+            "--dp-threshold", str(self.dp_threshold),
+            "--af-threshold", str(self.af_threshold),
         ]
+        if self.add_quality_filters:
+            variant_cmd.append("--add-qfilters")
         
         def _call_variants():
             result = subprocess.run(variant_cmd, capture_output=True, text=True)

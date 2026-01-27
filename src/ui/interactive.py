@@ -508,6 +508,97 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
             except ValueError:
                 console.print("[red]Invalid input. Please enter a positive integer (>= 1).[/red]")
 
+        # Variant calling options (only relevant if iterations > 1)
+        min_alternate_count = 5
+        add_quality_filters = False
+        qual_threshold = 20
+        dp_threshold = 10
+        af_threshold = 0.05
+
+        if iterations > 1:
+            console.print()
+            print_section("Variant Calling Options")
+
+            # Min alternate count
+            while True:
+                choice = console.input("[green]Minimum alternate allele count for variant calling (default: 5):[/green] ").strip()
+                if not choice:
+                    min_alternate_count = 5
+                    console.print(f"[green]✓[/green] Min alternate count: [cyan]5[/cyan] (default)")
+                    break
+                try:
+                    min_alternate_count = int(choice)
+                    if min_alternate_count < 1:
+                        raise ValueError
+                    console.print(f"[green]✓[/green] Min alternate count: [cyan]{min_alternate_count}[/cyan]")
+                    break
+                except ValueError:
+                    console.print("[red]Invalid input. Please enter a positive integer.[/red]")
+
+            # Quality filters
+            console.print()
+            while True:
+                choice = console.input("[green]Apply quality filters? (y/n, default: n):[/green] ").strip().lower()
+                if choice in ['', 'n', 'no']:
+                    add_quality_filters = False
+                    console.print(f"[green]✓[/green] Quality filters: [cyan]disabled[/cyan]")
+                    break
+                elif choice in ['y', 'yes']:
+                    add_quality_filters = True
+                    console.print(f"[green]✓[/green] Quality filters: [cyan]enabled[/cyan]")
+
+                    # QUAL threshold
+                    console.print()
+                    while True:
+                        choice = console.input("[green]  Minimum QUAL score (default: 20):[/green] ").strip()
+                        if not choice:
+                            qual_threshold = 20
+                            console.print(f"  [green]✓[/green] QUAL threshold: [cyan]20[/cyan] (default)")
+                            break
+                        try:
+                            qual_threshold = int(choice)
+                            if qual_threshold < 0:
+                                raise ValueError
+                            console.print(f"  [green]✓[/green] QUAL threshold: [cyan]{qual_threshold}[/cyan]")
+                            break
+                        except ValueError:
+                            console.print("  [red]Invalid input. Please enter a non-negative integer.[/red]")
+
+                    # DP threshold
+                    while True:
+                        choice = console.input("[green]  Minimum depth DP (default: 10):[/green] ").strip()
+                        if not choice:
+                            dp_threshold = 10
+                            console.print(f"  [green]✓[/green] DP threshold: [cyan]10[/cyan] (default)")
+                            break
+                        try:
+                            dp_threshold = int(choice)
+                            if dp_threshold < 0:
+                                raise ValueError
+                            console.print(f"  [green]✓[/green] DP threshold: [cyan]{dp_threshold}[/cyan]")
+                            break
+                        except ValueError:
+                            console.print("  [red]Invalid input. Please enter a non-negative integer.[/red]")
+
+                    # AF threshold
+                    while True:
+                        choice = console.input("[green]  Minimum allele frequency AF (default: 0.05):[/green] ").strip()
+                        if not choice:
+                            af_threshold = 0.05
+                            console.print(f"  [green]✓[/green] AF threshold: [cyan]0.05[/cyan] (default)")
+                            break
+                        try:
+                            af_threshold = float(choice)
+                            if af_threshold < 0 or af_threshold > 1:
+                                raise ValueError
+                            console.print(f"  [green]✓[/green] AF threshold: [cyan]{af_threshold}[/cyan]")
+                            break
+                        except ValueError:
+                            console.print("  [red]Invalid input. Please enter a number between 0 and 1.[/red]")
+                    break
+                else:
+                    console.print("[red]Please answer y or n[/red]")
+
     console.print()
 
     validations = []
@@ -547,6 +638,11 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         minimap2_profile=minimap2_profile if aligner == "minimap2" else None,
         output_dir=output_dir,
         iterations=iterations,
+        min_alternate_count=min_alternate_count,
+        add_quality_filters=add_quality_filters,
+        qual_threshold=qual_threshold,
+        dp_threshold=dp_threshold,
+        af_threshold=af_threshold,
     )
 
     console.print()
@@ -555,7 +651,14 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     # Create output directory if it doesn't exist
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     
-    executor = SimpleParaDISMExecutor(output_dir=output_dir)
+    executor = SimpleParaDISMExecutor(
+        output_dir=output_dir,
+        min_alternate_count=min_alternate_count,
+        add_quality_filters=add_quality_filters,
+        qual_threshold=qual_threshold,
+        dp_threshold=dp_threshold,
+        af_threshold=af_threshold,
+    )
     executor.run_pipeline(
         r1=r1_path,
         r2=r2_path,
