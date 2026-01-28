@@ -9,11 +9,11 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 # Configuration
-DATA_DIR="gnaq_reads"
-REFERENCE="gnaq-gnaqp_ref.fa"
+DATA_DIR="gnaq_analysis/gnaq_reads"
+REFERENCE="gnaq_analysis/gnaq-gnaqp_ref.fa"
 ALIGNER="minimap2"
 THREADS=2
-OUTPUT_BASE="GNAQ_minimap2_output"
+OUTPUT_BASE="gnaq_analysis/GNAQ_minimap2_output"
 LOG_DIR="$OUTPUT_BASE/mapper_logs"
 ITERATIONS=10
 MINIMAP2_PROFILE="short"

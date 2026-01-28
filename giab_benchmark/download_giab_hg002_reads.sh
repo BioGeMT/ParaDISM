@@ -1,8 +1,12 @@
 #!/bin/bash
 
 # Create directory for GIAB HG002 reads
-mkdir -p giab_hg002_reads
-cd giab_hg002_reads
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
+mkdir -p giab_benchmark/giab_hg002_reads
+cd giab_benchmark/giab_hg002_reads
 
 # Base URL for GIAB HG002 reads
 BASE_URL="https://ftp.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/NIST_Illumina_2x250bps/reads/"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Download and prepare GIAB HG002 ground truth VCF for PKD1 region
-# Run from anywhere: bash benchmark/prepare_giab_truth.sh
+# Run from anywhere: bash giab_benchmark/prepare_giab_truth.sh
 
 set -euo pipefail
 
@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
-OUTPUT_DIR="giab_hg002_vcf"
+OUTPUT_DIR="giab_benchmark/giab_hg002_vcf"
 mkdir -p "$OUTPUT_DIR"
 
 echo "=========================================="

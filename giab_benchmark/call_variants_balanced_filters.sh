@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Call variants with BALANCED filters for G30 and G60 outputs
 # Filters: QUAL>=500, DP>=30, AF>=0.90, RO<=5, MQMR<=10
-# Run from anywhere: bash benchmark/call_variants_balanced_filters.sh
+# Run from anywhere: bash giab_benchmark/call_variants_balanced_filters.sh
 
 set -euo pipefail
 
@@ -83,20 +83,34 @@ echo "Variant Calling with Balanced Filters"
 echo "=========================================="
 echo ""
 
-G60_DIR="giab_hg002_output_bowtie2_G60_min5_qfilters"
+G60_DIR="giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters"
+G60_PREFIX="giab_hg002_output_bowtie2_G60_min5_qfilters"
 if [[ -d "$G60_DIR/final_outputs" ]]; then
-    echo "Processing G60..."
-    call_variants "$G60_DIR/final_outputs/${G60_DIR}_bam" \
+    echo "Processing G60 ParaDISM (final)..."
+    call_variants "$G60_DIR/final_outputs/${G60_PREFIX}_bam" \
                   "$G60_DIR/final_outputs/variant_calling_balanced" \
-                  "$G60_DIR"
+                  "$G60_PREFIX"
+fi
+if [[ -d "$G60_DIR/iteration_1" ]]; then
+    echo "Processing G60 Base Aligner (iteration_1)..."
+    call_variants "$G60_DIR/iteration_1/${G60_PREFIX}_bam" \
+                  "$G60_DIR/iteration_1/variant_calling_balanced" \
+                  "$G60_PREFIX"
 fi
 
-G30_DIR="giab_hg002_output_bowtie2_G30_min5_qfilters"
-if [[ -d "$G30_DIR/final_outputs" ]]; then
-    echo "Processing G30..."
-    call_variants "$G30_DIR/final_outputs/${G30_DIR}_bam" \
-                  "$G30_DIR/final_outputs/variant_calling_balanced" \
-                  "$G30_DIR"
+G40_DIR="giab_benchmark/giab_hg002_output_bowtie2_G40_min5_qfilters"
+G40_PREFIX="giab_hg002_output_bowtie2_G40_min5_qfilters"
+if [[ -d "$G40_DIR/final_outputs" ]]; then
+    echo "Processing G40 ParaDISM (final)..."
+    call_variants "$G40_DIR/final_outputs/${G40_PREFIX}_bam" \
+                  "$G40_DIR/final_outputs/variant_calling_balanced" \
+                  "$G40_PREFIX"
+fi
+if [[ -d "$G40_DIR/iteration_1" ]]; then
+    echo "Processing G40 Base Aligner (iteration_1)..."
+    call_variants "$G40_DIR/iteration_1/${G40_PREFIX}_bam" \
+                  "$G40_DIR/iteration_1/variant_calling_balanced" \
+                  "$G40_PREFIX"
 fi
 
 echo ""

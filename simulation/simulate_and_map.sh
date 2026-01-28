@@ -19,7 +19,7 @@ set -euo pipefail
 # ------------------------------------------------------------------
 SEED_START=${SEED_START:-1}
 SEED_END=${SEED_END:-1000}
-SIM_OUTPUT_BASE="${SIM_OUTPUT_BASE:-${SCRIPT_DIR}/sim_output}"
+SIM_OUTPUT_BASE="${SIM_OUTPUT_BASE:-${SCRIPT_DIR}/simulations_outputs}"
 REFERENCE="${REFERENCE:-${PARADISM_ROOT}/ref.fa}"
 THREADS=${THREADS:-1}                   # Threads per ParaDISM run (30 seeds × 3 aligners × 1 thread = 90 CPUs)
 NUM_READS=${NUM_READS:-100000}
@@ -31,7 +31,7 @@ INDEL_EXT=${INDEL_EXT:-0.5}               # DWGSIM indel extension probability
 READ_LEN=${READ_LEN:-150}                # Read length
 FRAG_MEAN=${FRAG_MEAN:-350}               # Mean fragment length
 FRAG_SD=${FRAG_SD:-35}                  # Fragment length std dev
-DWGSIM_DIR="${DWGSIM_DIR:-${PARADISM_ROOT}/../dwgsim}"  # DWGSIM directory
+DWGSIM_DIR="${DWGSIM_DIR:-${SCRIPT_DIR}/dwgsim}"  # DWGSIM directory
 
 ALIGNERS_STR="${ALIGNERS:-bwa-mem2 bowtie2 minimap2}"  # Space- or comma-separated
 IFS=', ' read -r -a ALIGNERS <<< "$ALIGNERS_STR"
@@ -140,7 +140,7 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
             elif [ -x "${DWGSIM_DIR}/dwgsim" ]; then
                 DWGSIM_BIN="${DWGSIM_DIR}/dwgsim"
             else
-                echo "Error: DWGSIM not found. Please run run_dwgsim_simulation.sh first or install DWGSIM." >&2
+                echo "Error: DWGSIM not found. Please run simulation/run_dwgsim_simulation.sh first or install DWGSIM." >&2
                 exit 1
             fi
             

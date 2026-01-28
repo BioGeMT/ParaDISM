@@ -23,18 +23,18 @@ set -euo pipefail
 #
 # Example:
 #   cd ParaDISM
-#   bash run_dwgsim_simulation.sh
+#   bash simulation/run_dwgsim_simulation.sh
 #
 # After running, FASTQs will be in ${OUT_PREFIX}.bwa.read1.fastq.gz and
 # ${OUT_PREFIX}.bwa.read2.fastq.gz
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${SCRIPT_DIR}"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 REF="${REF:-${PROJECT_ROOT}/ref.fa}"
-OUT_DIR="${OUT_DIR:-${PROJECT_ROOT}/pkd_reads_dwgsim}"
+OUT_DIR="${OUT_DIR:-${SCRIPT_DIR}/pkd_reads_dwgsim}"
 OUT_PREFIX="${OUT_PREFIX:-${OUT_DIR}/pkd_reads_dwgsim}"
-DWGSIM_DIR="${DWGSIM_DIR:-${PROJECT_ROOT}/../dwgsim}"
+DWGSIM_DIR="${DWGSIM_DIR:-${SCRIPT_DIR}/dwgsim}"
 ZLIB_PREFIX="${ZLIB_PREFIX:-${HOME}/local/zlib}"
 
 NUM_READS="${NUM_READS:-100000}"

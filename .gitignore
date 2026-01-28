@@ -1,51 +1,17 @@
-# Build artifacts
+giab_benchmark/giab_hg002_output_bowtie2_G40_min5_qfilters
+giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters
+giab_benchmark/giab_hg002_reads
+giab_benchmark/giab_hg002_vcf
+gnaq_analysis/GNAQ_output
+gnaq_analysis/GNAQ_reads
+hts_analysis/HTS_CNTRL
+hts_analysis/HTS_output
+simulation/dwgsim
+simulation/pkd_reads_dwgsim
+simulation/simulations_outputs
+CLAUDE.md
 __pycache__/
 *.pyc
+*ref.fa
 
-# Index files
-*.fai
 
-# Output directories
-*output*/
-analysis/
-simulation_analysis/
-simulation_outputs/
-error_rate_results/
-
-# Data files (large)
-*.fastq
-*.fq
-*.sam
-*.bam
-*.bai
-*.vcf
-*.vcf.gz
-*.vcf.gz.tbi
-*.vcf.gz.csi
-
-# Test/temp data
-giab_hg002_reads/
-giab_hg002_vcf/
-gnaq_reads/
-HTS*/
-syndip*/
-dwgsim/
-references/
-
-# Results and plots (generated)
-*.tsv
-*.csv
-*.png
-*.pdf
-*results*/
-*plots*/
-
-# Logs
-*.log
-
-# Reference (tracked separately or generated)
-ref.fa
-
-# Temp files
-.nfs*
-Untitled
