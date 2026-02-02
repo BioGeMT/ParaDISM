@@ -1,0 +1,3 @@
+dataset,method,TP,FP,FN,precision,recall,f1
+G60,ParaDISM,26,20,17,0.565,0.605,0.584
+G60,BaseAligner,27,39,16,0.409,0.628,0.495

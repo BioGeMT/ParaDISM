@@ -2,11 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_ROOT"
 
-mkdir -p gnaq_analysis/gnaq_reads
-cd gnaq_analysis/gnaq_reads
+mkdir -p "$SCRIPT_DIR/GNAQ_reads"
+cd "$SCRIPT_DIR/GNAQ_reads"
 wget -c 'https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR560/004/SRR5602384/SRR5602384_1.fastq.gz'
 wget -c 'https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR560/004/SRR5602384/SRR5602384_2.fastq.gz'
 

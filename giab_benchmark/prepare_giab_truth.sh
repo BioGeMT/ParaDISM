@@ -5,10 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_ROOT"
-
-OUTPUT_DIR="giab_benchmark/giab_hg002_vcf"
+OUTPUT_DIR="$SCRIPT_DIR/giab_hg002_vcf"
 mkdir -p "$OUTPUT_DIR"
 
 echo "=========================================="
@@ -27,15 +24,14 @@ else
     echo "Benchmark VCF already exists"
 fi
 
-PKD1_START=2138711
-PKD1_END=2185899
+REGIONS="chr16:2084108-2132498,chr16:16309741-16334790,chr16:16355624-16378107,chr16:14910951-14936308,chr16:18329800-18349076,chr16:18369921-18398540,chr16:15120642-15151164"
 
 echo ""
-echo "Extracting PKD1 region variants (chr16:${PKD1_START}-${PKD1_END})..."
+echo "Extracting PKD1 + pseudogene variants (${REGIONS})..."
 
-OUTPUT_VCF="$OUTPUT_DIR/HG002_PKD1_genes_SNPs_illumina_only.vcf.gz"
+OUTPUT_VCF="$OUTPUT_DIR/HG002_PKD1_genes_SNPs_exact.vcf.gz"
 
-bcftools view -r "chr16:${PKD1_START}-${PKD1_END}" "$BENCHMARK_VCF" | \
+bcftools view -r "$REGIONS" "$BENCHMARK_VCF" | \
     bcftools view -v snps | \
     bgzip -c > "$OUTPUT_VCF"
 

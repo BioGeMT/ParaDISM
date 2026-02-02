@@ -564,7 +564,7 @@ class SimpleParaDISMExecutor:
                 if final_genes:
                     create_bam_files(
                         final_genes,
-                        str(current_ref),
+                        str(original_ref),
                         str(final_fastq_dir),
                         str(final_bam_dir),
                         aligner,

@@ -2,8 +2,9 @@ giab_benchmark/giab_hg002_output_bowtie2_G40_min5_qfilters
 giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters
 giab_benchmark/giab_hg002_reads
 giab_benchmark/giab_hg002_vcf
-gnaq_analysis/GNAQ_output
 gnaq_analysis/GNAQ_reads
+gnaq_analysis/bwa-mem2_160_output
+/homes/dtzim01/ParaDISM/gnaq_analysis/bwa-mem2_160_output
 hts_analysis/HTS_CNTRL
 hts_analysis/HTS_output
 simulation/dwgsim
@@ -13,5 +14,4 @@ CLAUDE.md
 __pycache__/
 *.pyc
 *ref.fa
-
-
+*.fai

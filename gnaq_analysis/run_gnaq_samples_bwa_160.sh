@@ -1,26 +1,34 @@
 #!/bin/bash
-# Run ParaDISM on GNAQ samples
-# Run from anywhere: bash gnaq_analysis/run_gnaq_samples.sh
+# Run ParaDISM on GNAQ samples with bwa-mem2 threshold ~G,40,40 equivalent
+# Run from anywhere: bash gnaq_analysis/run_gnaq_samples_bwa_160.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_ROOT"
+cd "$SCRIPT_DIR"
 
 # Configuration
-DATA_DIR="gnaq_analysis/gnaq_reads"
-REFERENCE="gnaq_analysis/gnaq-gnaqp_ref.fa"
-ALIGNER="minimap2"
-THREADS=2
-OUTPUT_BASE="gnaq_analysis/GNAQ_minimap2_output"
-LOG_DIR="$OUTPUT_BASE/mapper_logs"
+DATA_DIR="$SCRIPT_DIR/GNAQ_reads"
+REFERENCE="$SCRIPT_DIR/gnaq-gnaqp_ref.fa"
+ALIGNER="bwa-mem2"
+THREADS=12
 ITERATIONS=10
-MINIMAP2_PROFILE="short"
+MIN_ALT_COUNT=5
+# For ~100bp reads, use score threshold 160 (ParaDISM default for 100bp)
+THRESHOLD=160
+OUTPUT_BASE="$SCRIPT_DIR/bwa-mem2_160_output"
+LOG_DIR="$OUTPUT_BASE/mapper_logs"
 
 if [ ! -f "$REFERENCE" ]; then
     echo "Error: Reference file $REFERENCE not found!"
     exit 1
+fi
+
+# Activate conda environment
+if command -v conda &> /dev/null; then
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate paradism_env 2>/dev/null || true
 fi
 
 mkdir -p "$LOG_DIR"
@@ -34,7 +42,7 @@ SAMPLES=(
 )
 
 echo "=========================================="
-echo "Processing ${#SAMPLES[@]} GNAQ samples"
+echo "Processing ${#SAMPLES[@]} GNAQ samples (bwa-mem2, threshold=${THRESHOLD})"
 echo "=========================================="
 
 for sample in "${SAMPLES[@]}"; do
@@ -52,7 +60,7 @@ for sample in "${SAMPLES[@]}"; do
         log_file="$LOG_DIR/${sample}.log"
 
         mapper_cmd=(
-            python paradism.py
+            python "$PROJECT_ROOT/paradism.py"
             --read1 "$r1_file"
             --read2 "$r2_file"
             --reference "$REFERENCE"
@@ -60,7 +68,9 @@ for sample in "${SAMPLES[@]}"; do
             --threads "$THREADS"
             --output-dir "$output_dir"
             --iterations "$ITERATIONS"
-            --minimap2-profile "$MINIMAP2_PROFILE"
+            --min-alternate-count "$MIN_ALT_COUNT"
+            --threshold "$THRESHOLD"
+            --add-quality-filters
         )
 
         if "${mapper_cmd[@]}" >> "$log_file" 2>&1; then

@@ -1,17 +1,18 @@
 #!/bin/bash
-# Run ParaDISM on GIAB HG002 with G40 and G60 thresholds
+# Run ParaDISM on GIAB HG002 with G60 threshold
 # Uses bowtie2, minalt 5, qual filtered
-# Run from ParaDISM root: bash giab_benchmark/run_giab.sh
+# Run from anywhere: bash giab_benchmark/run_giab.sh
 
 set -euo pipefail
 
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_ROOT"
+cd "$SCRIPT_DIR"
 
-READS_DIR="giab_benchmark/giab_hg002_reads"
-REFERENCE="ref.fa"
+READS_DIR="$SCRIPT_DIR/giab_hg002_reads"
+REFERENCE="$SCRIPT_DIR/ref.fa"
+PARADISM="$PROJECT_ROOT/paradism.py"
 THREADS="${1:-8}"
 ITERATIONS="${2:-10}"
 MIN_ALT_COUNT=5
@@ -30,7 +31,7 @@ else
 fi
 
 echo "=========================================="
-echo "ParaDISM GIAB HG002 - G40 and G60"
+echo "ParaDISM GIAB HG002 - G60"
 echo "=========================================="
 echo ""
 echo "Configuration:"
@@ -49,14 +50,14 @@ if command -v conda &> /dev/null; then
 fi
 
 # Run G60 (recommended threshold)
-OUTPUT_G60="giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters"
+OUTPUT_G60="$SCRIPT_DIR/giab_hg002_output_bowtie2_G60_min5_qfilters"
 if [[ -d "$OUTPUT_G60/final_outputs" ]]; then
     echo "G60 already complete, skipping..."
 else
     echo "=========================================="
     echo "Running G60 threshold..."
     echo "=========================================="
-    python paradism.py \
+    python "$PARADISM" \
         --read1 "$R1_MERGED" \
         --read2 "$R2_MERGED" \
         --reference "$REFERENCE" \
@@ -64,29 +65,12 @@ else
         --threads "$THREADS" \
         --iterations "$ITERATIONS" \
         --min-alternate-count "$MIN_ALT_COUNT" \
+        --add-quality-filters \
+        --qual-threshold 20 \
+        --dp-threshold 10 \
+        --af-threshold 0.05 \
         --threshold "G,60,60" \
         --output-dir "$OUTPUT_G60"
-fi
-
-# Run G40 (default threshold)
-OUTPUT_G40="giab_benchmark/giab_hg002_output_bowtie2_G40_min5_qfilters"
-if [[ -d "$OUTPUT_G40/final_outputs" ]]; then
-    echo "G40 already complete, skipping..."
-else
-    echo ""
-    echo "=========================================="
-    echo "Running G40 threshold (default)..."
-    echo "=========================================="
-    python paradism.py \
-        --read1 "$R1_MERGED" \
-        --read2 "$R2_MERGED" \
-        --reference "$REFERENCE" \
-        --aligner bowtie2 \
-        --threads "$THREADS" \
-        --iterations "$ITERATIONS" \
-        --min-alternate-count "$MIN_ALT_COUNT" \
-        --threshold "G,40,40" \
-        --output-dir "$OUTPUT_G40"
 fi
 
 echo ""
@@ -96,7 +80,7 @@ echo "=========================================="
 echo ""
 echo "Output directories:"
 echo "  G60: $OUTPUT_G60"
-echo "  G40: $OUTPUT_G40"
 echo ""
-echo "Next: Run variant calling with balanced filters"
-echo "  bash giab_benchmark/call_variants_balanced_filters.sh"
+echo "Next: Run variant calling"
+echo "  bash giab_benchmark/call_variants_raw_g60.sh"
+echo "  bash giab_benchmark/filter_variants_g60.sh"

@@ -5,18 +5,22 @@ Analysis of GNAQ/GNAQ pseudogene samples using ParaDISM.
 ## Quick Start
 
 ```bash
-# From repo root
-bash run_gnaq.sh
+# From gnaq_analysis/
+bash download_gnaq_reads.sh
+bash run_gnaq_samples_bwa_160.sh
 ```
 
 ## Scripts
 
 ```bash
 # Download GNAQ reads from EBI
-bash gnaq_analysis/download_gnaq_reads.sh
+bash download_gnaq_reads.sh
 
-# Run ParaDISM on all samples
-bash gnaq_analysis/run_gnaq_samples.sh
+# Run ParaDISM on all samples with bwa-mem2 threshold=160 (100bp equivalent)
+bash run_gnaq_samples_bwa_160.sh
+
+# (Optional) Base counts at selected positions for any BAM dir
+bash make_base_counts_csvs.sh bwa-mem2_160_output/SRR5602384/final_outputs
 ```
 
 ## Samples
@@ -29,15 +33,15 @@ bash gnaq_analysis/run_gnaq_samples.sh
 
 ## Configuration
 
-- Aligner: minimap2 (short profile)
-- Threads: 2
+- Aligner: bwa-mem2 (threshold=160)
+- Threads: 12
 - Iterations: 10
-- Reference: gnaq_analysis/gnaq-gnaqp_ref.fa
+- Reference: gnaq-gnaqp_ref.fa
 
 ## Output Structure
 
 ```
 gnaq_analysis/
-├── gnaq_reads/           # Downloaded FASTQ files
-└── GNAQ_minimap2_output/ # ParaDISM results per sample
+├── GNAQ_reads/                  # Downloaded FASTQ files
+└── bwa-mem2_160_output/          # ParaDISM results per sample
 ```
