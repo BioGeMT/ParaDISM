@@ -530,15 +530,25 @@ def main():
         af_threshold=args.af_threshold,
     )
 
-    has_variants = apply_variants_to_reference(
+    # Check if VCF has any variant lines before applying
+    vcf_path = Path(args.output_vcf)
+    has_variant_lines = False
+    if vcf_path.exists():
+        with open(vcf_path, "r") as f:
+            for line in f:
+                if not line.startswith("#"):
+                    has_variant_lines = True
+                    break
+
+    # No variants — signal convergence without copying reference
+    if not has_variant_lines:
+        sys.exit(2)
+
+    apply_variants_to_reference(
         reference=Path(args.reference),
-        vcf=Path(args.output_vcf),
+        vcf=vcf_path,
         output_ref=Path(args.output_ref),
     )
-
-    # Exit with status 2 if no variants found (for caller to detect convergence)
-    if not has_variants:
-        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -14,3 +14,4 @@ __pycache__/
 *.pyc
 *ref.fa
 *.fai
+gnaq_analysis/bwa-mem2_180_output

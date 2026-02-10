@@ -1,27 +1,37 @@
 #!/usr/bin/env bash
-# Generate base-count CSVs at selected positions from BAMs.
-# Usage: bash gnaq_analysis/make_base_counts_csvs.sh <bam_dir>
+# Generate base-count CSVs at selected positions from BAMs, collect into base_counts/ dir.
+# Usage: bash gnaq_analysis/make_base_counts_csvs.sh <output_base_dir>
 #
 # Example:
-#   bash gnaq_analysis/make_base_counts_csvs.sh gnaq_analysis/bwa-mem2_160_output/SRR5602384/final_outputs
+#   bash gnaq_analysis/make_base_counts_csvs.sh gnaq_analysis/bwa-mem2_160_output
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ $# -ne 1 ]]; then
-    echo "Usage: $0 <bam_dir>"
+    echo "Usage: $0 <output_base_dir>"
+    echo "  e.g. $0 gnaq_analysis/bwa-mem2_160_output"
     exit 1
 fi
 
-BAM_DIR="$1"
+OUTPUT_BASE="$1"
+
+if [[ ! -d "$OUTPUT_BASE" ]]; then
+    echo "Error: directory $OUTPUT_BASE not found"
+    exit 1
+fi
+
+BASE_COUNTS_DIR="$SCRIPT_DIR/base_counts"
+mkdir -p "$BASE_COUNTS_DIR"
 
 python - <<PY
-import subprocess
+import subprocess, shutil
 from pathlib import Path
 from collections import Counter
 
-bam_dir = Path(r"${BAM_DIR}")
-if not bam_dir.exists():
-    raise SystemExit(f"Missing BAM dir: {bam_dir}")
+output_base = Path(r"${OUTPUT_BASE}")
+base_counts_dir = Path(r"${BASE_COUNTS_DIR}")
 
 positions = [
     ('GNAQ', 206083),
@@ -39,7 +49,7 @@ def parse_bases(bases, ref_base=None):
         if c == '^':
             i += 2
             continue
-        if c == '$':
+        if c == '\$':
             i += 1
             continue
         if c in '+-':
@@ -79,34 +89,63 @@ def mpileup_line(bam, contig, pos):
     chrom, pos_s, ref_base, depth, bases = parts[:5]
     return chrom, int(pos_s), ref_base, int(depth), bases
 
-for bam in sorted(bam_dir.rglob("*.bam")):
-    if bam.name.endswith(".bai"):
-        continue
-    # Infer contig from filename
-    if "_GNAQP1" in bam.name:
-        target_contig = "GNAQP1"
-    elif "_GNAQ" in bam.name:
-        target_contig = "GNAQ"
-    else:
-        continue
+# Find all sample dirs (directories containing final_outputs/)
+sample_dirs = sorted(d for d in output_base.iterdir()
+                     if d.is_dir() and (d / "final_outputs").is_dir())
 
-    rows = []
-    for contig, pos in positions:
-        if contig != target_contig:
-            continue
-        line = mpileup_line(bam, contig, pos)
-        if not line:
-            rows.append((contig, pos, 'N', 0, 0, 0, 0, 0, 0))
-            continue
-        chrom, p, ref_base, depth, bases = line
-        counts = parse_bases(bases, ref_base=ref_base)
-        rows.append((chrom, p, ref_base.upper(), depth,
-                     counts.get('A', 0), counts.get('C', 0), counts.get('G', 0), counts.get('T', 0), counts.get('N', 0)))
+if not sample_dirs:
+    raise SystemExit(f"No sample directories with final_outputs/ found in {output_base}")
 
-    out = bam.with_suffix('.base_counts.csv')
-    with open(out, 'w') as f:
-        f.write('contig,pos,ref,depth,A,C,G,T,N\n')
+all_rows = []
+
+for sample_dir in sample_dirs:
+    final_outputs = sample_dir / "final_outputs"
+    for bam in sorted(final_outputs.rglob("*.bam")):
+        if bam.name.endswith(".bai"):
+            continue
+        if "_GNAQP1" in bam.name:
+            target_contig = "GNAQP1"
+        elif "_GNAQ" in bam.name:
+            target_contig = "GNAQ"
+        else:
+            continue
+
+        rows = []
+        for contig, pos in positions:
+            if contig != target_contig:
+                continue
+            line = mpileup_line(bam, contig, pos)
+            if not line:
+                rows.append((contig, pos, 'N', 0, 0, 0, 0, 0, 0))
+                continue
+            chrom, p, ref_base, depth, bases = line
+            counts = parse_bases(bases, ref_base=ref_base)
+            rows.append((chrom, p, ref_base.upper(), depth,
+                         counts.get('A', 0), counts.get('C', 0),
+                         counts.get('G', 0), counts.get('T', 0),
+                         counts.get('N', 0)))
+
+        # Write per-BAM CSV in the BAM directory
+        per_bam_csv = bam.with_suffix('.base_counts.csv')
+        with open(per_bam_csv, 'w') as f:
+            f.write('contig,pos,ref,depth,A,C,G,T,N\n')
+            for r in rows:
+                f.write(','.join(map(str, r)) + '\n')
+        print(f"  {per_bam_csv}")
+
+        # Copy to base_counts/ dir
+        dest = base_counts_dir / f"{bam.stem}_base_counts.csv"
+        shutil.copy2(per_bam_csv, dest)
+
+        # Collect for combined CSV
         for r in rows:
-            f.write(','.join(map(str, r)) + '\n')
-    print(out)
+            all_rows.append((dest.name,) + r)
+
+# Write combined CSV
+combined = base_counts_dir / "base_counts_all.csv"
+with open(combined, 'w') as f:
+    f.write('file,contig,pos,ref,depth,A,C,G,T,N\n')
+    for r in all_rows:
+        f.write(','.join(map(str, r)) + '\n')
+print(f"\nCombined: {combined}")
 PY
