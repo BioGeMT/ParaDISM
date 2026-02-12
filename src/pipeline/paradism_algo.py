@@ -9,6 +9,14 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Align.sam import AlignmentIterator
 from .msa_processing import map_seqcoords_to_alncoords
 
+_DNA_COMPLEMENT = {
+    "A": "T",
+    "C": "G",
+    "G": "C",
+    "T": "A",
+    "N": "N",
+}
+
 
 def load_msa(msa_fasta_path: str):
     """
@@ -56,19 +64,35 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
         t_start, t_end = target_interval
         q_start, q_end = query_interval
 
-        # Only process segments where both sequences advance equally (SNPs/matches, skip indels)
-        if (t_end - t_start) != (q_end - q_start):
+        target_span = t_end - t_start
+        query_span = abs(q_end - q_start)
+
+        # Only process segments where both sequences advance equally (SNPs/matches, skip indels).
+        # BioPython reports reverse-strand query intervals in descending order (e.g., [150, 0]),
+        # so compare against absolute query span and compute query indices direction-aware.
+        if target_span != query_span:
+            continue
+        if target_span == 0:
             continue
 
-        for offset in range(t_end - t_start):
+        query_forward = q_end >= q_start
+
+        for offset in range(target_span):
             ref_pos = t_start + offset  # 0-based ref position
-            query_pos = q_start + offset
+            if query_forward:
+                query_pos = q_start + offset
+            else:
+                query_pos = q_start - 1 - offset
 
             if ref_pos >= len(seq_to_aln[ref_idx]):
+                continue
+            if query_pos < 0 or query_pos >= len(query_seq):
                 continue
 
             msa_col = seq_to_aln[ref_idx][ref_pos]
             read_base = query_seq[query_pos].upper()
+            if not query_forward:
+                read_base = _DNA_COMPLEMENT.get(read_base, "N")
 
             all_msa_cols.add(msa_col)
 
