@@ -76,7 +76,9 @@ def call_variants_from_bams(
     
     per_gene_vcf_dir.mkdir(parents=True, exist_ok=True)
     
-    # Ensure reference is indexed for FreeBayes (required for --region)
+    # Ensure reference is indexed for FreeBayes (required for --region).
+    # Do not re-index when .fai already exists: parallel jobs sharing the same
+    # reference can race on writes and produce transiently invalid indexes.
     print(f"  Indexing reference for FreeBayes...", file=sys.stderr)
     fai_file = reference.with_suffix(reference.suffix + ".fai")
     if not fai_file.exists():
@@ -87,12 +89,7 @@ def call_variants_from_bams(
         )
         print(f"  Reference indexed: {fai_file}", file=sys.stderr)
     else:
-        # Re-index to ensure it's up to date
-        subprocess.run(
-            ["samtools", "faidx", str(reference)],
-            stderr=subprocess.PIPE,
-            check=False,  # Don't fail if already indexed
-        )
+        print(f"  Reusing existing reference index: {fai_file}", file=sys.stderr)
     
     # Find all per-gene BAM files
     bam_files = list(bam_dir.glob("*.sorted.bam"))

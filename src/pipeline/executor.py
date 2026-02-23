@@ -300,11 +300,6 @@ class SimpleParaDISMExecutor:
         def _run_paradism_iteration():
             iter_msa_obj, iter_seq_to_aln, iter_gene_names = load_msa(str(iter_msa))
             new_assignments = process_sam_to_dict(str(iter_sam), iter_msa_obj, iter_seq_to_aln, iter_gene_names)
-            
-            # Write outputs for this iteration
-            iter_genes = self._write_fastq_outputs(new_assignments, str(none_r1_path), str(none_r2_path) if none_r2_path else None, iter_fastq_dir)
-            if iter_genes:
-                create_bam_files(iter_genes, str(updated_ref), str(iter_fastq_dir), str(iter_bam_dir), aligner, threads, minimap2_profile, self.prefix, bowtie2_score_min, bwa_min_score, minimap2_min_score)
             return new_assignments
         
         new_assignments = self._run_spinner(_run_paradism_iteration, "Running ParaDISM algorithm")
@@ -319,6 +314,33 @@ class SimpleParaDISMExecutor:
         if reads_rescued == 0:
             print(f"  No reads were rescued from NONE. Pipeline has converged.", file=sys.stderr)
             return updated_ref, merged_assignments, True
+
+        # 7. Build full per-gene FASTQ/BAM outputs for merged assignments.
+        # These BAMs are used for variant calling in the next iteration and must
+        # include all currently assigned reads, not only newly rescued NONE reads.
+        def _write_iteration_outputs():
+            iter_genes = self._write_fastq_outputs(
+                merged_assignments,
+                r1,
+                r2,
+                iter_fastq_dir,
+            )
+            if iter_genes:
+                create_bam_files(
+                    iter_genes,
+                    str(updated_ref),
+                    str(iter_fastq_dir),
+                    str(iter_bam_dir),
+                    aligner,
+                    threads,
+                    minimap2_profile,
+                    self.prefix,
+                    bowtie2_score_min,
+                    bwa_min_score,
+                    minimap2_min_score,
+                )
+
+        self._run_spinner(_write_iteration_outputs, "Writing merged iteration outputs")
         
         return updated_ref, merged_assignments, False
 
