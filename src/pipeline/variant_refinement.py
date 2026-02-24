@@ -225,7 +225,7 @@ def call_variants_from_bams(
             # Remove empty VCF to avoid merge failures; keep log for reference
             gene_vcf.unlink(missing_ok=True)
     
-    # Merge all per-gene VCFs
+    # Combine all per-gene VCFs
     if not per_gene_vcfs:
         print("  No variants found in any gene", file=sys.stderr)
         output_vcf.parent.mkdir(parents=True, exist_ok=True)
@@ -234,7 +234,7 @@ def call_variants_from_bams(
             f.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
         return
 
-    print(f"  Merging {len(per_gene_vcfs)} per-gene VCFs...", file=sys.stderr)
+    print(f"  Combining {len(per_gene_vcfs)} per-gene VCFs...", file=sys.stderr)
 
     output_vcf.parent.mkdir(parents=True, exist_ok=True)
 
@@ -267,8 +267,10 @@ def call_variants_from_bams(
         print(f"  Combined VCF saved to: {output_vcf}", file=sys.stderr)
         return
 
-    # bcftools merge requires bgzipped VCFs - compress per-gene VCFs first
-    print(f"  Compressing per-gene VCFs for merging...", file=sys.stderr)
+    # bcftools concat works well here because the per-gene VCFs represent different contigs
+    # (PKD1, PKD1P1-6, etc.) and should not be merged as separate samples.
+    # Compress per-gene VCFs for bcftools concat
+    print(f"  Compressing per-gene VCFs for concatenation...", file=sys.stderr)
     compressed_vcfs = []
     for vcf_file in per_gene_vcfs:
         vcf_gz = vcf_file.with_suffix(".vcf.gz")
@@ -290,30 +292,30 @@ def call_variants_from_bams(
             print(f"Error: Failed to compress {vcf_file}: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
             sys.exit(1)
 
-    # Merge VCFs using bcftools merge - fail fast if it fails
-    merged_vcf = output_vcf.with_suffix(".merged.vcf")
+    # Concatenate VCFs (keeps a single sample column) - fail fast if it fails
+    concatenated_vcf = output_vcf.with_suffix(".concat.vcf")
     try:
-        with open(merged_vcf, "w") as vcf_out:
+        with open(concatenated_vcf, "w") as vcf_out:
             subprocess.run(
-                ["bcftools", "merge", "-m", "all", "--force-samples"] + [str(vcf) for vcf in compressed_vcfs],
+                ["bcftools", "concat", "-a", "-O", "v"] + [str(vcf) for vcf in compressed_vcfs],
                 stdout=vcf_out,
                 stderr=subprocess.PIPE,
                 check=True,
             )
     except subprocess.CalledProcessError as e:
-        print(f"Error: bcftools merge failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
+        print(f"Error: bcftools concat failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
         sys.exit(1)
 
     # Sort VCF - fail fast if it fails
     try:
         with open(output_vcf, "w") as sorted_out:
             subprocess.run(
-                ["bcftools", "sort", str(merged_vcf)],
+                ["bcftools", "sort", str(concatenated_vcf)],
                 stdout=sorted_out,
                 stderr=subprocess.PIPE,
                 check=True,
             )
-        merged_vcf.unlink()  # Remove temporary merged file
+        concatenated_vcf.unlink()  # Remove temporary concat file
     except subprocess.CalledProcessError as e:
         print(f"Error: bcftools sort failed: {e.stderr.decode() if e.stderr else 'Unknown error'}", file=sys.stderr)
         sys.exit(1)
@@ -399,7 +401,33 @@ def apply_variants_to_reference(
     print(f"  Applying variants to reference...", file=sys.stderr)
     
     output_ref.parent.mkdir(parents=True, exist_ok=True)
-    
+
+    # Determine sample name for genotype-aware consensus. Without --sample, bcftools
+    # consensus applies all ALT alleles, ignoring FORMAT/GT, which can bake in 0/0
+    # candidates and distort the reference.
+    sample_names: list[str] = []
+    try:
+        with open(vcf, "r") as vf:
+            for line in vf:
+                if line.startswith("#CHROM"):
+                    header_fields = line.rstrip("\n").split("\t")
+                    if len(header_fields) > 9:
+                        sample_names = header_fields[9:]
+                    break
+    except OSError as e:
+        print(f"Error: Failed to read VCF header for sample name: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if len(sample_names) != 1:
+        print(
+            f"Error: Expected exactly 1 sample column in refinement VCF, found {len(sample_names)} ({', '.join(sample_names) if sample_names else 'none'}).",
+            file=sys.stderr,
+        )
+        print("  This pipeline is single-sample; refusing to apply variants without an explicit sample.", file=sys.stderr)
+        sys.exit(1)
+
+    sample_name = sample_names[0]
+
     # Require compressed VCF - fail fast if not found
     vcf_gz = vcf.with_suffix(".vcf.gz")
     if not vcf_gz.exists():
@@ -411,7 +439,17 @@ def apply_variants_to_reference(
     try:
         with open(output_ref, "w") as ref_out:
             subprocess.run(
-                ["bcftools", "consensus", "-f", str(reference), str(vcf_gz)],
+                [
+                    "bcftools",
+                    "consensus",
+                    "-f",
+                    str(reference),
+                    "--sample",
+                    sample_name,
+                    "--haplotype",
+                    "A",
+                    str(vcf_gz),
+                ],
                 stdout=ref_out,
                 stderr=subprocess.PIPE,
                 check=True,
