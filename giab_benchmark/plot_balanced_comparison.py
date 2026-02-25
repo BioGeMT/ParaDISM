@@ -4,11 +4,13 @@ Create 2-panel grouped bar plot comparing ParaDISM vs Base Aligner.
 Groups: G60 threshold only
 Panels: Precision, Recall
 
-SNPs only, GT=1/1. FreeBayes: ploidy=2, min-alternate-count=5.
+SNPs only (no GT filter).
 """
 
 import csv
 import json
+import argparse
+from bisect import bisect_right
 import matplotlib.pyplot as plt
 import numpy as np
 import subprocess
@@ -18,10 +20,20 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 OUTPUT_DIR = SCRIPT_DIR / "vcf_out"
+FILTER_LABEL = "AO>=3, QUAL>=10, SAF>=1, SAR>=1 + benchmark BED"
+DATASET_DIR = SCRIPT_DIR / "giab_hg002_output_bowtie2_G60_min5_qfilters_genome10x_balanced_v1"
+PARADISM_VCF_SUBPATH = "variant_calling/paradism_raw/variants_simple_snps_acgt_benchmarkable_regions_final.vcf.gz"
+BASE_VCF_SUBPATH = "variant_calling/basealigner_raw/variants_simple_snps_acgt_benchmarkable_regions_final.vcf.gz"
 
-TRUTH_VCF = SCRIPT_DIR / "giab_hg002_vcf/HG002_PKD1_genes_SNPs_exact.vcf.gz"
+TRUTH_VCF = SCRIPT_DIR / "giab_hg002_vcf/HG002_PKD1_genes_SNPs_exact_benchmarkable.vcf.gz"
+if not TRUTH_VCF.exists():
+    TRUTH_VCF = SCRIPT_DIR / "giab_hg002_vcf/HG002_PKD1_genes_SNPs_exact.vcf.gz"
 
-# Coordinate mapping: gene -> (chr16_start, chr16_end)
+BENCHMARK_BED = SCRIPT_DIR / "giab_hg002_vcf/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
+
+# Coordinate mapping: contig -> (chr16_start, chr16_end) on GRCh38 (1-based, inclusive).
+# These intervals are defined to match the sequences in giab_benchmark/ref.fa and can
+# include flanking sequence beyond the annotated gene models.
 GENE_COORDS = {
     "PKD1": (2088707, 2135898),
     "PKD1P1": (16310133, 16334190),
@@ -31,6 +43,73 @@ GENE_COORDS = {
     "PKD1P5": (18374520, 18402014),
     "PKD1P6": (15125138, 15154873),
 }
+
+def _load_benchmark_intervals_chr16() -> tuple[list[int], list[tuple[int, int]]] | None:
+    """
+    Load and merge chr16 intervals from the GIAB benchmark BED.
+
+    BED coordinates are 0-based, end-exclusive.
+    Returns (starts, merged_intervals) where starts[i] == merged_intervals[i][0].
+    """
+    if not BENCHMARK_BED.exists():
+        return None
+
+    intervals: list[tuple[int, int]] = []
+    with open(BENCHMARK_BED, "r") as f:
+        for line in f:
+            if not line or line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 3:
+                continue
+            chrom, start_s, end_s = parts[0], parts[1], parts[2]
+            if chrom != "chr16":
+                continue
+            try:
+                start = int(start_s)
+                end = int(end_s)
+            except ValueError:
+                continue
+            if end <= start:
+                continue
+            intervals.append((start, end))
+
+    if not intervals:
+        return None
+
+    intervals.sort()
+    merged: list[tuple[int, int]] = []
+    cur_start, cur_end = intervals[0]
+    for start, end in intervals[1:]:
+        if start > cur_end:
+            merged.append((cur_start, cur_end))
+            cur_start, cur_end = start, end
+            continue
+        cur_end = max(cur_end, end)
+    merged.append((cur_start, cur_end))
+
+    starts = [s for s, _ in merged]
+    return starts, merged
+
+
+_BENCHMARK_INTERVALS = _load_benchmark_intervals_chr16()
+
+
+def _is_benchmarkable_chr16_pos(pos_1based: int) -> bool:
+    """Return True if chr16:pos is inside BENCHMARK_BED (or if BED missing)."""
+    if _BENCHMARK_INTERVALS is None:
+        return True
+    if pos_1based <= 0:
+        return False
+
+    starts, intervals = _BENCHMARK_INTERVALS
+    pos0 = pos_1based - 1
+    idx = bisect_right(starts, pos0) - 1
+    if idx < 0:
+        return False
+    start0, end0 = intervals[idx]
+    return start0 <= pos0 < end0
+
 
 def load_truth_variants():
     """Load truth variants from VCF, converted to gene coordinates."""
@@ -46,6 +125,10 @@ def load_truth_variants():
             parts = line.split('\t')
             if len(parts) >= 4:
                 chrom, pos, ref, alt = parts[0], int(parts[1]), parts[2], parts[3]
+                if chrom != "chr16":
+                    continue
+                if not _is_benchmarkable_chr16_pos(pos):
+                    continue
                 # Convert to gene coordinates
                 for gene, (start, end) in GENE_COORDS.items():
                     if start <= pos <= end:
@@ -70,6 +153,12 @@ def load_called_filtered(vcf_path):
             parts = line.split('\t')
             if len(parts) >= 4:
                 chrom, pos, ref, alt = parts[0], int(parts[1]), parts[2], parts[3]
+                if chrom not in GENE_COORDS:
+                    continue
+                gene_start, _ = GENE_COORDS[chrom]
+                genome_pos = gene_start + pos - 1
+                if not _is_benchmarkable_chr16_pos(genome_pos):
+                    continue
                 variants.add((chrom, pos, ref, alt))
 
     return variants
@@ -88,16 +177,11 @@ def calculate_metrics(truth_variants, called_variants):
     return precision, recall, f1, tp, fp, fn
 
 
-def get_metrics(output_dir, truth, is_baseline=False):
+def get_metrics(vcf_path, truth):
     """Get precision/recall/F1 for a VCF."""
-    if is_baseline:
-        vcf_path = output_dir / "iteration_1/variant_calling_basealigner_balanced/variants.vcf.gz"
-    else:
-        vcf_path = output_dir / "final_outputs/variant_calling_balanced/variants.vcf.gz"
-
     if not vcf_path.exists():
         print(f"Warning: {vcf_path} not found")
-        return None, None, 0, 0, 0
+        return None, None, None, 0, 0, 0
 
     called = load_called_filtered(vcf_path)
     precision, recall, f1, tp, fp, fn = calculate_metrics(truth, called)
@@ -105,22 +189,43 @@ def get_metrics(output_dir, truth, is_baseline=False):
     return precision, recall, f1, tp, fp, fn
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Create comparison plots/metrics for ParaDISM vs BaseAligner on final filtered VCFs."
+    )
+    parser.add_argument(
+        "--dataset-dir",
+        default=str(DATASET_DIR),
+        help=f"Run directory containing variant_calling outputs (default: {DATASET_DIR})",
+    )
+    parser.add_argument(
+        "--out-dir",
+        default=str(OUTPUT_DIR),
+        help=f"Output directory for plots and metrics (default: {OUTPUT_DIR})",
+    )
+    return parser.parse_args()
+
+
 def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
     print("Loading ground truth variants...")
     truth = load_truth_variants()
-    print(f"  {len(truth)} truth variants")
+    truth_note = "truth variants"
+    if BENCHMARK_BED.exists():
+        truth_note += " (benchmarkable BED only)"
+    print(f"  {len(truth)} {truth_note}")
 
     # Get metrics for G60 only
-    g60_dir = SCRIPT_DIR / "giab_hg002_output_bowtie2_G60_min5_qfilters"
+    paradism_vcf = DATASET_DIR / PARADISM_VCF_SUBPATH
+    base_vcf = DATASET_DIR / BASE_VCF_SUBPATH
 
     print("\nExtracting metrics...")
 
-    # ParaDISM (final_outputs)
-    paradism_g60_prec, paradism_g60_rec, paradism_g60_f1, p_g60_tp, p_g60_fp, _ = get_metrics(g60_dir, truth, is_baseline=False)
+    # ParaDISM
+    paradism_g60_prec, paradism_g60_rec, paradism_g60_f1, p_g60_tp, p_g60_fp, _ = get_metrics(paradism_vcf, truth)
 
-    # Base aligner (iteration_1)
-    base_g60_prec, base_g60_rec, base_g60_f1, b_g60_tp, b_g60_fp, _ = get_metrics(g60_dir, truth, is_baseline=True)
+    # Base aligner
+    base_g60_prec, base_g60_rec, base_g60_f1, b_g60_tp, b_g60_fp, _ = get_metrics(base_vcf, truth)
 
     # Check for missing data
     missing = []
@@ -129,7 +234,9 @@ def main():
 
     if missing:
         print(f"Error: Missing data for: {', '.join(missing)}")
-        print("Run variant calling first: bash giab_benchmark/call_variants_balanced_filters.sh")
+        print("Expected VCFs:")
+        print(f"  {paradism_vcf}")
+        print(f"  {base_vcf}")
         sys.exit(1)
 
     print(f"G60: ParaDISM TP={p_g60_tp} FP={p_g60_fp} Prec={paradism_g60_prec:.3f} Rec={paradism_g60_rec:.3f} F1={paradism_g60_f1:.3f}")
@@ -142,7 +249,10 @@ def main():
     # Save metrics to JSON
     metrics = {
         "filters": {
-            "note": "No additional filtering applied in this script."
+            "note": (
+                f"Input VCFs are already filtered ({FILTER_LABEL}). "
+                "This script reports comparison metrics only."
+            )
         },
         "truth_variants": len(truth),
         "G60": {
@@ -241,14 +351,13 @@ def main():
             ax.set_yticklabels([])
             ax.set_title(f"{method}", fontsize=12, fontweight='bold')
 
-        plt.suptitle(f"Confusion Matrices - {name}\n(SNPs only, GT=1/1; ploidy=2, min-alt=5)",
+        plt.suptitle(f"Confusion Matrices - {name}\n({FILTER_LABEL})",
                      fontsize=12, fontweight='bold', y=1.02)
         plt.tight_layout()
 
         output_path = OUTPUT_DIR / f"confusion_matrix_{name}"
         plt.savefig(f"{output_path}.png", dpi=150, bbox_inches='tight')
-        plt.savefig(f"{output_path}.pdf", bbox_inches='tight')
-        print(f"\nConfusion matrix saved to {output_path}.png and {output_path}.pdf")
+        print(f"\nConfusion matrix saved to {output_path}.png")
         plt.close()
 
     # Create plot for G60
@@ -271,7 +380,6 @@ def main():
         ax1.set_title('Precision', fontsize=14, fontweight='bold')
         ax1.set_xticks([])
         ax1.set_ylim(0, 1)
-        ax1.legend(loc='upper right')
 
         for bar in bars1:
             ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
@@ -289,7 +397,6 @@ def main():
         ax2.set_title('Recall', fontsize=14, fontweight='bold')
         ax2.set_xticks([])
         ax2.set_ylim(0, 1)
-        ax2.legend(loc='upper right')
 
         for bar in bars3:
             ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
@@ -307,7 +414,6 @@ def main():
         ax3.set_title('F1', fontsize=14, fontweight='bold')
         ax3.set_xticks([])
         ax3.set_ylim(0, 1)
-        ax3.legend(loc='upper right')
 
         for bar in bars5:
             ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
@@ -316,14 +422,14 @@ def main():
             ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
                      f'{bar.get_height():.2f}', ha='center', va='bottom', fontsize=10)
 
-        plt.suptitle(f'ParaDISM vs Base Aligner - {name}\n(SNPs only, GT=1/1; ploidy=2, min-alt=5)',
+        fig.legend(['ParaDISM', 'Base Aligner'], loc='upper right', bbox_to_anchor=(1.06, 1.08))
+        plt.suptitle(f'ParaDISM vs Base Aligner - {name}\n({FILTER_LABEL})',
                      fontsize=12, fontweight='bold', y=1.05)
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0, 0.92, 1])
 
         output_path = OUTPUT_DIR / f"balanced_comparison_{name}"
         plt.savefig(f"{output_path}.png", dpi=150, bbox_inches='tight')
-        plt.savefig(f"{output_path}.pdf", bbox_inches='tight')
-        print(f"\nPlot saved to {output_path}.png and {output_path}.pdf")
+        print(f"\nPlot saved to {output_path}.png")
         plt.close()
 
 
@@ -347,6 +453,10 @@ def per_gene_analysis():
             parts = line.split('\t')
             if len(parts) >= 4:
                 chrom, pos, ref, alt = parts[0], int(parts[1]), parts[2], parts[3]
+                if chrom != "chr16":
+                    continue
+                if not _is_benchmarkable_chr16_pos(pos):
+                    continue
                 for gene, (start, end) in GENE_COORDS.items():
                     if start <= pos <= end:
                         gene_pos = pos - start + 1
@@ -357,10 +467,12 @@ def per_gene_analysis():
     all_rows = []
 
     for dataset in ["G60"]:
-        dir_name = SCRIPT_DIR / f"giab_hg002_output_bowtie2_{dataset}_min5_qfilters"
+        dir_name = DATASET_DIR
 
-        for method, vcf_subpath in [("ParaDISM", "final_outputs/variant_calling_balanced/variants.vcf.gz"),
-                                     ("BaseAligner", "iteration_1/variant_calling_basealigner_balanced/variants.vcf.gz")]:
+        for method, vcf_subpath in [
+            ("ParaDISM", PARADISM_VCF_SUBPATH),
+            ("BaseAligner", BASE_VCF_SUBPATH),
+        ]:
             vcf_path = dir_name / vcf_subpath
             if not vcf_path.exists():
                 continue
@@ -376,6 +488,10 @@ def per_gene_analysis():
                     if len(parts) >= 4:
                         chrom, pos, ref, alt = parts[0], int(parts[1]), parts[2], parts[3]
                         if chrom in called_by_gene:
+                            gene_start, _ = GENE_COORDS[chrom]
+                            genome_pos = gene_start + pos - 1
+                            if not _is_benchmarkable_chr16_pos(genome_pos):
+                                continue
                             called_by_gene[chrom].add((chrom, pos, ref, alt))
 
             # Calculate per-gene metrics
@@ -457,7 +573,6 @@ def per_gene_analysis():
         ax1.set_title('Precision', fontsize=14, fontweight='bold')
         ax1.set_xticks([])
         ax1.set_ylim(0, 1)
-        ax1.legend(loc='upper right')
 
         for bar in bars1:
             ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
@@ -475,7 +590,6 @@ def per_gene_analysis():
         ax2.set_title('Recall', fontsize=14, fontweight='bold')
         ax2.set_xticks([])
         ax2.set_ylim(0, 1)
-        ax2.legend(loc='upper right')
 
         for bar in bars3:
             ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
@@ -484,13 +598,13 @@ def per_gene_analysis():
             ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
                      f'{bar.get_height():.2f}', ha='center', va='bottom', fontsize=10)
 
+        fig.legend(['ParaDISM', 'Base Aligner'], loc='upper right', bbox_to_anchor=(1.06, 1.08))
         plt.suptitle(f'{gene} - G60\n(n={paradism_row["truth_count"]} truth variants)',
                      fontsize=12, fontweight='bold', y=1.05)
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0, 0.92, 1])
 
         output_path = per_gene_dir / f"G60_{gene}"
         plt.savefig(f"{output_path}.png", dpi=150, bbox_inches='tight')
-        plt.savefig(f"{output_path}.pdf", bbox_inches='tight')
         print(f"  Saved {output_path}.png")
         plt.close()
 
@@ -524,17 +638,19 @@ def per_gene_analysis():
             ax.set_yticklabels([])
             ax.set_title(f"{method}", fontsize=12, fontweight='bold')
 
-        plt.suptitle(f"Confusion Matrices - {gene} (G60)",
+        plt.suptitle(f"Confusion Matrices - {gene} (G60)\n({FILTER_LABEL})",
                      fontsize=12, fontweight='bold', y=1.02)
         plt.tight_layout()
 
         output_cm = per_gene_dir / f"G60_{gene}_confusion"
         plt.savefig(f"{output_cm}.png", dpi=150, bbox_inches='tight')
-        plt.savefig(f"{output_cm}.pdf", bbox_inches='tight')
         print(f"  Saved {output_cm}.png")
         plt.close()
 
 
 if __name__ == "__main__":
+    args = parse_args()
+    DATASET_DIR = Path(args.dataset_dir)
+    OUTPUT_DIR = Path(args.out_dir)
     main()
     per_gene_analysis()
