@@ -30,6 +30,7 @@ Environment variables:
 - `NUM_READS`: Read pairs per seed (default: 100000)
 - `ALIGNERS`: Space-separated list (default: "bwa-mem2 bowtie2 minimap2")
 - `ITERATIONS`: ParaDISM iterations (default: 10)
+- `QUAL_THRESHOLD`, `DP_THRESHOLD`, `AF_THRESHOLD`: ParaDISM variant quality filter thresholds (defaults: 20, 10, 0.05)
 - `ERROR_RATE`: Sequencing error rate (default: 0.01)
 - `SNP_RATE`: SNP rate (default: 0.005)
 - `INDEL_RATE`: Indel rate (default: 0.0005)

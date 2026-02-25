@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Plot precision, recall, and specificity across iterations.
-Shows ParaDISM improvement vs constant BWA-MEM2 baseline.
+Shows ParaDISM improvement vs constant direct-aligner baseline.
 """
 
 import argparse
@@ -12,6 +12,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix
+
+
+def pretty_aligner_name(aligner: str) -> str:
+    """Return a display name for common aligners."""
+    mapping = {
+        "bwa-mem2": "BWA-MEM2",
+        "bowtie2": "Bowtie2",
+        "minimap2": "Minimap2",
+    }
+    return mapping.get(aligner, aligner)
 
 
 def parse_metrics_from_csv(csv_path: Path) -> dict:
@@ -96,7 +106,7 @@ def extract_metrics_from_summary(summary_path: Path) -> dict:
         return None
     
     # Read the summary CSV from read_mapping_analysis
-    # Format: Read_ID, Ground_Truth, Mapper_Prediction, BWA-MEM2_Prediction, ...
+    # Format: Read_ID, Ground_Truth, Mapper_Prediction, <DirectAligner>_Prediction, ...
     df = pd.read_csv(summary_path)
     
     from sklearn.metrics import precision_recall_fscore_support
@@ -120,7 +130,7 @@ def extract_metrics_from_summary(summary_path: Path) -> dict:
             break
     
     if direct_pred_col is None:
-        # Try BWA-MEM2_Prediction or similar
+        # Try historical BWA-MEM2 column name
         if 'BWA-MEM2_Prediction' in df.columns:
             direct_pred_col = 'BWA-MEM2_Prediction'
         else:
@@ -137,7 +147,7 @@ def extract_metrics_from_summary(summary_path: Path) -> dict:
     )
     spec_mapper = calculate_specificity(ground_truth, mapper_pred, all_labels)
     
-    # Calculate metrics for direct (BWA-MEM2)
+    # Calculate metrics for direct aligner baseline
     prec_direct, rec_direct, _, support_direct = precision_recall_fscore_support(
         ground_truth, direct_pred, labels=all_labels, average='weighted', zero_division=0
     )
@@ -390,15 +400,18 @@ def create_iteration_plots(
 
     # Create figure with 3 subplots
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    direct_aligner_name = pretty_aligner_name(aligner)
+    direct_label = f"{direct_aligner_name} (direct)"
+    fig.suptitle(f"Iteration Progression - {direct_aligner_name}", fontsize=16, fontweight='bold')
     
     # Plot 1: Precision
     axes[0].errorbar(iter_nums, para_prec_mean, yerr=para_prec_std, 
                      fmt='o-', color='red', linewidth=2, markersize=8, 
                      capsize=5, capthick=2, label='ParaDISM', alpha=0.8)
-    # BWA is constant across iterations - error bar only at iteration 1, then straight line
+    # Direct aligner baseline is constant across iterations.
     axes[0].errorbar([iter_nums[0]], [bwa_prec_mean[0]], yerr=[bwa_prec_std[0]],
                      fmt='s', color='#4682B4', linewidth=2, markersize=8,
-                     capsize=5, capthick=2, label='BWA-MEM2 (direct)', alpha=0.8)
+                     capsize=5, capthick=2, label=direct_label, alpha=0.8)
     axes[0].plot(iter_nums, [bwa_prec_mean[0]] * len(iter_nums), ':', 
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[0].set_xlabel('Iteration', weight='bold')
@@ -412,10 +425,10 @@ def create_iteration_plots(
     axes[1].errorbar(iter_nums, para_rec_mean, yerr=para_rec_std,
                      fmt='o-', color='red', linewidth=2, markersize=8,
                      capsize=5, capthick=2, label='ParaDISM', alpha=0.8)
-    # BWA is constant across iterations - error bar only at iteration 1, then straight line
+    # Direct aligner baseline is constant across iterations.
     axes[1].errorbar([iter_nums[0]], [bwa_rec_mean[0]], yerr=[bwa_rec_std[0]],
                      fmt='s', color='#4682B4', linewidth=2, markersize=8,
-                     capsize=5, capthick=2, label='BWA-MEM2 (direct)', alpha=0.8)
+                     capsize=5, capthick=2, label=direct_label, alpha=0.8)
     axes[1].plot(iter_nums, [bwa_rec_mean[0]] * len(iter_nums), ':', 
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[1].set_xlabel('Iteration', weight='bold')
@@ -429,10 +442,10 @@ def create_iteration_plots(
     axes[2].errorbar(iter_nums, para_spec_mean, yerr=para_spec_std,
                      fmt='o-', color='red', linewidth=2, markersize=8,
                      capsize=5, capthick=2, label='ParaDISM', alpha=0.8)
-    # BWA is constant across iterations - error bar only at iteration 1, then straight line
+    # Direct aligner baseline is constant across iterations.
     axes[2].errorbar([iter_nums[0]], [bwa_spec_mean[0]], yerr=[bwa_spec_std[0]],
                      fmt='s', color='#4682B4', linewidth=2, markersize=8,
-                     capsize=5, capthick=2, label='BWA-MEM2 (direct)', alpha=0.8)
+                     capsize=5, capthick=2, label=direct_label, alpha=0.8)
     axes[2].plot(iter_nums, [bwa_spec_mean[0]] * len(iter_nums), ':', 
                  color='#4682B4', linewidth=2, alpha=0.8)
     axes[2].set_xlabel('Iteration', weight='bold')
@@ -463,12 +476,12 @@ def create_iteration_plots(
         'ParaDISM_Recall_Std': para_rec_std,
         'ParaDISM_Specificity_Mean': para_spec_mean,
         'ParaDISM_Specificity_Std': para_spec_std,
-        'BWA-MEM2_Precision_Mean': bwa_prec_mean,
-        'BWA-MEM2_Precision_Std': bwa_prec_std,
-        'BWA-MEM2_Recall_Mean': bwa_rec_mean,
-        'BWA-MEM2_Recall_Std': bwa_rec_std,
-        'BWA-MEM2_Specificity_Mean': bwa_spec_mean,
-        'BWA-MEM2_Specificity_Std': bwa_spec_std,
+        'Direct_Precision_Mean': bwa_prec_mean,
+        'Direct_Precision_Std': bwa_prec_std,
+        'Direct_Recall_Mean': bwa_rec_mean,
+        'Direct_Recall_Std': bwa_rec_std,
+        'Direct_Specificity_Mean': bwa_spec_mean,
+        'Direct_Specificity_Std': bwa_spec_std,
     }
     df = pd.DataFrame(progression_data)
     df.to_csv(csv_path, index=False)

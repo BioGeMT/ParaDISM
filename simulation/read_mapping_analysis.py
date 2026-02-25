@@ -7,11 +7,13 @@ Compares mapper predictions and BWA direct alignment against ground truth.
 import argparse
 import sys
 from pathlib import Path
+import gzip
 import pysam
 import pandas as pd
 import numpy as np
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
 import matplotlib.pyplot as plt
+from Bio import SeqIO
 
 
 def parse_ground_truth_from_fastq(fastq_path):
@@ -99,6 +101,61 @@ def parse_mapper_results(tsv_path):
             read_name = read_name.rstrip('+-')
             # Store gene without strand tags for comparison
             mapper_predictions[read_name] = gene
+
+    return mapper_predictions, partial_reads
+
+
+def parse_mapper_results_from_fastq_dir(fastq_dir):
+    """
+    Parse ParaDISM per-gene FASTQ outputs to recover read->gene predictions.
+    FASTQ files are expected to be named like <prefix>_<GENE>.fq (or .fastq, optionally .gz).
+    """
+    mapper_predictions = {}
+    partial_reads = set()
+
+    fastq_dir = Path(fastq_dir)
+    if not fastq_dir.exists():
+        return mapper_predictions, partial_reads
+
+    fastq_files = sorted(
+        list(fastq_dir.glob("*.fq"))
+        + list(fastq_dir.glob("*.fastq"))
+        + list(fastq_dir.glob("*.fq.gz"))
+        + list(fastq_dir.glob("*.fastq.gz"))
+    )
+
+    for fastq_file in fastq_files:
+        name = fastq_file.name
+        if name.endswith(".fastq.gz"):
+            stem = name[:-9]
+        elif name.endswith(".fq.gz"):
+            stem = name[:-6]
+        elif name.endswith(".fastq"):
+            stem = name[:-6]
+        elif name.endswith(".fq"):
+            stem = name[:-3]
+        else:
+            continue
+
+        # Gene is the suffix after last underscore, e.g. paradism_seed_10_bowtie2_PKD1 -> PKD1
+        gene = stem.rsplit("_", 1)[-1]
+        if not gene:
+            continue
+
+        opener = gzip.open if str(fastq_file).endswith(".gz") else open
+        mode = "rt" if str(fastq_file).endswith(".gz") else "r"
+        with opener(fastq_file, mode) as handle:
+            for rec in SeqIO.parse(handle, "fastq"):
+                read_name = rec.id
+                if "/" in read_name:
+                    read_name = read_name.split("/", 1)[0]
+
+                prev = mapper_predictions.get(read_name)
+                if prev is None:
+                    mapper_predictions[read_name] = gene
+                elif prev != gene:
+                    # Should not happen with unique assignments; mark ambiguous defensively.
+                    mapper_predictions[read_name] = "NONE"
 
     return mapper_predictions, partial_reads
 
@@ -295,6 +352,11 @@ def main():
         help='Path to ParaDISM unique_mappings TSV (default based on aligner)'
     )
     parser.add_argument(
+        '--mapper-fastq-dir',
+        default=None,
+        help='Path to ParaDISM per-gene FASTQ directory (preferred for current outputs)'
+    )
+    parser.add_argument(
         '--direct-sam',
         default=None,
         help='Path to baseline SAM/BAM (default based on aligner)'
@@ -316,7 +378,7 @@ def main():
     if args.output_prefix is None:
         args.output_prefix = f'metrics_{args.aligner}'
 
-    if args.mapper_tsv is None:
+    if args.mapper_fastq_dir is None and args.mapper_tsv is None:
         args.mapper_tsv = f'sim_output/{args.aligner}/{args.aligner}_unique_mappings.tsv'
     if args.direct_sam is None:
         args.direct_sam = f'sim_output/{args.aligner}/direct/{args.aligner}_direct.sorted.bam'
@@ -329,14 +391,23 @@ def main():
 
     args.output_prefix = str(analysis_dir / args.output_prefix)
 
-    # Check files exist
-    for filepath in [args.fastq_r1, args.mapper_tsv, args.direct_sam]:
+    # Check inputs exist
+    required_paths = [args.fastq_r1, args.direct_sam]
+    if args.mapper_fastq_dir is not None:
+        required_paths.append(args.mapper_fastq_dir)
+    elif args.mapper_tsv is not None:
+        required_paths.append(args.mapper_tsv)
+
+    for filepath in required_paths:
         if not Path(filepath).exists():
             print(f"Error: File not found: {filepath}")
             sys.exit(1)
 
     ground_truth = parse_ground_truth_from_fastq(args.fastq_r1)
-    mapper_predictions, partial_reads = parse_mapper_results(args.mapper_tsv)
+    if args.mapper_fastq_dir is not None:
+        mapper_predictions, partial_reads = parse_mapper_results_from_fastq_dir(args.mapper_fastq_dir)
+    else:
+        mapper_predictions, partial_reads = parse_mapper_results(args.mapper_tsv)
     direct_predictions = parse_bwa_sam(args.direct_sam)
 
     # Get all possible genes (labels)
@@ -377,7 +448,7 @@ def main():
 
     # Print summary
     print_summary(metrics_mapper, metrics_direct, args.aligner)
-    print(f"\nOutputs saved to: sim_read_mapping_analysis/{args.aligner}/")
+    print(f"\nOutputs saved to: {analysis_dir}")
     print(f"  Plot: {Path(args.output_prefix).name}_comparison.png")
     print(f"  CSV:  {Path(csv_path).name}")
 

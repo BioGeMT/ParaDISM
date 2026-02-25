@@ -24,6 +24,9 @@ REFERENCE="${REFERENCE:-${PARADISM_ROOT}/ref.fa}"
 THREADS=${THREADS:-1}                   # Threads per ParaDISM run (30 seeds × 3 aligners × 1 thread = 90 CPUs)
 NUM_READS=${NUM_READS:-100000}
 ERROR_RATE=${ERROR_RATE:-0.01}             # default sequencing error rate (per base)
+QUAL_THRESHOLD=${QUAL_THRESHOLD:-20}
+DP_THRESHOLD=${DP_THRESHOLD:-10}
+AF_THRESHOLD=${AF_THRESHOLD:-0.05}
 MINIMAP2_PROFILE="${MINIMAP2_PROFILE:-short}"     # sr preset
 SNP_RATE=${SNP_RATE:-0.005}              # DWGSIM SNP rate (per base)
 INDEL_RATE=${INDEL_RATE:-0.0005}           # DWGSIM indel rate (per base)
@@ -47,28 +50,6 @@ format_error_suffix() {
     echo "${formatted/./_}"
 }
 
-find_latest_iteration_dir() {
-    local base="$1"
-    local latest=""
-    local latest_num=0
-
-    shopt -s nullglob
-    for path in "${base}"/iteration_*; do
-        [[ -d "$path" ]] || continue
-        local suffix="${path##*/iteration_}"
-        if [[ "$suffix" =~ ^([0-9]+)$ ]]; then
-            local num="${BASH_REMATCH[1]}"
-            if (( num > latest_num )); then
-                latest_num=$num
-                latest="$path"
-            fi
-        fi
-    done
-    shopt -u nullglob
-
-    echo "$latest"
-}
-
 run_mapper() {
     local aligner="$1"
     local r1="$2"
@@ -76,7 +57,21 @@ run_mapper() {
     local output_dir="$4"
     local prefix="$5"
 
-    local cmd=(python "${PARADISM_ROOT}/paradism.py" --read1 "$r1" --read2 "$r2" --reference "$REFERENCE" --aligner "$aligner" --threads "$THREADS" --output-dir "$output_dir" --prefix "$prefix" --iterations "$ITERATIONS")
+    local cmd=(
+        python "${PARADISM_ROOT}/paradism.py"
+        --read1 "$r1"
+        --read2 "$r2"
+        --reference "$REFERENCE"
+        --aligner "$aligner"
+        --threads "$THREADS"
+        --output-dir "$output_dir"
+        --prefix "$prefix"
+        --iterations "$ITERATIONS"
+        --add-quality-filters
+        --qual-threshold "$QUAL_THRESHOLD"
+        --dp-threshold "$DP_THRESHOLD"
+        --af-threshold "$AF_THRESHOLD"
+    )
     if [[ "$aligner" == "minimap2" ]]; then
         cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
     fi
@@ -84,15 +79,91 @@ run_mapper() {
     # Run mapper (may exit with status 1 even if successful)
     "${cmd[@]}" || true
 
-    # Verify final outputs exist (prefer final_outputs, fall back to last iteration for early convergence)
+    # Verify final outputs exist
     local final_outputs_dir="${output_dir}/final_outputs"
-    local final_tsv="${final_outputs_dir}/${prefix}_unique_mappings.tsv"
+    local final_fastq_dir="${final_outputs_dir}/${prefix}_fastq"
 
-    if [[ ! -f "$final_tsv" ]]; then
-        echo "ERROR: Final outputs TSV not found: $final_tsv" >&2
+    if [[ ! -d "$final_outputs_dir" ]]; then
+        echo "ERROR: Final outputs directory not found: $final_outputs_dir" >&2
         exit 1
     fi
-    echo "  Using final outputs TSV: $final_tsv" >&2
+    if [[ ! -d "$final_fastq_dir" ]]; then
+        echo "ERROR: Final ParaDISM FASTQ directory not found: $final_fastq_dir" >&2
+        exit 1
+    fi
+    echo "  Using final outputs FASTQ dir: $final_fastq_dir" >&2
+}
+
+write_timing_csv() {
+    local output_csv="$1"
+    local tmp_csv="${output_csv}.tmp"
+
+    mkdir -p "$(dirname "$output_csv")"
+    echo "seed,aligner,wall_clock_seconds,wall_clock_formatted" > "$tmp_csv"
+
+    shopt -s nullglob
+    local timing_files=("$TIMING_TMP_DIR"/*.timing)
+    if [[ ${#timing_files[@]} -gt 0 ]]; then
+        for timing_file in "${timing_files[@]}"; do
+            cat "$timing_file" >> "$tmp_csv"
+        done
+        sort -t',' -k1,1n -k2,2 "$tmp_csv" > "${tmp_csv}.sorted"
+        mv "${tmp_csv}.sorted" "$tmp_csv"
+    fi
+    shopt -u nullglob
+
+    mv "$tmp_csv" "$output_csv"
+}
+
+run_postprocessing() {
+    local seed_end="$1"
+    local out_base="$2"
+    local label="$3"
+
+    echo "=============================="
+    echo "${label}: Aggregating timing data (through seed ${seed_end})"
+    echo "=============================="
+
+    local timing_csv="${out_base}/timing_data.csv"
+    write_timing_csv "$timing_csv"
+    echo "Timing data written to: $timing_csv"
+
+    echo "=============================="
+    echo "${label}: Aggregating results (through seed ${seed_end})"
+    echo "=============================="
+
+    python "${SCRIPT_DIR}/aggregate_results.py" \
+        --sim-output-base "$SIM_OUTPUT_BASE" \
+        --seed-start "$SEED_START" \
+        --seed-end "$seed_end" \
+        --aligners "${ALIGNERS[@]}" \
+        --output-dir "${out_base}/aggregated_results"
+
+    python "${SCRIPT_DIR}/aggregate_per_seed_overall.py" \
+        --sim-output-base "$SIM_OUTPUT_BASE" \
+        --seed-start "$SEED_START" \
+        --seed-end "$seed_end" \
+        --aligners "${ALIGNERS[@]}" \
+        --output "${out_base}/aggregated_results/per_seed_overall_metrics.csv"
+
+    echo "${label}: Aggregation complete!"
+
+    echo "=============================="
+    echo "${label}: Creating iteration progression plots"
+    echo "=============================="
+
+    local plot_dir="${out_base}/iteration_plots"
+    mkdir -p "$plot_dir"
+    for aligner in "${ALIGNERS[@]}"; do
+        python "${SCRIPT_DIR}/plot_iteration_progression.py" \
+            --sim-output-base "$SIM_OUTPUT_BASE" \
+            --seed-start "$SEED_START" \
+            --seed-end "$seed_end" \
+            --output-dir "$plot_dir" \
+            --aligner "$aligner"
+    done
+
+    echo "${label}: Iteration plots saved to: $plot_dir"
 }
 
 # ------------------------------------------------------------------
@@ -100,13 +171,19 @@ run_mapper() {
 # ------------------------------------------------------------------
 ERROR_SUFFIX=$(format_error_suffix "$ERROR_RATE")
 
+if (( SEED_START > SEED_END )); then
+    echo "Error: SEED_START (${SEED_START}) must be <= SEED_END (${SEED_END})" >&2
+    exit 1
+fi
+
 # Timing CSV setup
 TIMING_CSV="${SIM_OUTPUT_BASE}/timing_data.csv"
 TIMING_TMP_DIR="${SIM_OUTPUT_BASE}/timing_tmp"
 mkdir -p "$TIMING_TMP_DIR"
 
-# Process seeds in batches of 30 in parallel (30 seeds × 3 aligners × 1 thread = 90 CPUs)
-SEEDS_PER_BATCH=30
+# Process seeds in batches in parallel.
+# Effective CPU use is approximately: SEEDS_PER_BATCH × number_of_aligners × THREADS.
+SEEDS_PER_BATCH=${SEEDS_PER_BATCH:-30}
 seed_array=($(seq "$SEED_START" "$SEED_END"))
 total_seeds=${#seed_array[@]}
 
@@ -121,6 +198,7 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
     echo "=============================="
     
     # Process all seeds in this batch in parallel
+    seed_pids=()
     for ((i=batch_start; i<batch_end; i++)); do
         seed=${seed_array[$i]}
         (
@@ -180,6 +258,7 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
             fi
 
             # Process all aligners in parallel for this seed
+            aligner_pids=()
             for aligner in "${ALIGNERS[@]}"; do
                 (
                     echo "--- Running aligner: $aligner (seed $seed) ---"
@@ -222,14 +301,6 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
                     samtools view -b "$paradism_sam" | samtools sort -o "$base_bam"
                     samtools index "$base_bam"
 
-                    # Use final iteration's mappings for ParaDISM comparison
-                    # Find the actual last iteration that was produced (handles early convergence)
-                    final_iter_dir=$(find_latest_iteration_dir "$paradism_output")
-                    if [[ -z "$final_iter_dir" ]]; then
-                        echo "ERROR: No iteration directories found under $paradism_output" >&2
-                        exit 1
-                    fi
-
                     # Run iteration-by-iteration read mapping analysis (for progression plots)
                     analysis_dir="$aligner_dir/read_mapping_analysis"
                     mkdir -p "$analysis_dir"
@@ -238,30 +309,29 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
                     mapfile -t iter_dirs < <(find "$paradism_output" -maxdepth 1 -type d -name 'iteration_*' | sort -t_ -k2,2n)
                     for iter_dir in "${iter_dirs[@]}"; do
                         iter_num="${iter_dir##*/iteration_}"
-                        iter_tsv="${iter_dir}/${paradism_prefix}_unique_mappings.tsv"
-                        if [[ -f "$iter_tsv" ]]; then
+                        iter_fastq_dir="${iter_dir}/${paradism_prefix}_fastq"
+                        if [[ -d "$iter_fastq_dir" ]]; then
                             python "${SCRIPT_DIR}/read_mapping_analysis.py" \
                                 --aligner "$aligner" \
                                 --fastq-r1 "$r1" \
-                                --mapper-tsv "$iter_tsv" \
+                                --mapper-fastq-dir "$iter_fastq_dir" \
                                 --direct-sam "$base_bam" \
                                 --analysis-dir "$analysis_dir" \
-                                --output-prefix "${analysis_dir}/seed_${seed}_${aligner}_iter${iter_num}"
+                                --output-prefix "seed_${seed}_${aligner}_iter${iter_num}"
                         fi
                     done
 
-                    # Also run analysis on the final iteration for aggregate summary
-                    mapper_tsv="${final_iter_dir}/${paradism_prefix}_unique_mappings.tsv"
-                    if [[ ! -f "$mapper_tsv" ]]; then
-                        echo "ERROR: Expected output file not found: $mapper_tsv" >&2
+                    # Run final summary analysis from final_outputs only (no fallback)
+                    mapper_fastq_dir="${paradism_output}/final_outputs/${paradism_prefix}_fastq"
+                    if [[ ! -d "$mapper_fastq_dir" ]]; then
+                        echo "ERROR: Final ParaDISM FASTQ directory not found: $mapper_fastq_dir" >&2
                         exit 1
                     fi
-                    final_iter_num="${final_iter_dir##*/iteration_}"
-                    echo "  Using final iteration ${final_iter_num} for analysis" >&2
+                    echo "  Using final_outputs for aggregate summary analysis" >&2
                     python "${SCRIPT_DIR}/read_mapping_analysis.py" \
                         --aligner "$aligner" \
                         --fastq-r1 "$r1" \
-                        --mapper-tsv "$mapper_tsv" \
+                        --mapper-fastq-dir "$mapper_fastq_dir" \
                         --direct-sam "$base_bam" \
                         --analysis-dir "$analysis_dir" \
                         --output-prefix "seed_${seed}_${aligner}"
@@ -269,90 +339,48 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
                     echo "--- Completed aligner: $aligner (seed $seed) ---"
                     echo "  ParaDISM time: ${formatted_time} (${paradism_duration} seconds)"
                 ) &
+                aligner_pids+=($!)
             done
             
-            # Wait for all aligners to complete for this seed
-            wait
+            # Wait for all aligners to complete for this seed and fail if any failed
+            aligner_failed=0
+            for pid in "${aligner_pids[@]}"; do
+                if ! wait "$pid"; then
+                    aligner_failed=1
+                fi
+            done
+            if [[ "$aligner_failed" -ne 0 ]]; then
+                echo "ERROR: One or more aligner jobs failed for seed $seed" >&2
+                exit 1
+            fi
             echo "=============================="
             echo "Completed seed: $seed"
             echo "=============================="
         ) &
+        seed_pids+=($!)
     done
     
-    # Wait for all seeds in this batch to complete before moving to next batch
-    wait
+    # Wait for all seeds in this batch to complete and fail if any failed
+    batch_failed=0
+    for pid in "${seed_pids[@]}"; do
+        if ! wait "$pid"; then
+            batch_failed=1
+        fi
+    done
+    if [[ "$batch_failed" -ne 0 ]]; then
+        echo "ERROR: One or more seed jobs failed in batch ${seed_array[$batch_start]} to ${seed_array[$((batch_end-1))]}" >&2
+        exit 1
+    fi
+
     echo "=============================="
     echo "Completed batch: ${seed_array[$batch_start]} to ${seed_array[$((batch_end-1))]}"
     echo "=============================="
 done
 
 # ------------------------------------------------------------------
-# Aggregate timing data
+# Final post-processing on full requested seed range
 # ------------------------------------------------------------------
-echo "=============================="
-echo "Aggregating timing data..."
-echo "=============================="
-
-# Create CSV with header and combine all timing files
-echo "seed,aligner,wall_clock_seconds,wall_clock_formatted" > "$TIMING_CSV"
-
-# Append all timing files
-for timing_file in "$TIMING_TMP_DIR"/*.timing; do
-    if [[ -f "$timing_file" ]]; then
-        cat "$timing_file" >> "$TIMING_CSV"
-    fi
-done
-
-# Sort CSV by seed, then aligner
-sort -t',' -k1,1n -k2,2 "$TIMING_CSV" > "${TIMING_CSV}.tmp"
-mv "${TIMING_CSV}.tmp" "$TIMING_CSV"
-
-# Clean up temporary timing files
+final_seed="${seed_array[$((total_seeds - 1))]}"
+run_postprocessing "$final_seed" "$SIM_OUTPUT_BASE" "Final"
 rm -rf "$TIMING_TMP_DIR"
-
-echo "Timing data aggregated to: $TIMING_CSV"
-
-# ------------------------------------------------------------------
-# Aggregate results across all seeds
-# ------------------------------------------------------------------
-echo "=============================="
-echo "Aggregating results across all seeds..."
-echo "=============================="
-
-python "${SCRIPT_DIR}/aggregate_results.py" \
-    --sim-output-base "$SIM_OUTPUT_BASE" \
-    --seed-start "$SEED_START" \
-    --seed-end "$SEED_END" \
-    --aligners "${ALIGNERS[@]}" \
-    --output-dir "${SIM_OUTPUT_BASE}/aggregated_results"
-
-# Per-seed overall (ParaDISM vs direct aligner)
-python "${SCRIPT_DIR}/aggregate_per_seed_overall.py" \
-    --sim-output-base "$SIM_OUTPUT_BASE" \
-    --seed-start "$SEED_START" \
-    --seed-end "$SEED_END" \
-    --aligners "${ALIGNERS[@]}" \
-    --output "${SIM_OUTPUT_BASE}/aggregated_results/per_seed_overall_metrics.csv"
-
-echo "Aggregation complete!"
-
-# ------------------------------------------------------------------
-# Plot iteration progression per aligner (auto-detects iteration counts per seed)
-# ------------------------------------------------------------------
-echo "=============================="
-echo "Creating iteration progression plots..."
-echo "=============================="
-
-PLOT_DIR="${SIM_OUTPUT_BASE}/iteration_plots"
-mkdir -p "$PLOT_DIR"
-
-for aligner in "${ALIGNERS[@]}"; do
-    python "${SCRIPT_DIR}/plot_iteration_progression.py" \
-        --sim-output-base "$SIM_OUTPUT_BASE" \
-        --seed-start "$SEED_START" \
-        --seed-end "$SEED_END" \
-        --output-dir "$PLOT_DIR" \
-        --aligner "$aligner"
-done
-
-echo "Iteration plots saved to: $PLOT_DIR"
+echo "Timing temp files removed: $TIMING_TMP_DIR"
