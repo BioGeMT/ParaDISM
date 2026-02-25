@@ -7,7 +7,7 @@ Analysis of GNAQ/GNAQ pseudogene samples using ParaDISM.
 ```bash
 # From gnaq_analysis/
 bash download_gnaq_reads.sh
-bash run_gnaq_samples_bwa_180.sh
+bash run_gnaq_samples_bwa_160.sh
 ```
 
 ## Scripts
@@ -16,11 +16,11 @@ bash run_gnaq_samples_bwa_180.sh
 # Download GNAQ reads from EBI
 bash download_gnaq_reads.sh
 
-# Run ParaDISM on all samples with bwa-mem2 threshold=180
-bash run_gnaq_samples_bwa_180.sh
+# Run ParaDISM on all samples with bwa-mem2 threshold=160
+bash run_gnaq_samples_bwa_160.sh
 
-# Base counts at selected positions (outputs to base_counts_180/)
-bash make_base_counts_csvs.sh bwa-mem2_180_output
+# Base counts at selected positions (outputs to base_counts_160/)
+bash make_base_counts_csvs.sh bwa-mem2_160_output
 ```
 
 ## Samples
@@ -33,7 +33,7 @@ bash make_base_counts_csvs.sh bwa-mem2_180_output
 
 ## Configuration
 
-- Aligner: bwa-mem2 (threshold=180)
+- Aligner: bwa-mem2 (threshold=160)
 - Threads: 12
 - Iterations: 10
 - Reference: gnaq-gnaqp_ref.fa
@@ -43,6 +43,6 @@ bash make_base_counts_csvs.sh bwa-mem2_180_output
 ```
 gnaq_analysis/
 ├── GNAQ_reads/                  # Downloaded FASTQ files
-├── bwa-mem2_180_output/         # ParaDISM results
-└── base_counts_180/             # Base counts at selected positions
+├── bwa-mem2_160_output/         # ParaDISM results
+└── base_counts_160/             # Base counts at selected positions
 ```

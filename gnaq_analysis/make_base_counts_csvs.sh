@@ -3,7 +3,7 @@
 # Usage: bash gnaq_analysis/make_base_counts_csvs.sh <output_base_dir>
 #
 # Example:
-#   bash gnaq_analysis/make_base_counts_csvs.sh gnaq_analysis/bwa-mem2_180_output
+#   bash gnaq_analysis/make_base_counts_csvs.sh gnaq_analysis/bwa-mem2_160_output
 
 set -euo pipefail
 
@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ $# -ne 1 ]]; then
     echo "Usage: $0 <output_base_dir>"
-    echo "  e.g. $0 gnaq_analysis/bwa-mem2_180_output"
+    echo "  e.g. $0 gnaq_analysis/bwa-mem2_160_output"
     exit 1
 fi
 
@@ -22,7 +22,7 @@ if [[ ! -d "$OUTPUT_BASE" ]]; then
     exit 1
 fi
 
-# Extract threshold from dir name (e.g. bwa-mem2_180_output -> 180)
+# Extract threshold from dir name (e.g. bwa-mem2_160_output -> 160)
 DIR_NAME="$(basename "$OUTPUT_BASE")"
 THRESHOLD="$(echo "$DIR_NAME" | grep -oP '\d+(?=_output)')"
 if [[ -z "$THRESHOLD" ]]; then
