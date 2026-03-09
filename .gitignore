@@ -33,3 +33,4 @@ vcf_out_30x
 vcf_out_10x_noqual
 simulation/simulations_outputs_1000
 vcf_out_full
+hts_analysis/annotations
