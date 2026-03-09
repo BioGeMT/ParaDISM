@@ -80,24 +80,32 @@ def parse_metrics_from_csv(csv_path: Path) -> dict:
     }
 
 
-def calculate_specificity(y_true, y_pred, labels):
-    """Calculate overall specificity."""
+def calculate_specificity(y_true, y_pred, labels, exclude_labels=None):
+    """Calculate support-weighted per-class specificity (TN / (TN + FP))."""
     from sklearn.metrics import confusion_matrix
     cm = confusion_matrix(y_true, y_pred, labels=labels)
-    
-    # Overall specificity: sum of all TNs / (sum of all TNs + sum of all FPs)
-    total_tn = 0
-    total_fp = 0
-    
-    for i, label in enumerate(labels):
-        # TN for this class: all samples not in this class that were correctly not predicted as this class
-        tn = np.sum(cm) - np.sum(cm[i, :]) - np.sum(cm[:, i]) + cm[i, i]
-        # FP for this class: all samples not in this class that were incorrectly predicted as this class
-        fp = np.sum(cm[:, i]) - cm[i, i]
-        total_tn += tn
-        total_fp += fp
-    
-    return total_tn / (total_tn + total_fp) if (total_tn + total_fp) > 0 else 0.0
+
+    exclude_labels = set(exclude_labels or [])
+    classes = [(i, label) for i, label in enumerate(labels) if label not in exclude_labels]
+    if not classes:
+        classes = list(enumerate(labels))
+
+    specificities = []
+    supports = []
+    for i, _ in classes:
+        tp = cm[i, i]
+        fp = np.sum(cm[:, i]) - tp
+        fn = np.sum(cm[i, :]) - tp
+        tn = np.sum(cm) - tp - fp - fn
+        spec = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        support = np.sum(cm[i, :])
+        specificities.append(spec)
+        supports.append(support)
+
+    total_support = float(np.sum(supports))
+    if total_support == 0.0:
+        return float(np.mean(specificities)) if specificities else 0.0
+    return float(np.average(specificities, weights=supports))
 
 
 def extract_metrics_from_summary(summary_path: Path) -> dict:
@@ -145,13 +153,13 @@ def extract_metrics_from_summary(summary_path: Path) -> dict:
     prec_mapper, rec_mapper, _, support_mapper = precision_recall_fscore_support(
         ground_truth, mapper_pred, labels=all_labels, average='weighted', zero_division=0
     )
-    spec_mapper = calculate_specificity(ground_truth, mapper_pred, all_labels)
+    spec_mapper = calculate_specificity(ground_truth, mapper_pred, all_labels, exclude_labels={"NONE"})
     
     # Calculate metrics for direct aligner baseline
     prec_direct, rec_direct, _, support_direct = precision_recall_fscore_support(
         ground_truth, direct_pred, labels=all_labels, average='weighted', zero_division=0
     )
-    spec_direct = calculate_specificity(ground_truth, direct_pred, all_labels)
+    spec_direct = calculate_specificity(ground_truth, direct_pred, all_labels, exclude_labels={"NONE"})
     
     return {
         'mapper': {
