@@ -17,9 +17,12 @@ SRC_DIR = Path(__file__).parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from pipeline.executor import SimpleParaDISMExecutor
-from ui.interactive import interactive_mode
-from ui.ui_components import console
+def _lazy_imports():
+    """Import heavy pipeline modules only when needed (not for liftover)."""
+    from pipeline.executor import SimpleParaDISMExecutor
+    from ui.interactive import interactive_mode
+    from ui.ui_components import console
+    return SimpleParaDISMExecutor, interactive_mode, console
 
 
 def _restore_cursor() -> None:
@@ -33,6 +36,7 @@ atexit.register(_restore_cursor)
 
 def run_with_arguments(args: argparse.Namespace) -> None:
     """Run mapper using explicit command-line arguments (supports both paired-end and single-end)."""
+    SimpleParaDISMExecutor, _, console = _lazy_imports()
 
     if not Path(args.read1).exists():
         console.print(f"[red]✗ R1 file not found: {args.read1}[/red]")
@@ -93,30 +97,34 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   # Interactive mode (scans current directory)
-  python mapper.py
-
-  # Interactive mode with custom input directory
-  python mapper.py --input-dir /path/to/data
+  python paradism.py
 
   # Paired-end mode
-  python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa
+  python paradism.py --read1 r1.fq --read2 r2.fq --reference ref.fa
 
   # Single-end mode
-  python mapper.py --read1 reads.fq --reference ref.fa
+  python paradism.py --read1 reads.fq --reference ref.fa
 
-  # Use existing SAM file
-  python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa --sam mapped.sam
+  # Liftover VCF to chromosomal coordinates
+  python paradism.py liftover --vcf variants.vcf --positions positions.txt -o lifted.vcf
 
-  # Specify aligner and threads
-  python mapper.py --read1 r1.fq --read2 r2.fq --reference ref.fa --aligner bwa-mem2 --threads 16
-
-  # PacBio HiFi single-end
-  python mapper.py --read1 pacbio_hifi.fq --reference ref.fa --aligner minimap2 --minimap2-profile pacbio-hifi
-
-  # Nanopore Q20+ single-end
-  python mapper.py --read1 ont_q20.fq --reference ref.fa --aligner minimap2 --minimap2-profile ont-q20
+  # Liftover BED to chromosomal coordinates
+  python paradism.py liftover --bed exons.bed --positions positions.txt -o lifted.bed
         """,
     )
+
+    # Liftover subcommand
+    subparsers = parser.add_subparsers(dest="command")
+    liftover_parser = subparsers.add_parser(
+        "liftover",
+        help="Convert VCF/BED from gene-local to chromosomal coordinates",
+        formatter_class=CustomHelpFormatter,
+    )
+    liftover_parser.add_argument("--positions", required=True, help="Gene positions file (e.g., PKD1_b38_pseudogene_positions.txt)")
+    liftover_parser.add_argument("--output", "-o", required=True, help="Output file path")
+    liftover_group = liftover_parser.add_mutually_exclusive_group(required=True)
+    liftover_group.add_argument("--vcf", help="Input VCF file to liftover")
+    liftover_group.add_argument("--bed", help="Input BED file to liftover")
 
     required = parser.add_argument_group(
         "Required arguments (argument-driven mode)",
@@ -226,10 +234,18 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    # Handle liftover subcommand
+    if args.command == "liftover":
+        from liftover import run_liftover
+        run_liftover(args)
+        return
+
     # Check if we have minimum required arguments for CLI mode
     if args.read1 and args.reference:
         run_with_arguments(args)
         return
+
+    _, interactive_mode, console = _lazy_imports()
 
     # Partial arguments provided
     if any([args.read1, args.reference]):
@@ -254,5 +270,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        console.print("\n[red]✗ Pipeline cancelled by user[/red]")
+        print("\n✗ Pipeline cancelled by user")
         sys.exit(1)

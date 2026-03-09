@@ -141,10 +141,10 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
     all_qnames = set()
 
     for alignment in AlignmentIterator(sam_path):
-        if alignment.target is None:
-            continue  # Skip unmapped reads
         qname = alignment.query.id
         all_qnames.add(qname)
+        if alignment.target is None:
+            continue  # Keep as NONE (no c1 signal) during final assignment
 
         c1_dict, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
 

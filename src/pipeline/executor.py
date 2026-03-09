@@ -123,6 +123,233 @@ class SimpleParaDISMExecutor:
         
         return merged
 
+    def _write_none_read_fastqs(
+        self,
+        assignments: dict[str, str],
+        r1_path: str,
+        r2_path: str | None,
+        output_dir: Path,
+    ) -> tuple[Path | None, Path | None]:
+        """Write final NONE-read FASTQs for manual inspection."""
+        none_reads = self._extract_none_reads_from_assignments(assignments)
+        if not none_reads:
+            return None, None
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        none_r1 = output_dir / f"{self.prefix}_NONE_r1.fq"
+        r1_count = self._extract_reads_from_fastq(Path(r1_path), none_reads, none_r1)
+        none_r2 = None
+
+        if r2_path:
+            none_r2 = output_dir / f"{self.prefix}_NONE_r2.fq"
+            self._extract_reads_from_fastq(Path(r2_path), none_reads, none_r2)
+
+        if r1_count == 0:
+            if none_r1.exists():
+                none_r1.unlink()
+            if none_r2 and none_r2.exists():
+                none_r2.unlink()
+            return None, None
+
+        return none_r1, none_r2
+
+    def _map_none_reads_to_full_reference(
+        self,
+        none_r1: Path,
+        none_r2: Path | None,
+        ref: Path,
+        output_dir: Path,
+        aligner: str,
+        threads: int,
+        minimap2_profile: str,
+        bowtie2_score_min: str = "G,40,40",
+        bwa_min_score: int = 240,
+        minimap2_min_score: int = 240,
+    ) -> None:
+        """Map NONE reads against the full multi-reference FASTA."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        index_base = output_dir / f"{self.prefix}_NONE_all_refs_index"
+        sam_path = output_dir / f"{self.prefix}_NONE_all_refs.sam"
+        bam_path = output_dir / f"{self.prefix}_NONE_all_refs.bam"
+        sorted_bam = output_dir / f"{self.prefix}_NONE_all_refs.sorted.bam"
+
+        if aligner == "bowtie2":
+            subprocess.run(
+                f"bowtie2-build '{ref}' '{index_base}'",
+                shell=True,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if none_r2 is not None:
+                subprocess.run(
+                    f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -1 '{none_r1}' -2 '{none_r2}' -S '{sam_path}'",
+                    shell=True,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.run(
+                    f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -U '{none_r1}' -S '{sam_path}'",
+                    shell=True,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        elif aligner == "bwa-mem2":
+            subprocess.run(
+                f"bwa-mem2 index -p '{index_base}' '{ref}'",
+                shell=True,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            awk_filter = (
+                "awk '/^@/{print;next} $3==\"*\"{print;next} "
+                "{for(i=12;i<=NF;i++)if($i~/^AS:i:/){split($i,a,\":\");if(a[3]>="
+                f"{bwa_min_score})print;next}}'"
+            )
+            if none_r2 is not None:
+                subprocess.run(
+                    f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{none_r1}' '{none_r2}' | {awk_filter} > '{sam_path}'",
+                    shell=True,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.run(
+                    f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{none_r1}' | {awk_filter} > '{sam_path}'",
+                    shell=True,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        elif aligner == "minimap2":
+            preset_map = {
+                "short": "sr",
+                "pacbio-hifi": "map-hifi",
+                "pacbio-clr": "map-pb",
+                "ont-q20": "lr:hq",
+                "ont-standard": "map-ont",
+            }
+            preset = preset_map.get(minimap2_profile, "sr")
+            score_threshold = f"-s {minimap2_min_score}" if preset == "sr" else ""
+            index_mmi = f"{index_base}.mmi"
+            subprocess.run(
+                f"minimap2 -x {preset} -d '{index_mmi}' '{ref}'",
+                shell=True,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if none_r2 is not None:
+                subprocess.run(
+                    f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{index_mmi}' '{none_r1}' '{none_r2}' > '{sam_path}'",
+                    shell=True,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.run(
+                    f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{index_mmi}' '{none_r1}' > '{sam_path}'",
+                    shell=True,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+        subprocess.run(
+            f"samtools view -b '{sam_path}' > '{bam_path}'",
+            shell=True,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            f"samtools sort -o '{sorted_bam}' '{bam_path}'",
+            shell=True,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            f"samtools index '{sorted_bam}'",
+            shell=True,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        if sam_path.exists():
+            sam_path.unlink()
+        if bam_path.exists():
+            bam_path.unlink()
+
+        if aligner == "bowtie2":
+            for ext in [
+                ".1.bt2",
+                ".2.bt2",
+                ".3.bt2",
+                ".4.bt2",
+                ".rev.1.bt2",
+                ".rev.2.bt2",
+                ".1.bt2l",
+                ".2.bt2l",
+                ".3.bt2l",
+                ".4.bt2l",
+                ".rev.1.bt2l",
+                ".rev.2.bt2l",
+            ]:
+                index_file = Path(f"{index_base}{ext}")
+                if index_file.exists():
+                    index_file.unlink()
+        elif aligner == "bwa-mem2":
+            for ext in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]:
+                index_file = Path(f"{index_base}{ext}")
+                if index_file.exists():
+                    index_file.unlink()
+        elif aligner == "minimap2":
+            index_file = Path(f"{index_base}.mmi")
+            if index_file.exists():
+                index_file.unlink()
+
+    def _write_none_read_inspection_outputs(
+        self,
+        assignments: dict[str, str],
+        r1_path: str,
+        r2_path: str | None,
+        ref: Path,
+        final_outputs_dir: Path,
+        aligner: str,
+        threads: int,
+        minimap2_profile: str,
+        bowtie2_score_min: str = "G,40,40",
+        bwa_min_score: int = 240,
+        minimap2_min_score: int = 240,
+    ) -> None:
+        """Write and map unresolved NONE reads for manual inspection."""
+        none_dir = final_outputs_dir / f"{self.prefix}_none"
+        none_r1, none_r2 = self._write_none_read_fastqs(assignments, r1_path, r2_path, none_dir)
+        if none_r1 is None:
+            return
+
+        self._map_none_reads_to_full_reference(
+            none_r1=none_r1,
+            none_r2=none_r2,
+            ref=ref,
+            output_dir=none_dir,
+            aligner=aligner,
+            threads=threads,
+            minimap2_profile=minimap2_profile,
+            bowtie2_score_min=bowtie2_score_min,
+            bwa_min_score=bwa_min_score,
+            minimap2_min_score=minimap2_min_score,
+        )
+
     def _run_single_iteration_refinement(
         self,
         r1: str,
@@ -601,6 +828,19 @@ class SimpleParaDISMExecutor:
                         bwa_min_score,
                         minimap2_min_score
                     )
+                self._write_none_read_inspection_outputs(
+                    assignments=final_output['assignments'],
+                    r1_path=r1,
+                    r2_path=r2,
+                    ref=original_ref,
+                    final_outputs_dir=final_outputs_dir,
+                    aligner=aligner,
+                    threads=threads,
+                    minimap2_profile=minimap2_profile,
+                    bowtie2_score_min=bowtie2_score_min,
+                    bwa_min_score=bwa_min_score,
+                    minimap2_min_score=minimap2_min_score,
+                )
 
             print(f"\n  Iterative refinement complete.\n", file=sys.stderr)
             
@@ -633,6 +873,19 @@ class SimpleParaDISMExecutor:
                         bwa_min_score,
                         minimap2_min_score
                     )
+                self._write_none_read_inspection_outputs(
+                    assignments=current_assignments,
+                    r1_path=r1,
+                    r2_path=r2,
+                    ref=original_ref,
+                    final_outputs_dir=final_outputs_dir,
+                    aligner=aligner,
+                    threads=threads,
+                    minimap2_profile=minimap2_profile,
+                    bowtie2_score_min=bowtie2_score_min,
+                    bwa_min_score=bwa_min_score,
+                    minimap2_min_score=minimap2_min_score,
+                )
 
             self._run_spinner(_write_final_outputs, "Writing final outputs")
 

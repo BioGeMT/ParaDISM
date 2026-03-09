@@ -1,11 +1,16 @@
-giab_benchmark/giab_hg002_output_bowtie2_G40_min5_qfilters
-giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters
+# GIAB outputs
+giab_benchmark/giab_hg002_output_bowtie2_G40_min5_qfilters/
+giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters/
+giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters_old_*/
 giab_benchmark/giab_hg002_reads
 giab_benchmark/giab_hg002_vcf
 gnaq_analysis/GNAQ_reads
 gnaq_analysis/bwa-mem2_160_output
 /homes/dtzim01/ParaDISM/gnaq_analysis/bwa-mem2_160_output
-hts_analysis/
+# HTS outputs
+hts_analysis/HTS_*/
+hts_analysis/old/
+hts_inputs/
 simulation/dwgsim
 simulation/pkd_reads_dwgsim
 simulation/simulations_outputs
@@ -15,3 +20,16 @@ __pycache__/
 *ref.fa
 *.fai
 gnaq_analysis/bwa-mem2_180_output
+simulation/simulations_outputs_old
+gnaq_analysis/base_counts_160
+giab_benchmark/giab_hg002_output_bowtie2_G60_min5_noqf
+giab_benchmark/vcf_out 
+simulation/simulations_outputs_100
+giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters_genome10x_balanced_v1
+giab_benchmark/giab_hg002_output_bowtie2_G60_min5_qfilters_genome30x_balanced_v1
+giab_benchmark/vcf_out_10x
+giab_benchmark/giab_hg002_output_bowtie2_G60_noqual_genome10x_balanced_v1
+vcf_out_30x
+vcf_out_10x_noqual
+simulation/simulations_outputs_1000
+vcf_out_full

@@ -147,6 +147,12 @@ output_dir/
         └── ...
 ```
 
+If unresolved reads remain (`NONE` assignments), ParaDISM also writes:
+- `final_outputs/<prefix>_none/<prefix>_NONE_r1.fq`
+- `final_outputs/<prefix>_none/<prefix>_NONE_r2.fq` (paired-end only)
+- `final_outputs/<prefix>_none/<prefix>_NONE_all_refs.sorted.bam`
+- `final_outputs/<prefix>_none/<prefix>_NONE_all_refs.sorted.bam.bai`
+
 **Note:** Intermediate files (MSA, SAM, indices) are created during processing but cleaned up automatically. Only final outputs are retained.
 
 ## Iterative Refinement
