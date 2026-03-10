@@ -753,6 +753,7 @@ class SimpleParaDISMExecutor:
         )
         current_ref = Path(ref)
         current_bam_dir = bam_dir
+        final_msa = msa_output
 
         # Store iteration outputs (only if we'll have multiple iterations)
         iteration_outputs = []
@@ -800,6 +801,7 @@ class SimpleParaDISMExecutor:
                     'assignments': current_assignments,
                     'bam_dir': iter_bam_dir,
                 })
+                final_msa = iter_output_dir / "ref_seq_msa.aln"
 
             # Write final outputs from converged/merged assignments
             final_output = iteration_outputs[-1]
@@ -841,6 +843,7 @@ class SimpleParaDISMExecutor:
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
                 )
+                shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
 
             print(f"\n  Iterative refinement complete.\n", file=sys.stderr)
             
@@ -886,6 +889,7 @@ class SimpleParaDISMExecutor:
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
                 )
+                shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
 
             self._run_spinner(_write_final_outputs, "Writing final outputs")
 
