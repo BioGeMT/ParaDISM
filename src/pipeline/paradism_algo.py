@@ -239,10 +239,30 @@ def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str 
     return sorted(processed_genes)
 
 
+def _split_interleaved_fastq(fastq_file: str, r1_fastq: str, r2_fastq: str) -> None:
+    """Split an interleaved paired-end FASTQ into mate-specific FASTQs."""
+    with open(fastq_file, "r") as infile, open(r1_fastq, "w") as r1_out, open(r2_fastq, "w") as r2_out:
+        while True:
+            header = infile.readline()
+            if not header:
+                break
+
+            sequence = infile.readline()
+            plus = infile.readline()
+            quality = infile.readline()
+            record = f"{header}{sequence}{plus}{quality}"
+
+            if header.split()[0].endswith("/1"):
+                r1_out.write(record)
+            else:
+                r2_out.write(record)
+
+
 def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_dir: str,
                      aligner: str = 'bwa-mem2', threads: int = 4, minimap2_profile: str = 'short',
                      prefix: str = "", bowtie2_score_min: str = "G,40,40",
-                     bwa_min_score: int = 240, minimap2_min_score: int = 240) -> None:
+                     bwa_min_score: int = 240, minimap2_min_score: int = 240,
+                     is_paired: bool = False) -> None:
     """Create BAM files for each gene."""
     ref_db = {}
     for record in SeqIO.parse(ref_fasta, "fasta"):
@@ -267,19 +287,30 @@ def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_di
         sam_path = os.path.join(output_dir, f"{bam_filename_base}.sam")
         bam_path = os.path.join(output_dir, f"{bam_filename_base}.bam")
         sorted_bam = os.path.join(output_dir, f"{bam_filename_base}.sorted.bam")
+        r1_fastq = os.path.join(output_dir, f"{bam_filename_base}_R1.fq")
+        r2_fastq = os.path.join(output_dir, f"{bam_filename_base}_R2.fq")
 
         # Write per-gene reference
         with open(tmp_ref, "w") as f:
             f.write(f">{gene}\n{ref_db[gene]}\n")
 
+        if is_paired:
+            _split_interleaved_fastq(fastq_file, r1_fastq, r2_fastq)
+
         # Build index and align (suppress verbose output)
         if aligner == 'bowtie2':
             subprocess.run(f"bowtie2-build {tmp_ref} {index_base}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
-            subprocess.run(f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            if is_paired:
+                subprocess.run(f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x {index_base} -1 {r1_fastq} -2 {r2_fastq} -S {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            else:
+                subprocess.run(f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x {index_base} -U {fastq_file} -S {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
         elif aligner == 'bwa-mem2':
             subprocess.run(f"bwa-mem2 index -p {index_base} {tmp_ref}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
             awk_filter = f"awk '/^@/{{print;next}} $3==\"*\"{{print;next}} {{for(i=12;i<=NF;i++)if($i~/^AS:i:/){{split($i,a,\":\");if(a[3]>={bwa_min_score})print;next}}}}'"
-            subprocess.run(f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} {index_base} {fastq_file} | {awk_filter} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            if is_paired:
+                subprocess.run(f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} {index_base} {r1_fastq} {r2_fastq} | {awk_filter} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            else:
+                subprocess.run(f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} {index_base} {fastq_file} | {awk_filter} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
         elif aligner == 'minimap2':
             preset_map = {
                 'short': 'sr',
@@ -292,7 +323,10 @@ def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_di
             score_threshold = f"-s {minimap2_min_score}" if preset == "sr" else ""
             index_mmi = f"{index_base}.mmi"
             subprocess.run(f"minimap2 -x {preset} -d {index_mmi} {tmp_ref}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
-            subprocess.run(f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} {index_mmi} {fastq_file} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            if is_paired:
+                subprocess.run(f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} {index_mmi} {r1_fastq} {r2_fastq} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
+            else:
+                subprocess.run(f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} {index_mmi} {fastq_file} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
 
         # Convert to BAM (suppress verbose output)
         subprocess.run(f"samtools view -b {sam_path} > {bam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
@@ -303,6 +337,9 @@ def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_di
         os.remove(tmp_ref)
         os.remove(sam_path)
         os.remove(bam_path)
+        if is_paired:
+            os.remove(r1_fastq)
+            os.remove(r2_fastq)
 
         if aligner == 'bowtie2':
             for ext in ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2', '.rev.2.bt2']:
@@ -377,7 +414,8 @@ def main():
             args.aligner,
             args.threads,
             args.minimap2_profile,
-            args.prefix
+            args.prefix,
+            is_paired=args.r2 is not None,
         )
 
 

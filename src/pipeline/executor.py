@@ -565,6 +565,7 @@ class SimpleParaDISMExecutor:
                     bowtie2_score_min,
                     bwa_min_score,
                     minimap2_min_score,
+                    is_paired=is_paired,
                 )
 
         self._run_spinner(_write_iteration_outputs, "Writing merged iteration outputs")
@@ -744,7 +745,20 @@ class SimpleParaDISMExecutor:
             assignments = process_sam_to_dict(str(sam_output), msa_obj, seq_to_aln, gene_names)
             genes = write_fastq_outputs(assignments, r1, r2, str(fastq_dir), self.prefix)
             if genes:
-                create_bam_files(genes, ref, str(fastq_dir), str(bam_dir), aligner, threads, minimap2_profile, self.prefix, bowtie2_score_min, bwa_min_score, minimap2_min_score)
+                create_bam_files(
+                    genes,
+                    ref,
+                    str(fastq_dir),
+                    str(bam_dir),
+                    aligner,
+                    threads,
+                    minimap2_profile,
+                    self.prefix,
+                    bowtie2_score_min,
+                    bwa_min_score,
+                    minimap2_min_score,
+                    is_paired=is_paired,
+                )
             return assignments
 
         current_assignments = self._run_spinner(
@@ -828,7 +842,8 @@ class SimpleParaDISMExecutor:
                         self.prefix,
                         bowtie2_score_min,
                         bwa_min_score,
-                        minimap2_min_score
+                        minimap2_min_score,
+                        is_paired=is_paired,
                     )
                 self._write_none_read_inspection_outputs(
                     assignments=final_output['assignments'],
@@ -874,7 +889,8 @@ class SimpleParaDISMExecutor:
                         self.prefix,
                         bowtie2_score_min,
                         bwa_min_score,
-                        minimap2_min_score
+                        minimap2_min_score,
+                        is_paired=is_paired,
                     )
                 self._write_none_read_inspection_outputs(
                     assignments=current_assignments,
