@@ -4,7 +4,7 @@ This directory contains a self-contained synthetic example that does not use
 manuscript or private data:
 
 - `ref.fa`: two short homologous reference contigs
-- `generate_demo_reads.sh`: generates a small paired-end read set with `dwgsim`
+- `generate_demo_reads.sh`: generates 20 paired-end read pairs with `dwgsim`
 - `run_demo.sh`: generates missing reads, runs ParaDISM with Bowtie2 for one
   iteration, and checks the expected outputs
 

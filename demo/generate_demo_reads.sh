@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REFERENCE="${SCRIPT_DIR}/ref.fa"
 OUT_DIR="${OUT_DIR:-${SCRIPT_DIR}/generated_reads}"
 PREFIX="${OUT_DIR}/demo_seed1"
+READ_PAIRS=20
 
 command -v dwgsim >/dev/null 2>&1 || {
     echo "ERROR: dwgsim not found on PATH. Activate the paradism environment first." >&2
@@ -14,7 +15,7 @@ command -v dwgsim >/dev/null 2>&1 || {
 mkdir -p "$OUT_DIR"
 dwgsim \
     -z 1 \
-    -N 20 \
+    -N "$READ_PAIRS" \
     -1 150 -2 150 \
     -d 350 -s 35 \
     -y 0 \
@@ -25,6 +26,6 @@ dwgsim \
 gzip -cd "${PREFIX}.bwa.read1.fastq.gz" > "${OUT_DIR}/reads_R1.fq"
 gzip -cd "${PREFIX}.bwa.read2.fastq.gz" > "${OUT_DIR}/reads_R2.fq"
 
-echo "Generated demo reads:"
+echo "Generated ${READ_PAIRS} paired-end demo read pairs:"
 echo "  ${OUT_DIR}/reads_R1.fq"
 echo "  ${OUT_DIR}/reads_R2.fq"

@@ -42,7 +42,7 @@ bash demo/run_demo.sh
 The demo uses:
 
 - `demo/ref.fa`
-- generated reads under `demo/generated_reads/`
+- 20 generated paired-end read pairs under `demo/generated_reads/`
 
 and writes checked outputs to `demo/output/`.
 
