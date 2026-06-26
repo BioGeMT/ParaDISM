@@ -4,8 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-READ1="${SCRIPT_DIR}/reads_R1.fq"
-READ2="${SCRIPT_DIR}/reads_R2.fq"
+READS_DIR="${SCRIPT_DIR}/generated_reads"
+READ1="${READS_DIR}/reads_R1.fq"
+READ2="${READS_DIR}/reads_R2.fq"
 REFERENCE="${SCRIPT_DIR}/ref.fa"
 DEFAULT_OUTPUT_DIR="${SCRIPT_DIR}/output"
 OUTPUT_DIR="${OUTPUT_DIR:-${DEFAULT_OUTPUT_DIR}}"
@@ -38,6 +39,7 @@ check_command mafft
 check_command bowtie2
 check_command bowtie2-build
 check_command samtools
+check_command dwgsim
 
 python - <<'PY' || fail "Required Python packages missing. Activate the paradism environment first."
 import Bio
@@ -45,9 +47,14 @@ import pysam
 import rich
 PY
 
+check_file "$REFERENCE"
+
+if [[ ! -f "$READ1" || ! -f "$READ2" ]]; then
+    OUT_DIR="$READS_DIR" bash "${SCRIPT_DIR}/generate_demo_reads.sh"
+fi
+
 check_file "$READ1"
 check_file "$READ2"
-check_file "$REFERENCE"
 
 case "$OUTPUT_DIR" in
     ""|"/"|"/tmp"|"/var/tmp")

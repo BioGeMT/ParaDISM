@@ -42,8 +42,7 @@ bash demo/run_demo.sh
 The demo uses:
 
 - `demo/ref.fa`
-- `demo/reads_R1.fq`
-- `demo/reads_R2.fq`
+- generated reads under `demo/generated_reads/`
 
 and writes checked outputs to `demo/output/`.
 

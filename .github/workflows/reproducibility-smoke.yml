@@ -30,9 +30,6 @@ jobs:
       - name: Compile CLI utilities
         run: python -m py_compile paradism.py tools/liftover.py
 
-      - name: Regenerate demo reads with dwgsim
-        run: bash demo/generate_demo_reads.sh
-
       - name: Run synthetic benchmark smoke test
         run: |
           bash benchmark/simulation/run_simulation.sh \
