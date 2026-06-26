@@ -93,6 +93,28 @@ output/
     └── <prefix>_none/                # optional unresolved-read outputs
 ```
 
+## Liftover
+
+ParaDISM outputs use gene-local contig coordinates. To convert VCF or BED files
+back to chromosomal coordinates, use the liftover subcommand:
+
+```bash
+python paradism.py liftover \
+  --bed benchmark/references/pkd1_exons.bed \
+  --positions positions.txt \
+  --output lifted_exons.bed
+```
+
+The liftover implementation is also available as `tools/liftover.py`. The
+`--positions` file must define the chromosomal interval and strand for each
+gene/reference contig being lifted. Each line should end with
+`CHR:START-END:STRAND`, for example:
+
+```text
+PKD1 16:2088708-2135898:1
+PKD1P1 16:16310341-16334190:1
+```
+
 ## Reproducible Benchmarks
 
 Reviewer-facing benchmark workflows are under `benchmark/`:

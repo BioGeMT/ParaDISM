@@ -27,6 +27,9 @@ jobs:
       - name: Run self-contained demo
         run: bash demo/run_demo.sh
 
+      - name: Compile CLI utilities
+        run: python -m py_compile paradism.py tools/liftover.py
+
       - name: Regenerate demo reads with dwgsim
         run: bash demo/generate_demo_reads.sh
 

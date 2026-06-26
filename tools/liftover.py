@@ -9,8 +9,8 @@ positions to standard chromosomal coordinates so they can be compared with
 results from standard mapping/calling pipelines.
 
 Usage:
-    python src/liftover.py --vcf input.vcf --positions positions.txt --output lifted.vcf
-    python src/liftover.py --bed input.bed --positions positions.txt --output lifted.bed
+    python tools/liftover.py --vcf input.vcf --positions positions.txt --output lifted.vcf
+    python tools/liftover.py --bed input.bed --positions positions.txt --output lifted.bed
 """
 
 import argparse
@@ -237,7 +237,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description="Liftover ParaDISM VCF/BED from gene-local to chromosomal coordinates",
     )
-    parser.add_argument("--positions", required=True, help="Gene positions file (e.g., PKD1_b38_pseudogene_positions.txt)")
+    parser.add_argument("--positions", required=True, help="Gene positions file with chromosomal source intervals")
     parser.add_argument("--output", "-o", required=True, help="Output file path")
 
     group = parser.add_mutually_exclusive_group(required=True)

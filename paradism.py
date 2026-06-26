@@ -16,6 +16,9 @@ from pathlib import Path
 SRC_DIR = Path(__file__).parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+TOOLS_DIR = Path(__file__).parent / "tools"
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
 
 def _lazy_imports():
     """Import heavy pipeline modules only when needed (not for liftover)."""
@@ -109,7 +112,7 @@ Examples:
   python paradism.py liftover --vcf variants.vcf --positions positions.txt -o lifted.vcf
 
   # Liftover BED to chromosomal coordinates
-  python paradism.py liftover --bed exons.bed --positions positions.txt -o lifted.bed
+  python paradism.py liftover --bed benchmark/references/pkd1_exons.bed --positions positions.txt -o lifted.bed
         """,
     )
 
@@ -120,7 +123,7 @@ Examples:
         help="Convert VCF/BED from gene-local to chromosomal coordinates",
         formatter_class=CustomHelpFormatter,
     )
-    liftover_parser.add_argument("--positions", required=True, help="Gene positions file (e.g., PKD1_b38_pseudogene_positions.txt)")
+    liftover_parser.add_argument("--positions", required=True, help="Gene positions file with chromosomal source intervals")
     liftover_parser.add_argument("--output", "-o", required=True, help="Output file path")
     liftover_group = liftover_parser.add_mutually_exclusive_group(required=True)
     liftover_group.add_argument("--vcf", help="Input VCF file to liftover")

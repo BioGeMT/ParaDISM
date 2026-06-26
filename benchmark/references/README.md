@@ -5,6 +5,11 @@ demo and benchmark workflows. Each FASTA represents one multi-sequence
 gene/paralog group and can be passed directly to `paradism.py` or
 `benchmark/simulation/run_simulation.sh`.
 
+Additional reference annotation files:
+
+- `pkd1_exons.bed`: PKD1/PKD1P gene-local exon intervals for the committed
+  `pkd1_panel.fa` reference.
+
 Included groups:
 
 - `cfh_cfhr_cluster.fa`
