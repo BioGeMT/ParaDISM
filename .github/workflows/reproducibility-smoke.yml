@@ -1,0 +1,43 @@
+name: Reproducibility smoke tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  demo-and-simulation:
+    name: Demo and simulation smoke test
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create pinned environment
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          environment-name: paradism
+          cache-environment: true
+          cache-downloads: true
+
+      - name: Run self-contained demo
+        run: bash demo/run_demo.sh
+
+      - name: Regenerate demo reads with dwgsim
+        run: bash demo/generate_demo_reads.sh
+
+      - name: Run synthetic benchmark smoke test
+        run: |
+          bash benchmark/simulation/run_simulation.sh \
+            --group hba_pair \
+            --reference benchmark/references/hba_pair.fa \
+            --seeds 1 \
+            --reads-per-seed 20 \
+            --aligners bowtie2 \
+            --iterations 1 \
+            --threads 1 \
+            --out results/simulation/smoke_hba_pair
