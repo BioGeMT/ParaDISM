@@ -27,10 +27,13 @@ they are clearly separated from the minimal demo.
 - `prepare_giab_truth.sh`: prepares GIAB truth and benchmark regions in the
   gene-coordinate system expected by ParaDISM evaluation.
 - `run_giab.sh`: runs ParaDISM on the prepared GIAB read set.
-- `run_variant_calling_to_vcf_out.sh`: calls and evaluates variants from
+- `run_variant_calling_to_vcf_out.sh`: calls variants and writes evaluation
+  metrics from
   ParaDISM and direct/base-aligner outputs.
-- `call_variants_raw_g60.sh`, `filter_simple_snps_acgt_final.sh`, and helper
-  Python scripts: variant calling/filtering utilities used by the benchmark.
+- `call_variants_raw_g60.sh`, `filter_simple_snps_acgt_final.sh`,
+  `evaluate_final_vcfs.py`, `evaluate_coverage_split.py`, and helper Python
+  scripts: variant calling/filtering/evaluation utilities used by the
+  benchmark.
 
 ## Minimal Command Sequence
 

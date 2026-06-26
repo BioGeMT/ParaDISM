@@ -12,7 +12,6 @@ import pysam
 import pandas as pd
 import numpy as np
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support, accuracy_score
-import matplotlib.pyplot as plt
 from Bio import SeqIO
 
 
@@ -239,92 +238,6 @@ def calculate_metrics(y_true, y_pred, labels):
     }
 
 
-def create_grouped_bar_chart(metrics_mapper, metrics_direct, labels, aligner_name, output_path):
-    """
-    Create a 3-panel horizontal grouped bar chart showing precision, recall, and specificity.
-    Each panel has 8 groups (7 genes + overall), each with 2 bars (mapper vs direct aligner).
-    """
-    # Prepare data
-    genes = [label for label in labels if label != 'NONE']
-    display_labels = genes + ['Overall']
-
-    # Extract metrics for genes (excluding NONE)
-    mapper_precision = [metrics_mapper['precision'][i] for i, label in enumerate(labels) if label != 'NONE']
-    mapper_recall = [metrics_mapper['recall'][i] for i, label in enumerate(labels) if label != 'NONE']
-    mapper_specificity = [metrics_mapper['specificity'][i] for i, label in enumerate(labels) if label != 'NONE']
-
-    direct_precision = [metrics_direct['precision'][i] for i, label in enumerate(labels) if label != 'NONE']
-    direct_recall = [metrics_direct['recall'][i] for i, label in enumerate(labels) if label != 'NONE']
-    direct_specificity = [metrics_direct['specificity'][i] for i, label in enumerate(labels) if label != 'NONE']
-
-    # Add overall metrics
-    mapper_precision.append(metrics_mapper['precision_overall'])
-    mapper_recall.append(metrics_mapper['recall_overall'])
-    mapper_specificity.append(metrics_mapper['specificity_overall'])
-
-    direct_precision.append(metrics_direct['precision_overall'])
-    direct_recall.append(metrics_direct['recall_overall'])
-    direct_specificity.append(metrics_direct['specificity_overall'])
-
-    # Set font sizes
-    plt.rcParams.update({
-        'font.size': 14,
-        'axes.titlesize': 18,
-        'axes.labelsize': 16,
-        'xtick.labelsize': 14,
-        'ytick.labelsize': 14,
-        'legend.fontsize': 14,
-        'font.weight': 'bold',
-        'axes.titleweight': 'bold',
-        'axes.labelweight': 'bold'
-    })
-
-    # Create figure with 3 subplots
-    fig, axes = plt.subplots(1, 3, figsize=(22, 8))
-
-    y_pos = np.arange(len(display_labels))
-    bar_height = 0.35
-
-    # Panel 1: Precision
-    axes[0].barh(y_pos - bar_height/2, mapper_precision, bar_height, label='paradism', color='red')
-    axes[0].barh(y_pos + bar_height/2, direct_precision, bar_height, label=aligner_name, color='#4682B4')
-    axes[0].set_yticks(y_pos)
-    axes[0].set_yticklabels(display_labels, weight='bold')
-    axes[0].set_xlabel('Precision', weight='bold')
-    axes[0].set_title('Precision', weight='bold')
-    axes[0].set_xlim([0, 1.05])
-    axes[0].grid(axis='x', alpha=0.3)
-    
-    # Panel 2: Recall
-    axes[1].barh(y_pos - bar_height/2, mapper_recall, bar_height, label='paradism', color='red')
-    axes[1].barh(y_pos + bar_height/2, direct_recall, bar_height, label=aligner_name, color='#4682B4')
-    axes[1].set_yticks(y_pos)
-    axes[1].set_yticklabels(display_labels, weight='bold')
-    axes[1].set_xlabel('Recall', weight='bold')
-    axes[1].set_title('Recall', weight='bold')
-    axes[1].set_xlim([0, 1.05])
-    axes[1].grid(axis='x', alpha=0.3)
-    
-    # Panel 3: Specificity
-    axes[2].barh(y_pos - bar_height/2, mapper_specificity, bar_height, label='paradism', color='red')
-    axes[2].barh(y_pos + bar_height/2, direct_specificity, bar_height, label=aligner_name, color='#4682B4')
-    axes[2].set_yticks(y_pos)
-    axes[2].set_yticklabels(display_labels, weight='bold')
-    axes[2].set_xlabel('Specificity', weight='bold')
-    axes[2].set_title('Specificity', weight='bold')
-    axes[2].set_xlim([0, 1.05])
-    axes[2].grid(axis='x', alpha=0.3)
-
-    # Add single legend at top right (moved further away)
-    handles, labels_legend = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels_legend, loc='upper right', bbox_to_anchor=(1.02, 1.02),
-               fontsize=16, frameon=True, fancybox=True, shadow=True)
-
-    plt.tight_layout(rect=[0, 0, 0.98, 0.96])
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-
-
 def print_summary(metrics_mapper, metrics_direct, aligner_name):
     """Print concise summary."""
     print(f"\nMapper:           Prec={metrics_mapper['precision_overall']:.4f}  Rec={metrics_mapper['recall_overall']:.4f}  Spec={metrics_mapper['specificity_overall']:.4f}")
@@ -369,7 +282,7 @@ def main():
     parser.add_argument(
         '--output-prefix',
         default=None,
-        help='Output prefix for plots and reports (default: metrics_{aligner})'
+        help='Output prefix for reports (default: metrics_{aligner})'
     )
 
     args = parser.parse_args()
@@ -427,12 +340,6 @@ def main():
     metrics_mapper = calculate_metrics(y_true, y_mapper, labels)
     metrics_direct = calculate_metrics(y_true, y_direct, labels)
 
-    # Create grouped bar chart
-    create_grouped_bar_chart(
-        metrics_mapper, metrics_direct, labels, args.aligner,
-        f"{args.output_prefix}_comparison.png"
-    )
-
     # Save summary to CSV
     summary_data = {
         'Read_ID': read_ids,
@@ -449,7 +356,6 @@ def main():
     # Print summary
     print_summary(metrics_mapper, metrics_direct, args.aligner)
     print(f"\nOutputs saved to: {analysis_dir}")
-    print(f"  Plot: {Path(args.output_prefix).name}_comparison.png")
     print(f"  CSV:  {Path(csv_path).name}")
 
 

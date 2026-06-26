@@ -48,7 +48,7 @@ bash benchmark/simulation/run_simulation.sh \
 - runs ParaDISM for each requested aligner
 - reuses the initial ParaDISM SAM as the direct-aligner comparison
 - runs per-seed read-assignment analysis
-- writes aggregate metrics and iteration progression CSV/plots
+- writes aggregate metric CSVs and timing data
 
 Important options:
 
@@ -66,6 +66,5 @@ Outputs are written under the selected `--out` directory:
 results/simulation/<group>/
 ├── seed_*/
 ├── aggregated_results/
-├── iteration_plots/
 └── timing_data.csv
 ```

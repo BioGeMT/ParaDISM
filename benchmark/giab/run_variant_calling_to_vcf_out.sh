@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run GIAB post-processing from variant calling to final vcf_out plots/metrics.
+# Run GIAB post-processing from variant calling to final vcf_out metrics.
 #
 # This script assumes ParaDISM alignment/iterations are already finished in --run-dir.
 #
@@ -7,8 +7,8 @@
 #   1) call_variants_raw_g60.sh
 #   2) sort/index simple SNP VCFs
 #   3) final benchmark filtering
-#   4) plot_balanced_comparison.py
-#   5) plot_coverage_split_confusion.py
+#   4) evaluate_final_vcfs.py
+#   5) evaluate_coverage_split.py
 
 set -euo pipefail
 
@@ -23,8 +23,8 @@ BENCHMARK_BED="$SCRIPT_DIR/giab_hg002_vcf/HG002_PKD1_genes_benchmarkable_gene_co
 
 CALL_SCRIPT="$SCRIPT_DIR/call_variants_raw_g60.sh"
 FILTER_SCRIPT="$SCRIPT_DIR/filter_simple_snps_acgt_final.sh"
-PLOT_SCRIPT="$SCRIPT_DIR/plot_balanced_comparison.py"
-PLOT_COV_SCRIPT="$SCRIPT_DIR/plot_coverage_split_confusion.py"
+EVAL_SCRIPT="$SCRIPT_DIR/evaluate_final_vcfs.py"
+COVERAGE_EVAL_SCRIPT="$SCRIPT_DIR/evaluate_coverage_split.py"
 
 usage() {
     cat <<'EOF'
@@ -36,13 +36,13 @@ Usage:
 
 Required:
   --run-dir DIR          ParaDISM run directory (already completed)
-  --out-dir DIR          Output directory for plots/metrics (vcf_out*)
+  --out-dir DIR          Output directory for metrics (vcf_out*)
 
 Optional:
   --threads N            Threads for variant calling sort steps (default: 8)
   --benchmark-bed FILE   Benchmark BED in gene coordinates
                          (default: benchmark/giab/giab_hg002_vcf/HG002_PKD1_genes_benchmarkable_gene_coords.bed)
-  --skip-call            Skip call_variants_raw_g60.sh and only do sort/filter/plots
+  --skip-call            Skip call_variants_raw_g60.sh and only do sort/filter/evaluation
   -h, --help             Show help
 EOF
 }
@@ -110,7 +110,7 @@ if [[ ! -d "$RUN_DIR" ]]; then
     exit 1
 fi
 
-for required in "$CALL_SCRIPT" "$FILTER_SCRIPT" "$PLOT_SCRIPT" "$PLOT_COV_SCRIPT"; do
+for required in "$CALL_SCRIPT" "$FILTER_SCRIPT" "$EVAL_SCRIPT" "$COVERAGE_EVAL_SCRIPT"; do
     if [[ ! -f "$required" ]]; then
         echo "Error: required script not found: $required" >&2
         exit 1
@@ -190,14 +190,14 @@ bash "$FILTER_SCRIPT" \
     --benchmark-bed "$BENCHMARK_BED"
 
 echo ""
-echo "4) Generating comparison plots/metrics..."
-python "$PLOT_SCRIPT" \
+echo "4) Generating comparison metrics..."
+python "$EVAL_SCRIPT" \
     --dataset-dir "$RUN_DIR" \
     --out-dir "$OUT_DIR"
 
 echo ""
-echo "5) Generating coverage-split confusion matrices..."
-python "$PLOT_COV_SCRIPT" \
+echo "5) Generating coverage-split confusion metrics..."
+python "$COVERAGE_EVAL_SCRIPT" \
     --dataset-dir "$RUN_DIR" \
     --out-dir "$OUT_DIR"
 
@@ -205,4 +205,4 @@ echo ""
 echo "Done."
 echo "Final ParaDISM VCF: $PARADISM_FINAL"
 echo "Final Base VCF:     $BASE_FINAL"
-echo "Plots/metrics dir:  $OUT_DIR"
+echo "Metrics dir:        $OUT_DIR"

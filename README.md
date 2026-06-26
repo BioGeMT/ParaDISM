@@ -27,9 +27,6 @@ The environment pins ParaDISM's non-Python tools (`bowtie2`,
 `bwa-mem2`, `minimap2`, `samtools`, `bcftools`, `freebayes`, `mafft`, and
 `dwgsim`) as well as the required Python packages.
 
-The repository also includes a GitHub Actions smoke test on Ubuntu 24.04 that
-creates this environment and runs the demo plus the small simulation check.
-
 ## Quick Demo
 
 Run the included synthetic demo first. It does not require downloads or private
@@ -119,7 +116,7 @@ PKD1P1 16:16310341-16334190:1
 Reviewer-facing benchmark workflows are under `benchmark/`:
 
 - `benchmark/references/`: committed FASTA references for the included
-  paralog groups, plus a helper for building additional Ensembl-based FASTAs.
+  paralog groups.
 - `benchmark/simulation/`: synthetic read simulation with `dwgsim`, followed
   by ParaDISM/direct-aligner read-assignment evaluation.
 - `benchmark/giab/`: public HG002/GIAB benchmark scripts. These require large

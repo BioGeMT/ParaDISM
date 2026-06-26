@@ -243,28 +243,6 @@ run_postprocessing() {
         --output "${out_base}/aggregated_results/per_seed_overall_metrics.csv"
 
     echo "${label}: Aggregation complete!"
-
-    echo "=============================="
-    echo "${label}: Creating iteration progression plots"
-    echo "=============================="
-
-    if (( ITERATIONS <= 1 )); then
-        echo "${label}: Skipping iteration progression plots because --iterations ${ITERATIONS} has no refinement iterations."
-        return
-    fi
-
-    local plot_dir="${out_base}/iteration_plots"
-    mkdir -p "$plot_dir"
-    for aligner in "${ALIGNERS[@]}"; do
-        python "${SCRIPT_DIR}/plot_iteration_progression.py" \
-            --sim-output-base "$SIM_OUTPUT_BASE" \
-            --seed-start "$SEED_START" \
-            --seed-end "$seed_end" \
-            --output-dir "$plot_dir" \
-            --aligner "$aligner"
-    done
-
-    echo "${label}: Iteration plots saved to: $plot_dir"
 }
 
 # ------------------------------------------------------------------
@@ -404,7 +382,7 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
                     samtools view -b "$paradism_sam" | samtools sort -o "$base_bam"
                     samtools index "$base_bam"
 
-                    # Run iteration-by-iteration read mapping analysis (for progression plots)
+                    # Run iteration-by-iteration read mapping analysis.
                     analysis_dir="$aligner_dir/read_mapping_analysis"
                     mkdir -p "$analysis_dir"
 
