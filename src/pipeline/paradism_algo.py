@@ -34,20 +34,20 @@ def load_msa(msa_fasta_path: str):
 
 def process_read(alignment, msa, seq_to_aln, gene_names):
     """
-    Process a single read alignment and check c1/c2 conditions for each gene.
+    Process a single read alignment and collect C1 anchors/C2 status for each gene.
 
     Returns:
-        c1_dict: {gene: bool} - True if read has unique pos for this gene
+        anchor_cols: {gene: set[int]} - MSA columns where the read matches only this gene
         c2_dict: {gene: bool} - True if read has no contradictions for this gene
     """
     if alignment.target is None:
-        return {g: False for g in gene_names}, {g: True for g in gene_names}
+        return {g: set() for g in gene_names}, {g: True for g in gene_names}
     
     ref_gene = alignment.target.id
     gene_idx_map = {g: i for i, g in enumerate(gene_names)}
 
     if ref_gene not in gene_idx_map:
-        return {g: False for g in gene_names}, {g: True for g in gene_names}
+        return {g: set() for g in gene_names}, {g: True for g in gene_names}
 
     ref_idx = gene_idx_map[ref_gene]
 
@@ -103,17 +103,17 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
                 if gene_base != '-' and read_base == gene_base:
                     matching[gene].add(msa_col)
 
-    # Calculate c1 and c2 for each gene
-    c1_dict = {}
+    # Calculate unique C1 anchor columns and C2 for each gene.
+    anchor_cols = {}
     c2_dict = {}
 
     for gene in gene_names:
-        # c1: exists a position where read matches this gene only
-        c1 = any(
-            msa_col in matching[gene] and
-            all(msa_col not in matching[g] for g in gene_names if g != gene)
+        gene_anchor_cols = {
+            msa_col
             for msa_col in all_msa_cols
-        )
+            if msa_col in matching[gene]
+            and all(msa_col not in matching[g] for g in gene_names if g != gene)
+        }
 
         # c2: for all positions, read matches this gene OR matches no other gene
         c2 = all(
@@ -122,21 +122,28 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
             for msa_col in all_msa_cols
         )
 
-        c1_dict[gene] = c1
+        anchor_cols[gene] = gene_anchor_cols
         c2_dict[gene] = c2
 
-    return c1_dict, c2_dict
+    return anchor_cols, c2_dict
 
 
-def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
+def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names, min_anchors=1):
     """
     Process SAM file and assign reads to genes based on c1/c2 conditions.
+
+    Args:
+        min_anchors: Minimum number of distinct gene-unique C1 MSA columns required
+            across all alignments for a read name.
     
     Returns:
         dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
     """
-    # Track c1/c2 per read pair per gene
-    qname_to_c1 = {gene: defaultdict(bool) for gene in gene_names}
+    if min_anchors < 1:
+        raise ValueError("min_anchors must be >= 1")
+
+    # Track C1 anchor columns/C2 per read pair per gene.
+    qname_to_anchor_cols = {gene: defaultdict(set) for gene in gene_names}
     qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
     all_qnames = set()
 
@@ -146,11 +153,11 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
         if alignment.target is None:
             continue  # Keep as NONE (no c1 signal) during final assignment
 
-        c1_dict, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
+        anchor_cols, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
 
         for gene in gene_names:
-            if c1_dict[gene]:
-                qname_to_c1[gene][qname] = True
+            if anchor_cols[gene]:
+                qname_to_anchor_cols[gene][qname].update(anchor_cols[gene])
             if not c2_dict[gene]:
                 qname_to_c2[gene][qname] = False
 
@@ -159,7 +166,7 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names):
     for qname in all_qnames:
         passing_genes = []
         for gene in gene_names:
-            c1 = qname_to_c1[gene][qname]
+            c1 = len(qname_to_anchor_cols[gene][qname]) >= min_anchors
             c2 = qname_to_c2[gene][qname]
             if c1 and c2:
                 passing_genes.append(gene)
@@ -386,14 +393,18 @@ def main():
                         help='Minimap2 profile')
     parser.add_argument('--prefix', default='',
                         help='Prefix for output files')
+    parser.add_argument('--anchors', type=int, default=1,
+                        help='Minimum number of gene-unique C1 anchor positions required for assignment')
 
     args = parser.parse_args()
+    if args.anchors < 1:
+        parser.error("--anchors must be >= 1")
 
     msa, seq_to_aln, gene_names = load_msa(args.msa)
     all_chars = set(''.join(str(alnseqrec.seq) for alnseqrec in msa))
     assert all(char.isupper() or char == '-' for char in all_chars), 'MSA needs to be uppercase'
 
-    assignments = process_sam_to_dict(args.sam, msa, seq_to_aln, gene_names)
+    assignments = process_sam_to_dict(args.sam, msa, seq_to_aln, gene_names, min_anchors=args.anchors)
     
     # Write FASTQ files
     genes = write_fastq_outputs(

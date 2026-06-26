@@ -307,6 +307,7 @@ def display_pipeline_config(
     minimap2_profile: Optional[str] = None,
     output_dir: str = "./output",
     iterations: int = 0,
+    anchors: int = 1,
     min_alternate_count: int = 5,
     add_quality_filters: bool = False,
     qual_threshold: int = 20,
@@ -329,22 +330,23 @@ def display_pipeline_config(
 
     lines.append(f"  Reference:  [cyan]{ref_file}[/cyan] [dim]({ref_sequences} sequences, {ref_size_kb:.1f} Kbp)[/dim]")
 
+    # Match capitalization from aligner selection UI.
+    aligner_map = {
+        "bwa-mem2": "BWA-MEM2",
+        "bowtie2": "Bowtie2",
+        "minimap2": "Minimap2"
+    }
+    profile_map = {
+        "short": "Short",
+        "pacbio-hifi": "PacBio-HiFi",
+        "pacbio-clr": "PacBio-CLR",
+        "ont-q20": "ONT-Q20",
+        "ont-standard": "ONT-Standard",
+    }
+
     if sam_file:
         lines.append(f"  SAM:        [cyan]{sam_file}[/cyan] [dim](using existing alignment)[/dim]")
     else:
-        # Match capitalization from aligner selection UI
-        aligner_map = {
-            "bwa-mem2": "BWA-MEM2",
-            "bowtie2": "Bowtie2",
-            "minimap2": "Minimap2"
-        }
-        profile_map = {
-            "short": "Short",
-            "pacbio-hifi": "PacBio-HiFi",
-            "pacbio-clr": "PacBio-CLR",
-            "ont-q20": "ONT-Q20",
-            "ont-standard": "ONT-Standard",
-        }
         aligner_display = aligner_map.get(aligner, aligner.upper())
         if minimap2_profile:
             profile_display = profile_map.get(minimap2_profile, minimap2_profile.upper())
@@ -362,6 +364,7 @@ def display_pipeline_config(
             lines.append(f"  Quality filters: [cyan]disabled[/cyan]")
     else:
         lines.append(f"  Iterations: [cyan]1[/cyan] [dim](no refinement)[/dim]")
+    lines.append(f"  C1 anchors: [cyan]{anchors}[/cyan]")
 
     lines.append("")
 

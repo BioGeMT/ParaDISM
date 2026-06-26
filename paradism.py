@@ -57,6 +57,9 @@ def run_with_arguments(args: argparse.Namespace) -> None:
     if args.aligner == "minimap2" and not args.minimap2_profile:
         console.print("[red]✗ --minimap2-profile must be provided when --aligner minimap2[/red]")
         sys.exit(1)
+    if args.anchors < 1:
+        console.print("[red]✗ --anchors must be >= 1[/red]")
+        sys.exit(1)
 
     profile = args.minimap2_profile or "short"
 
@@ -80,6 +83,7 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         show_header=True,
         iterations=args.iterations,
         threshold=args.threshold,
+        anchors=args.anchors,
     )
 
 
@@ -177,6 +181,13 @@ Examples:
         help="Number of ParaDISM runs (default: 1 = no refinement). "
              "iterations=1 runs ParaDISM once, iterations=2 runs twice (1 refinement iteration), etc. "
              "Each refinement iteration calls variants, updates the reference, and re-runs ParaDISM.",
+    )
+    optional.add_argument(
+        "--anchors",
+        metavar="N",
+        type=int,
+        default=1,
+        help="Minimum number of distinct gene-unique C1 anchor positions required for assignment (default: 1).",
     )
     optional.add_argument(
         "--input-dir",

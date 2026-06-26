@@ -346,6 +346,13 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     minimap2_profile = "short"
     threads = 4
     threshold = None
+    iterations = 1
+    anchors = 1
+    min_alternate_count = 5
+    add_quality_filters = False
+    qual_threshold = 20
+    dp_threshold = 10
+    af_threshold = 0.05
 
     if not sam_path:
         from rich import box as rbox
@@ -489,7 +496,6 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         console.print()
 
         # Ask for iterations (optional) - after thread selection
-        iterations = 1
         while True:
             choice = console.input("[green]Number of ParaDISM runs (1 = no refinement, 2 = 1 refinement iteration, default: 1):[/green] ").strip()
             if not choice:
@@ -509,12 +515,6 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
                 console.print("[red]Invalid input. Please enter a positive integer (>= 1).[/red]")
 
         # Variant calling options (only relevant if iterations > 1)
-        min_alternate_count = 5
-        add_quality_filters = False
-        qual_threshold = 20
-        dp_threshold = 10
-        af_threshold = 0.05
-
         if iterations > 1:
             console.print()
             print_section("Variant Calling Options")
@@ -600,6 +600,22 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
                     console.print("[red]Please answer y or n[/red]")
 
     console.print()
+    while True:
+        choice = console.input("[green]Minimum C1 anchor positions for assignment (default: 1):[/green] ").strip()
+        if not choice:
+            anchors = 1
+            console.print("[green]✓[/green] C1 anchors: [cyan]1[/cyan] (default)")
+            break
+        try:
+            anchors = int(choice)
+            if anchors < 1:
+                raise ValueError
+            console.print(f"[green]✓[/green] C1 anchors: [cyan]{anchors}[/cyan]")
+            break
+        except ValueError:
+            console.print("[red]Invalid input. Please enter a positive integer.[/red]")
+
+    console.print()
 
     validations = []
 
@@ -638,6 +654,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         minimap2_profile=minimap2_profile if aligner == "minimap2" else None,
         output_dir=output_dir,
         iterations=iterations,
+        anchors=anchors,
         min_alternate_count=min_alternate_count,
         add_quality_filters=add_quality_filters,
         qual_threshold=qual_threshold,
@@ -670,6 +687,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         show_header=True,
         iterations=iterations,
         threshold=threshold,
+        anchors=anchors,
     )
 
     console.print("[green]═══════════════════════════════════════════════════════[/green]")

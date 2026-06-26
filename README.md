@@ -77,6 +77,9 @@ also provide `--minimap2-profile`, for example `--minimap2-profile short`.
 Use `--iterations 1` for a single ParaDISM run. Larger values enable iterative
 refinement of reads initially assigned to `NONE`.
 
+Use `--anchors N` to require at least `N` distinct gene-unique C1 positions for
+read assignment. The default is `--anchors 1`, matching the original behavior.
+
 ## Output Layout
 
 ```text
