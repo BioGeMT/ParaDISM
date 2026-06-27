@@ -393,18 +393,18 @@ def main():
                         help='Minimap2 profile')
     parser.add_argument('--prefix', default='',
                         help='Prefix for output files')
-    parser.add_argument('--anchors', type=int, default=1,
+    parser.add_argument('--n_anchors', type=int, default=1,
                         help='Minimum number of gene-unique C1 anchor positions required for assignment')
 
     args = parser.parse_args()
-    if args.anchors < 1:
-        parser.error("--anchors must be >= 1")
+    if args.n_anchors < 1:
+        parser.error("--n_anchors must be >= 1")
 
     msa, seq_to_aln, gene_names = load_msa(args.msa)
     all_chars = set(''.join(str(alnseqrec.seq) for alnseqrec in msa))
     assert all(char.isupper() or char == '-' for char in all_chars), 'MSA needs to be uppercase'
 
-    assignments = process_sam_to_dict(args.sam, msa, seq_to_aln, gene_names, min_anchors=args.anchors)
+    assignments = process_sam_to_dict(args.sam, msa, seq_to_aln, gene_names, min_anchors=args.n_anchors)
     
     # Write FASTQ files
     genes = write_fastq_outputs(

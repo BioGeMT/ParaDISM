@@ -307,7 +307,7 @@ def display_pipeline_config(
     minimap2_profile: Optional[str] = None,
     output_dir: str = "./output",
     iterations: int = 0,
-    anchors: int = 1,
+    n_anchors: int = 1,
     min_alternate_count: int = 5,
     add_quality_filters: bool = False,
     qual_threshold: int = 20,
@@ -364,7 +364,7 @@ def display_pipeline_config(
             lines.append(f"  Quality filters: [cyan]disabled[/cyan]")
     else:
         lines.append(f"  Iterations: [cyan]1[/cyan] [dim](no refinement)[/dim]")
-    lines.append(f"  C1 anchors: [cyan]{anchors}[/cyan]")
+    lines.append(f"  C1 anchors: [cyan]{n_anchors}[/cyan]")
 
     lines.append("")
 

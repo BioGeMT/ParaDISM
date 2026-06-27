@@ -57,8 +57,8 @@ def run_with_arguments(args: argparse.Namespace) -> None:
     if args.aligner == "minimap2" and not args.minimap2_profile:
         console.print("[red]✗ --minimap2-profile must be provided when --aligner minimap2[/red]")
         sys.exit(1)
-    if args.anchors < 1:
-        console.print("[red]✗ --anchors must be >= 1[/red]")
+    if args.n_anchors < 1:
+        console.print("[red]✗ --n_anchors must be >= 1[/red]")
         sys.exit(1)
 
     profile = args.minimap2_profile or "short"
@@ -83,7 +83,7 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         show_header=True,
         iterations=args.iterations,
         threshold=args.threshold,
-        anchors=args.anchors,
+        n_anchors=args.n_anchors,
     )
 
 
@@ -99,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Construct the CLI argument parser."""
 
     parser = argparse.ArgumentParser(
-        description="Read-mapping and refinement workflow for highly homologous regions (supports both paired-end and single-end)",
+        description="Read-mapping workflow with optional refinement for highly homologous regions (supports both paired-end and single-end)",
         formatter_class=CustomHelpFormatter,
         epilog="""
 Examples:
@@ -183,7 +183,7 @@ Examples:
              "Each refinement iteration calls variants, updates the reference, and re-runs ParaDISM.",
     )
     optional.add_argument(
-        "--anchors",
+        "--n_anchors",
         metavar="N",
         type=int,
         default=1,

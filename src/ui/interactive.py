@@ -347,7 +347,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     threads = 4
     threshold = None
     iterations = 1
-    anchors = 1
+    n_anchors = 1
     min_alternate_count = 5
     add_quality_filters = False
     qual_threshold = 20
@@ -603,14 +603,14 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     while True:
         choice = console.input("[green]Minimum C1 anchor positions for assignment (default: 1):[/green] ").strip()
         if not choice:
-            anchors = 1
+            n_anchors = 1
             console.print("[green]✓[/green] C1 anchors: [cyan]1[/cyan] (default)")
             break
         try:
-            anchors = int(choice)
-            if anchors < 1:
+            n_anchors = int(choice)
+            if n_anchors < 1:
                 raise ValueError
-            console.print(f"[green]✓[/green] C1 anchors: [cyan]{anchors}[/cyan]")
+            console.print(f"[green]✓[/green] C1 anchors: [cyan]{n_anchors}[/cyan]")
             break
         except ValueError:
             console.print("[red]Invalid input. Please enter a positive integer.[/red]")
@@ -654,7 +654,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         minimap2_profile=minimap2_profile if aligner == "minimap2" else None,
         output_dir=output_dir,
         iterations=iterations,
-        anchors=anchors,
+        n_anchors=n_anchors,
         min_alternate_count=min_alternate_count,
         add_quality_filters=add_quality_filters,
         qual_threshold=qual_threshold,
@@ -687,7 +687,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         show_header=True,
         iterations=iterations,
         threshold=threshold,
-        anchors=anchors,
+        n_anchors=n_anchors,
     )
 
     console.print("[green]═══════════════════════════════════════════════════════[/green]")

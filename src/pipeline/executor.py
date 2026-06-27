@@ -365,7 +365,7 @@ class SimpleParaDISMExecutor:
         bowtie2_score_min: str = "G,40,40",
         bwa_min_score: int = 240,
         minimap2_min_score: int = 240,
-        anchors: int = 1,
+        n_anchors: int = 1,
     ) -> tuple[Path, dict[str, str], bool]:
         """
         Run one iteration of refinement on NONE reads only.
@@ -532,7 +532,7 @@ class SimpleParaDISMExecutor:
                 iter_msa_obj,
                 iter_seq_to_aln,
                 iter_gene_names,
-                min_anchors=anchors,
+                min_anchors=n_anchors,
             )
             return new_assignments
         
@@ -595,7 +595,7 @@ class SimpleParaDISMExecutor:
         show_header: bool = True,
         iterations: int = 1,
         threshold: str | None = None,
-        anchors: int = 1,
+        n_anchors: int = 1,
     ) -> None:
         """Execute the ParaDISM pipeline with optional iterative refinement.
 
@@ -603,7 +603,7 @@ class SimpleParaDISMExecutor:
             iterations: Number of ParaDISM runs (1 = no refinement, 2+ = refinement iterations)
             threshold: Alignment score threshold. For bwa-mem2/minimap2: integer (e.g., "240").
                       For bowtie2: score function (e.g., "G,40,40"). Default based on aligner.
-            anchors: Minimum number of distinct gene-unique C1 positions required for assignment.
+            n_anchors: Minimum number of distinct gene-unique C1 positions required for assignment.
         """
 
         is_paired = r2 is not None
@@ -616,8 +616,8 @@ class SimpleParaDISMExecutor:
         # Validate minimap2 profile is provided when using minimap2
         if aligner == "minimap2" and not minimap2_profile:
             raise ValueError("--minimap2-profile must be provided when --aligner minimap2")
-        if anchors < 1:
-            raise ValueError("--anchors must be >= 1")
+        if n_anchors < 1:
+            raise ValueError("--n_anchors must be >= 1")
 
         # Set default profile for other aligners
         if not minimap2_profile:
@@ -758,7 +758,7 @@ class SimpleParaDISMExecutor:
                 msa_obj,
                 seq_to_aln,
                 gene_names,
-                min_anchors=anchors,
+                min_anchors=n_anchors,
             )
             genes = write_fastq_outputs(assignments, r1, r2, str(fastq_dir), self.prefix)
             if genes:
@@ -816,7 +816,7 @@ class SimpleParaDISMExecutor:
                     bowtie2_score_min=bowtie2_score_min,
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
-                    anchors=anchors,
+                    n_anchors=n_anchors,
                 )
 
                 if converged:

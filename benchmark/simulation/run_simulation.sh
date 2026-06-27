@@ -24,7 +24,7 @@ Options:
   --reads-per-seed N       Read pairs per seed (default: 1000)
   --aligners LIST          Comma/space separated aligners (default: bwa-mem2,bowtie2,minimap2)
   --threads N              Threads per ParaDISM run (default: 2)
-  --iterations N           ParaDISM iterations (default: 2)
+  --iterations N           ParaDISM iterations (default: 1)
   -h, --help               Show this help
 
 Example:
@@ -38,7 +38,7 @@ EOF
 }
 
 # ------------------------------------------------------------------
-# Configuration (can override via env, e.g. SEED_END=10 ITERATIONS=10 ALIGNERS="bwa-mem2")
+# Configuration (can override via env, e.g. SEED_END=10 ITERATIONS=2 ALIGNERS="bwa-mem2")
 # ------------------------------------------------------------------
 GROUP="${GROUP:-pkd1_panel}"
 SEED_START=${SEED_START:-1}
@@ -61,7 +61,7 @@ FRAG_SD=${FRAG_SD:-35}                  # Fragment length std dev
 DWGSIM_DIR="${DWGSIM_DIR:-${SCRIPT_DIR}/dwgsim}"  # DWGSIM directory
 
 ALIGNERS_STR="${ALIGNERS:-bwa-mem2,bowtie2,minimap2}"  # Space- or comma-separated
-ITERATIONS=${ITERATIONS:-2}                # Number of ParaDISM runs (2 = one refinement iteration)
+ITERATIONS=${ITERATIONS:-1}                # Number of ParaDISM runs (1 = no refinement)
 SEEDS_PER_BATCH=${SEEDS_PER_BATCH:-1}
 reference_was_set=0
 output_was_set=0

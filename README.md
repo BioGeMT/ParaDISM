@@ -1,9 +1,9 @@
 # ParaDISM: Paralog Disambiguating Mapper
 
-ParaDISM is a read-mapping and refinement workflow for highly homologous
-genomic regions. It aligns short or long reads to a multi-sequence reference,
-uses gene-informative positions in the multiple-sequence alignment to assign
-reads, and writes gene-specific FASTQ/BAM outputs.
+ParaDISM is a read-mapping workflow with optional refinement for highly
+homologous genomic regions. It aligns short or long reads to a multi-sequence
+reference, uses gene-informative positions in the multiple-sequence alignment
+to assign reads, and writes gene-specific FASTQ/BAM outputs.
 
 ## Installation
 
@@ -67,7 +67,7 @@ python paradism.py \
   --reference ref.fa \
   --aligner bowtie2 \
   --threads 4 \
-  --iterations 2 \
+  --iterations 1 \
   --output-dir output
 ```
 
@@ -77,8 +77,9 @@ also provide `--minimap2-profile`, for example `--minimap2-profile short`.
 Use `--iterations 1` for a single ParaDISM run. Larger values enable iterative
 refinement of reads initially assigned to `NONE`.
 
-Use `--anchors N` to require at least `N` distinct gene-unique C1 positions for
-read assignment. The default is `--anchors 1`, matching the original behavior.
+Use `--n_anchors N` to require at least `N` distinct gene-unique C1 positions
+for read assignment. The default is `--n_anchors 1`, matching the original
+behavior.
 
 ## Output Layout
 
