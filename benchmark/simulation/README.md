@@ -37,6 +37,7 @@ bash benchmark/simulation/run_simulation.sh \
   --aligners bowtie2 \
   --iterations 1 \
   --threads 1 \
+  --workers 1 \
   --out results/simulation/smoke_hba_pair
 ```
 
@@ -58,6 +59,8 @@ Important options:
 - `--seeds`: run seeds `1..N`
 - `--reads-per-seed`: read pairs generated per seed
 - `--aligners`: comma or space separated list
+- `--threads`: threads passed to the underlying aligner
+- `--workers`: worker processes for ParaDISM read assignment
 - `--iterations`: ParaDISM iterations (default: 1)
 
 Outputs are written under the selected `--out` directory:

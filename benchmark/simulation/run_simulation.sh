@@ -24,6 +24,7 @@ Options:
   --reads-per-seed N       Read pairs per seed (default: 1000)
   --aligners LIST          Comma/space separated aligners (default: bwa-mem2,bowtie2,minimap2)
   --threads N              Threads per ParaDISM run (default: 2)
+  --workers N              Read-assignment worker processes per ParaDISM run (default: 1)
   --iterations N           ParaDISM iterations (default: 1)
   -h, --help               Show this help
 
@@ -46,6 +47,7 @@ SEED_END=${SEED_END:-1}
 REFERENCE="${REFERENCE:-}"
 SIM_OUTPUT_BASE="${SIM_OUTPUT_BASE:-}"
 THREADS=${THREADS:-2}
+WORKERS=${WORKERS:-1}
 NUM_READS=${NUM_READS:-1000}
 ERROR_RATE=${ERROR_RATE:-0.01}             # default sequencing error rate (per base)
 QUAL_THRESHOLD=${QUAL_THRESHOLD:-20}
@@ -107,6 +109,10 @@ while [[ $# -gt 0 ]]; do
             THREADS="$2"
             shift 2
             ;;
+        --workers)
+            WORKERS="$2"
+            shift 2
+            ;;
         --iterations)
             ITERATIONS="$2"
             shift 2
@@ -160,6 +166,7 @@ run_mapper() {
         --reference "$REFERENCE"
         --aligner "$aligner"
         --threads "$THREADS"
+        --workers "$WORKERS"
         --output-dir "$output_dir"
         --prefix "$prefix"
         --iterations "$ITERATIONS"

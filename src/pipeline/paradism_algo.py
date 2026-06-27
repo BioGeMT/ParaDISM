@@ -1,8 +1,12 @@
 import argparse
 import os
 import subprocess
+import tempfile
+import zlib
 from subprocess import DEVNULL
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 from Bio import AlignIO
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
@@ -42,7 +46,7 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
     """
     if alignment.target is None:
         return {g: set() for g in gene_names}, {g: True for g in gene_names}
-    
+
     ref_gene = alignment.target.id
     gene_idx_map = {g: i for i, g in enumerate(gene_names)}
 
@@ -128,40 +132,7 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
     return anchor_cols, c2_dict
 
 
-def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names, min_anchors=1):
-    """
-    Process SAM file and assign reads to genes based on c1/c2 conditions.
-
-    Args:
-        min_anchors: Minimum number of distinct gene-unique C1 MSA columns required
-            across all alignments for a read name.
-    
-    Returns:
-        dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
-    """
-    if min_anchors < 1:
-        raise ValueError("min_anchors must be >= 1")
-
-    # Track C1 anchor columns/C2 per read pair per gene.
-    qname_to_anchor_cols = {gene: defaultdict(set) for gene in gene_names}
-    qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
-    all_qnames = set()
-
-    for alignment in AlignmentIterator(sam_path):
-        qname = alignment.query.id
-        all_qnames.add(qname)
-        if alignment.target is None:
-            continue  # Keep as NONE (no c1 signal) during final assignment
-
-        anchor_cols, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
-
-        for gene in gene_names:
-            if anchor_cols[gene]:
-                qname_to_anchor_cols[gene][qname].update(anchor_cols[gene])
-            if not c2_dict[gene]:
-                qname_to_c2[gene][qname] = False
-
-    # Assign reads to genes
+def _assign_from_collected_evidence(qname_to_anchor_cols, qname_to_c2, all_qnames, gene_names, min_anchors):
     assignments = {}
     for qname in all_qnames:
         passing_genes = []
@@ -176,6 +147,111 @@ def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names, min_anchors=1):
         else:
             assignments[qname] = "NONE"
     return assignments
+
+
+def _process_sam_to_dict_serial(sam_path, msa, seq_to_aln, gene_names, min_anchors):
+    # Track C1 anchor columns/C2 per read pair per gene.
+    qname_to_anchor_cols = {gene: defaultdict(set) for gene in gene_names}
+    qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
+    all_qnames = set()
+
+    with open(sam_path, "r", encoding="utf-8") as sam_handle:
+        for alignment in AlignmentIterator(sam_handle):
+            qname = alignment.query.id
+            all_qnames.add(qname)
+            if alignment.target is None:
+                continue  # Keep as NONE (no c1 signal) during final assignment
+
+            anchor_cols, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
+
+            for gene in gene_names:
+                if anchor_cols[gene]:
+                    qname_to_anchor_cols[gene][qname].update(anchor_cols[gene])
+                if not c2_dict[gene]:
+                    qname_to_c2[gene][qname] = False
+
+    return _assign_from_collected_evidence(
+        qname_to_anchor_cols,
+        qname_to_c2,
+        all_qnames,
+        gene_names,
+        min_anchors,
+    )
+
+
+def _sam_shard_index(qname, workers):
+    return zlib.crc32(qname.encode("utf-8")) % workers
+
+
+def _write_sam_shards(sam_path, workers, shard_dir):
+    shard_paths = [Path(shard_dir) / f"shard_{idx}.sam" for idx in range(workers)]
+    shard_counts = [0] * workers
+    handles = [path.open("w", encoding="utf-8") for path in shard_paths]
+
+    try:
+        with open(sam_path, "r", encoding="utf-8") as sam_handle:
+            for line in sam_handle:
+                if line.startswith("@"):
+                    for handle in handles:
+                        handle.write(line)
+                    continue
+                if not line.strip():
+                    continue
+
+                qname = line.split("\t", 1)[0]
+                shard_idx = _sam_shard_index(qname, workers)
+                handles[shard_idx].write(line)
+                shard_counts[shard_idx] += 1
+    finally:
+        for handle in handles:
+            handle.close()
+
+    return [path for path, count in zip(shard_paths, shard_counts) if count > 0]
+
+
+def _process_sam_shard(args):
+    shard_path, msa, seq_to_aln, gene_names, min_anchors = args
+    return _process_sam_to_dict_serial(shard_path, msa, seq_to_aln, gene_names, min_anchors)
+
+
+def _process_sam_to_dict_parallel(sam_path, msa, seq_to_aln, gene_names, min_anchors, workers):
+    with tempfile.TemporaryDirectory(prefix="paradism_sam_shards_") as shard_dir:
+        shard_paths = _write_sam_shards(sam_path, workers, shard_dir)
+        if len(shard_paths) <= 1:
+            return _process_sam_to_dict_serial(sam_path, msa, seq_to_aln, gene_names, min_anchors)
+
+        assignments = {}
+        worker_args = [
+            (str(shard_path), msa, seq_to_aln, gene_names, min_anchors)
+            for shard_path in shard_paths
+        ]
+        with ProcessPoolExecutor(max_workers=min(workers, len(shard_paths))) as executor:
+            for shard_assignments in executor.map(_process_sam_shard, worker_args):
+                assignments.update(shard_assignments)
+        return assignments
+
+
+def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names, min_anchors=1, workers=1):
+    """
+    Process SAM file and assign reads to genes based on c1/c2 conditions.
+
+    Args:
+        min_anchors: Minimum number of distinct gene-unique C1 MSA columns required
+            across all alignments for a read name.
+        workers: Number of worker processes for read assignment. workers=1 uses
+            the serial implementation.
+
+    Returns:
+        dict: {read_name: gene_assignment} where gene_assignment is gene name or "NONE"
+    """
+    if min_anchors < 1:
+        raise ValueError("min_anchors must be >= 1")
+    if workers < 1:
+        raise ValueError("workers must be >= 1")
+    if workers == 1:
+        return _process_sam_to_dict_serial(sam_path, msa, seq_to_aln, gene_names, min_anchors)
+
+    return _process_sam_to_dict_parallel(sam_path, msa, seq_to_aln, gene_names, min_anchors, workers)
 
 
 def _base_read_id(read_id: str) -> str:
@@ -395,16 +471,27 @@ def main():
                         help='Prefix for output files')
     parser.add_argument('--n_anchors', type=int, default=1,
                         help='Minimum number of gene-unique C1 anchor positions required for assignment')
+    parser.add_argument('--workers', type=int, default=1,
+                        help='Worker processes for read assignment')
 
     args = parser.parse_args()
     if args.n_anchors < 1:
         parser.error("--n_anchors must be >= 1")
+    if args.workers < 1:
+        parser.error("--workers must be >= 1")
 
     msa, seq_to_aln, gene_names = load_msa(args.msa)
     all_chars = set(''.join(str(alnseqrec.seq) for alnseqrec in msa))
     assert all(char.isupper() or char == '-' for char in all_chars), 'MSA needs to be uppercase'
 
-    assignments = process_sam_to_dict(args.sam, msa, seq_to_aln, gene_names, min_anchors=args.n_anchors)
+    assignments = process_sam_to_dict(
+        args.sam,
+        msa,
+        seq_to_aln,
+        gene_names,
+        min_anchors=args.n_anchors,
+        workers=args.workers,
+    )
     
     # Write FASTQ files
     genes = write_fastq_outputs(

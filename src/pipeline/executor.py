@@ -209,7 +209,8 @@ class SimpleParaDISMExecutor:
             awk_filter = (
                 "awk '/^@/{print;next} $3==\"*\"{print;next} "
                 "{for(i=12;i<=NF;i++)if($i~/^AS:i:/){split($i,a,\":\");if(a[3]>="
-                f"{bwa_min_score})print;next}}'"
+                f"{bwa_min_score}"
+                ")print;next}}'"
             )
             if none_r2 is not None:
                 subprocess.run(
@@ -366,6 +367,7 @@ class SimpleParaDISMExecutor:
         bwa_min_score: int = 240,
         minimap2_min_score: int = 240,
         n_anchors: int = 1,
+        workers: int = 1,
     ) -> tuple[Path, dict[str, str], bool]:
         """
         Run one iteration of refinement on NONE reads only.
@@ -533,6 +535,7 @@ class SimpleParaDISMExecutor:
                 iter_seq_to_aln,
                 iter_gene_names,
                 min_anchors=n_anchors,
+                workers=workers,
             )
             return new_assignments
         
@@ -596,6 +599,7 @@ class SimpleParaDISMExecutor:
         iterations: int = 1,
         threshold: str | None = None,
         n_anchors: int = 1,
+        workers: int = 1,
     ) -> None:
         """Execute the ParaDISM pipeline with optional iterative refinement.
 
@@ -604,6 +608,7 @@ class SimpleParaDISMExecutor:
             threshold: Alignment score threshold. For bwa-mem2/minimap2: integer (e.g., "240").
                       For bowtie2: score function (e.g., "G,40,40"). Default based on aligner.
             n_anchors: Minimum number of distinct gene-unique C1 positions required for assignment.
+            workers: Worker processes for the ParaDISM read-assignment step.
         """
 
         is_paired = r2 is not None
@@ -618,6 +623,8 @@ class SimpleParaDISMExecutor:
             raise ValueError("--minimap2-profile must be provided when --aligner minimap2")
         if n_anchors < 1:
             raise ValueError("--n_anchors must be >= 1")
+        if workers < 1:
+            raise ValueError("--workers must be >= 1")
 
         # Set default profile for other aligners
         if not minimap2_profile:
@@ -752,6 +759,7 @@ class SimpleParaDISMExecutor:
                 seq_to_aln,
                 gene_names,
                 min_anchors=n_anchors,
+                workers=workers,
             )
             genes = write_fastq_outputs(assignments, r1, r2, str(fastq_dir), self.prefix)
             if genes:
@@ -807,6 +815,7 @@ class SimpleParaDISMExecutor:
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
                     n_anchors=n_anchors,
+                    workers=workers,
                 )
 
                 if converged:

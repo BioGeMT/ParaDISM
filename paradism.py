@@ -60,6 +60,9 @@ def run_with_arguments(args: argparse.Namespace) -> None:
     if args.n_anchors < 1:
         console.print("[red]✗ --n_anchors must be >= 1[/red]")
         sys.exit(1)
+    if args.workers < 1:
+        console.print("[red]✗ --workers must be >= 1[/red]")
+        sys.exit(1)
 
     profile = args.minimap2_profile or "short"
 
@@ -84,6 +87,7 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         iterations=args.iterations,
         threshold=args.threshold,
         n_anchors=args.n_anchors,
+        workers=args.workers,
     )
 
 
@@ -153,6 +157,13 @@ Examples:
         ),
     )
     optional.add_argument("--threads", metavar="THREADS", type=int, default=4, help="Threads to use (default: 4)")
+    optional.add_argument(
+        "--workers",
+        metavar="WORKERS",
+        type=int,
+        default=1,
+        help="Worker processes for ParaDISM read assignment (default: 1)",
+    )
     optional.add_argument(
         "--minimap2-profile",
         metavar="PROFILE",

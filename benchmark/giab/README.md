@@ -42,7 +42,7 @@ From the repository root, after installing `environment.yml`:
 ```bash
 bash benchmark/giab/prepare_giab_truth.sh
 bash benchmark/giab/download_giab_hg002_reads.sh
-bash benchmark/giab/run_giab.sh --threads 8 --iterations 1
+bash benchmark/giab/run_giab.sh --threads 8 --workers 2 --iterations 1
 
 RUN_DIR=benchmark/giab/giab_hg002_output_bowtie2_G60_min5_qfilters
 OUT_DIR=benchmark/giab/vcf_out_full

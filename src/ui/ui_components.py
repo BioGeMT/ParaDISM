@@ -303,6 +303,7 @@ def display_pipeline_config(
     ref_size_kb: float,
     aligner: str,
     threads: int,
+    workers: int = 1,
     sam_file: Optional[str] = None,
     minimap2_profile: Optional[str] = None,
     output_dir: str = "./output",
@@ -353,6 +354,7 @@ def display_pipeline_config(
             aligner_display += f" ({profile_display})"
         lines.append(f"  Aligner:    [cyan]{aligner_display}[/cyan]")
         lines.append(f"  Threads:    [cyan]{threads}[/cyan] cores")
+    lines.append(f"  Assignment workers: [cyan]{workers}[/cyan]")
     
     if iterations > 1:
         refinement_iterations = iterations - 1

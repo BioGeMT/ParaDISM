@@ -67,6 +67,7 @@ python paradism.py \
   --reference ref.fa \
   --aligner bowtie2 \
   --threads 4 \
+  --workers 2 \
   --iterations 1 \
   --output-dir output
 ```
@@ -80,6 +81,9 @@ refinement of reads initially assigned to `NONE`.
 Use `--n_anchors N` to require at least `N` distinct gene-unique C1 positions
 for read assignment. The default is `--n_anchors 1`, matching the original
 behavior.
+
+Use `--workers N` to process read assignment in parallel after alignment. This
+is separate from `--threads`, which controls the underlying aligner.
 
 ## Output Layout
 

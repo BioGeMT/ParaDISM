@@ -13,6 +13,7 @@ READS_DIR="${READS_DIR:-$SCRIPT_DIR/giab_hg002_reads}"
 REFERENCE="${REFERENCE:-$PROJECT_ROOT/benchmark/references/pkd1_panel.fa}"
 PARADISM="$PROJECT_ROOT/paradism.py"
 THREADS="${THREADS:-8}"
+WORKERS="${WORKERS:-1}"
 ITERATIONS="${ITERATIONS:-1}"
 MIN_ALT_COUNT="${MIN_ALT_COUNT:-5}"
 OUTPUT_G60="${OUTPUT_G60:-$SCRIPT_DIR/giab_hg002_output_bowtie2_G60_min5_qfilters}"
@@ -27,6 +28,7 @@ Options:
   --reference FILE      ParaDISM reference FASTA (default: benchmark/references/pkd1_panel.fa)
   --output-dir DIR      Output directory (default: benchmark/giab/giab_hg002_output_bowtie2_G60_min5_qfilters)
   --threads N           Threads for ParaDISM (default: 8 or env THREADS)
+  --workers N           Read-assignment worker processes (default: 1 or env WORKERS)
   --iterations N        ParaDISM iterations (default: 1 or env ITERATIONS)
   --min-alt-count N     ParaDISM --min-alternate-count (default: 5 or env MIN_ALT_COUNT)
   -h, --help            Show help
@@ -58,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --threads)
             THREADS="$2"
+            shift 2
+            ;;
+        --workers)
+            WORKERS="$2"
             shift 2
             ;;
         --iterations)
@@ -111,6 +117,7 @@ echo "  Read1: $R1_MERGED"
 echo "  Read2: $R2_MERGED"
 echo "  Reference: $REFERENCE"
 echo "  Threads: $THREADS"
+echo "  Workers: $WORKERS"
 echo "  Iterations: $ITERATIONS"
 echo "  Min-alternate-count: $MIN_ALT_COUNT"
 echo ""
@@ -135,6 +142,7 @@ else
         --reference "$REFERENCE" \
         --aligner bowtie2 \
         --threads "$THREADS" \
+        --workers "$WORKERS" \
         --iterations "$ITERATIONS" \
         --min-alternate-count "$MIN_ALT_COUNT" \
         --add-quality-filters \

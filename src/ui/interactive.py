@@ -345,6 +345,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     aligner = "bowtie2"
     minimap2_profile = "short"
     threads = 4
+    workers = 1
     threshold = None
     iterations = 1
     n_anchors = 1
@@ -495,109 +496,129 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
 
         console.print()
 
-        # Ask for iterations (optional) - after thread selection
+    max_workers = os.cpu_count() or 1
+    while True:
+        choice = console.input("[green]Read-assignment worker processes (default: 1):[/green] ").strip()
+        if not choice:
+            workers = 1
+            console.print("[green]✓[/green] Assignment workers: [cyan]1[/cyan] (default)")
+            break
+        try:
+            workers = int(choice)
+            if workers < 1:
+                raise ValueError
+            if workers > max_workers:
+                console.print(f"[yellow]⚠ Warning: {workers} workers requested but only {max_workers} CPUs available[/yellow]")
+            console.print(f"[green]✓[/green] Assignment workers: [cyan]{workers}[/cyan]")
+            break
+        except ValueError:
+            console.print("[red]Invalid input. Please enter a positive integer.[/red]")
+
+    console.print()
+
+    # Ask for iterations (optional) - after thread/worker selection
+    while True:
+        choice = console.input("[green]Number of ParaDISM runs (1 = no refinement, 2 = 1 refinement iteration, default: 1):[/green] ").strip()
+        if not choice:
+            iterations = 1
+            break
+        try:
+            iterations = int(choice)
+            if iterations < 1:
+                raise ValueError
+            if iterations > 1:
+                console.print(f"[green]✓[/green] Iterations: [cyan]{iterations}[/cyan] (will run ParaDISM {iterations} times)")
+                console.print("[yellow]⚠ Note: Each refinement iteration calls variants, updates reference, and re-runs ParaDISM[/yellow]")
+            else:
+                console.print(f"[green]✓[/green] Iterations: [cyan]1[/cyan] (no refinement, single run)")
+            break
+        except ValueError:
+            console.print("[red]Invalid input. Please enter a positive integer (>= 1).[/red]")
+
+    # Variant calling options (only relevant if iterations > 1)
+    if iterations > 1:
+        console.print()
+        print_section("Variant Calling Options")
+
+        # Min alternate count
         while True:
-            choice = console.input("[green]Number of ParaDISM runs (1 = no refinement, 2 = 1 refinement iteration, default: 1):[/green] ").strip()
+            choice = console.input("[green]Minimum alternate allele count for variant calling (default: 5):[/green] ").strip()
             if not choice:
-                iterations = 1
+                min_alternate_count = 5
+                console.print(f"[green]✓[/green] Min alternate count: [cyan]5[/cyan] (default)")
                 break
             try:
-                iterations = int(choice)
-                if iterations < 1:
+                min_alternate_count = int(choice)
+                if min_alternate_count < 1:
                     raise ValueError
-                if iterations > 1:
-                    console.print(f"[green]✓[/green] Iterations: [cyan]{iterations}[/cyan] (will run ParaDISM {iterations} times)")
-                    console.print("[yellow]⚠ Note: Each refinement iteration calls variants, updates reference, and re-runs ParaDISM[/yellow]")
-                else:
-                    console.print(f"[green]✓[/green] Iterations: [cyan]1[/cyan] (no refinement, single run)")
+                console.print(f"[green]✓[/green] Min alternate count: [cyan]{min_alternate_count}[/cyan]")
                 break
             except ValueError:
-                console.print("[red]Invalid input. Please enter a positive integer (>= 1).[/red]")
+                console.print("[red]Invalid input. Please enter a positive integer.[/red]")
 
-        # Variant calling options (only relevant if iterations > 1)
-        if iterations > 1:
-            console.print()
-            print_section("Variant Calling Options")
+        # Quality filters
+        console.print()
+        while True:
+            choice = console.input("[green]Apply quality filters? (y/n, default: n):[/green] ").strip().lower()
+            if choice in ['', 'n', 'no']:
+                add_quality_filters = False
+                console.print(f"[green]✓[/green] Quality filters: [cyan]disabled[/cyan]")
+                break
+            elif choice in ['y', 'yes']:
+                add_quality_filters = True
+                console.print(f"[green]✓[/green] Quality filters: [cyan]enabled[/cyan]")
 
-            # Min alternate count
-            while True:
-                choice = console.input("[green]Minimum alternate allele count for variant calling (default: 5):[/green] ").strip()
-                if not choice:
-                    min_alternate_count = 5
-                    console.print(f"[green]✓[/green] Min alternate count: [cyan]5[/cyan] (default)")
-                    break
-                try:
-                    min_alternate_count = int(choice)
-                    if min_alternate_count < 1:
-                        raise ValueError
-                    console.print(f"[green]✓[/green] Min alternate count: [cyan]{min_alternate_count}[/cyan]")
-                    break
-                except ValueError:
-                    console.print("[red]Invalid input. Please enter a positive integer.[/red]")
+                # QUAL threshold
+                console.print()
+                while True:
+                    choice = console.input("[green]  Minimum QUAL score (default: 20):[/green] ").strip()
+                    if not choice:
+                        qual_threshold = 20
+                        console.print(f"  [green]✓[/green] QUAL threshold: [cyan]20[/cyan] (default)")
+                        break
+                    try:
+                        qual_threshold = int(choice)
+                        if qual_threshold < 0:
+                            raise ValueError
+                        console.print(f"  [green]✓[/green] QUAL threshold: [cyan]{qual_threshold}[/cyan]")
+                        break
+                    except ValueError:
+                        console.print("  [red]Invalid input. Please enter a non-negative integer.[/red]")
 
-            # Quality filters
-            console.print()
-            while True:
-                choice = console.input("[green]Apply quality filters? (y/n, default: n):[/green] ").strip().lower()
-                if choice in ['', 'n', 'no']:
-                    add_quality_filters = False
-                    console.print(f"[green]✓[/green] Quality filters: [cyan]disabled[/cyan]")
-                    break
-                elif choice in ['y', 'yes']:
-                    add_quality_filters = True
-                    console.print(f"[green]✓[/green] Quality filters: [cyan]enabled[/cyan]")
+                # DP threshold
+                while True:
+                    choice = console.input("[green]  Minimum depth DP (default: 10):[/green] ").strip()
+                    if not choice:
+                        dp_threshold = 10
+                        console.print(f"  [green]✓[/green] DP threshold: [cyan]10[/cyan] (default)")
+                        break
+                    try:
+                        dp_threshold = int(choice)
+                        if dp_threshold < 0:
+                            raise ValueError
+                        console.print(f"  [green]✓[/green] DP threshold: [cyan]{dp_threshold}[/cyan]")
+                        break
+                    except ValueError:
+                        console.print("  [red]Invalid input. Please enter a non-negative integer.[/red]")
 
-                    # QUAL threshold
-                    console.print()
-                    while True:
-                        choice = console.input("[green]  Minimum QUAL score (default: 20):[/green] ").strip()
-                        if not choice:
-                            qual_threshold = 20
-                            console.print(f"  [green]✓[/green] QUAL threshold: [cyan]20[/cyan] (default)")
-                            break
-                        try:
-                            qual_threshold = int(choice)
-                            if qual_threshold < 0:
-                                raise ValueError
-                            console.print(f"  [green]✓[/green] QUAL threshold: [cyan]{qual_threshold}[/cyan]")
-                            break
-                        except ValueError:
-                            console.print("  [red]Invalid input. Please enter a non-negative integer.[/red]")
-
-                    # DP threshold
-                    while True:
-                        choice = console.input("[green]  Minimum depth DP (default: 10):[/green] ").strip()
-                        if not choice:
-                            dp_threshold = 10
-                            console.print(f"  [green]✓[/green] DP threshold: [cyan]10[/cyan] (default)")
-                            break
-                        try:
-                            dp_threshold = int(choice)
-                            if dp_threshold < 0:
-                                raise ValueError
-                            console.print(f"  [green]✓[/green] DP threshold: [cyan]{dp_threshold}[/cyan]")
-                            break
-                        except ValueError:
-                            console.print("  [red]Invalid input. Please enter a non-negative integer.[/red]")
-
-                    # AF threshold
-                    while True:
-                        choice = console.input("[green]  Minimum allele frequency AF (default: 0.05):[/green] ").strip()
-                        if not choice:
-                            af_threshold = 0.05
-                            console.print(f"  [green]✓[/green] AF threshold: [cyan]0.05[/cyan] (default)")
-                            break
-                        try:
-                            af_threshold = float(choice)
-                            if af_threshold < 0 or af_threshold > 1:
-                                raise ValueError
-                            console.print(f"  [green]✓[/green] AF threshold: [cyan]{af_threshold}[/cyan]")
-                            break
-                        except ValueError:
-                            console.print("  [red]Invalid input. Please enter a number between 0 and 1.[/red]")
-                    break
-                else:
-                    console.print("[red]Please answer y or n[/red]")
+                # AF threshold
+                while True:
+                    choice = console.input("[green]  Minimum allele frequency AF (default: 0.05):[/green] ").strip()
+                    if not choice:
+                        af_threshold = 0.05
+                        console.print(f"  [green]✓[/green] AF threshold: [cyan]0.05[/cyan] (default)")
+                        break
+                    try:
+                        af_threshold = float(choice)
+                        if af_threshold < 0 or af_threshold > 1:
+                            raise ValueError
+                        console.print(f"  [green]✓[/green] AF threshold: [cyan]{af_threshold}[/cyan]")
+                        break
+                    except ValueError:
+                        console.print("  [red]Invalid input. Please enter a number between 0 and 1.[/red]")
+                break
+            else:
+                console.print("[red]Please answer y or n[/red]")
 
     console.print()
     while True:
@@ -650,6 +671,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         ref_size_kb=ref_meta['total_length'] / 1000,
         aligner=aligner,
         threads=threads,
+        workers=workers,
         sam_file=Path(sam_path).name if sam_path else None,
         minimap2_profile=minimap2_profile if aligner == "minimap2" else None,
         output_dir=output_dir,
@@ -688,6 +710,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         iterations=iterations,
         threshold=threshold,
         n_anchors=n_anchors,
+        workers=workers,
     )
 
     console.print("[green]═══════════════════════════════════════════════════════[/green]")
