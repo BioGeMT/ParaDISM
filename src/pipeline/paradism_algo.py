@@ -1,17 +1,21 @@
 import argparse
+import io
 import os
 import subprocess
-import tempfile
-import zlib
 from subprocess import DEVNULL
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from Bio import AlignIO
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Align.sam import AlignmentIterator
 from .msa_processing import map_seqcoords_to_alncoords
+
+_SAM_CHUNK_LINES = 5000
+_WORKER_MSA = None
+_WORKER_SEQ_TO_ALN = None
+_WORKER_GENE_NAMES = None
+_WORKER_SAM_HEADER = ""
 
 _DNA_COMPLEMENT = {
     "A": "T",
@@ -132,13 +136,44 @@ def process_read(alignment, msa, seq_to_aln, gene_names):
     return anchor_cols, c2_dict
 
 
-def _assign_from_collected_evidence(qname_to_anchor_cols, qname_to_c2, all_qnames, gene_names, min_anchors):
+def _new_assignment_evidence(gene_names):
+    return (
+        {gene: defaultdict(set) for gene in gene_names},
+        {gene: set() for gene in gene_names},
+        set(),
+    )
+
+
+def _collect_alignment_evidence(
+    alignment,
+    msa,
+    seq_to_aln,
+    gene_names,
+    qname_to_anchor_cols,
+    qname_to_c2_false,
+    all_qnames,
+):
+    qname = alignment.query.id
+    all_qnames.add(qname)
+    if alignment.target is None:
+        return
+
+    anchor_cols, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
+
+    for gene in gene_names:
+        if anchor_cols[gene]:
+            qname_to_anchor_cols[gene][qname].update(anchor_cols[gene])
+        if not c2_dict[gene]:
+            qname_to_c2_false[gene].add(qname)
+
+
+def _assign_from_collected_evidence(qname_to_anchor_cols, qname_to_c2_false, all_qnames, gene_names, min_anchors):
     assignments = {}
     for qname in all_qnames:
         passing_genes = []
         for gene in gene_names:
             c1 = len(qname_to_anchor_cols[gene][qname]) >= min_anchors
-            c2 = qname_to_c2[gene][qname]
+            c2 = qname not in qname_to_c2_false[gene]
             if c1 and c2:
                 passing_genes.append(gene)
 
@@ -150,85 +185,159 @@ def _assign_from_collected_evidence(qname_to_anchor_cols, qname_to_c2, all_qname
 
 
 def _process_sam_to_dict_serial(sam_path, msa, seq_to_aln, gene_names, min_anchors):
-    # Track C1 anchor columns/C2 per read pair per gene.
-    qname_to_anchor_cols = {gene: defaultdict(set) for gene in gene_names}
-    qname_to_c2 = {gene: defaultdict(lambda: True) for gene in gene_names}
-    all_qnames = set()
+    qname_to_anchor_cols, qname_to_c2_false, all_qnames = _new_assignment_evidence(gene_names)
 
     with open(sam_path, "r", encoding="utf-8") as sam_handle:
         for alignment in AlignmentIterator(sam_handle):
-            qname = alignment.query.id
-            all_qnames.add(qname)
-            if alignment.target is None:
-                continue  # Keep as NONE (no c1 signal) during final assignment
-
-            anchor_cols, c2_dict = process_read(alignment, msa, seq_to_aln, gene_names)
-
-            for gene in gene_names:
-                if anchor_cols[gene]:
-                    qname_to_anchor_cols[gene][qname].update(anchor_cols[gene])
-                if not c2_dict[gene]:
-                    qname_to_c2[gene][qname] = False
+            _collect_alignment_evidence(
+                alignment,
+                msa,
+                seq_to_aln,
+                gene_names,
+                qname_to_anchor_cols,
+                qname_to_c2_false,
+                all_qnames,
+            )
 
     return _assign_from_collected_evidence(
         qname_to_anchor_cols,
-        qname_to_c2,
+        qname_to_c2_false,
         all_qnames,
         gene_names,
         min_anchors,
     )
 
 
-def _sam_shard_index(qname, workers):
-    return zlib.crc32(qname.encode("utf-8")) % workers
+def _read_sam_header(sam_path):
+    header_lines = []
+    with open(sam_path, "r", encoding="utf-8") as sam_handle:
+        for line in sam_handle:
+            if not line.startswith("@"):
+                break
+            header_lines.append(line)
+    return "".join(header_lines)
 
 
-def _write_sam_shards(sam_path, workers, shard_dir):
-    shard_paths = [Path(shard_dir) / f"shard_{idx}.sam" for idx in range(workers)]
-    shard_counts = [0] * workers
-    handles = [path.open("w", encoding="utf-8") for path in shard_paths]
+def _iter_sam_line_chunks(sam_path, chunk_size):
+    chunk = []
+    with open(sam_path, "r", encoding="utf-8") as sam_handle:
+        for line in sam_handle:
+            if line.startswith("@") or not line.strip():
+                continue
 
-    try:
-        with open(sam_path, "r", encoding="utf-8") as sam_handle:
-            for line in sam_handle:
-                if line.startswith("@"):
-                    for handle in handles:
-                        handle.write(line)
-                    continue
-                if not line.strip():
-                    continue
+            chunk.append(line)
+            if len(chunk) >= chunk_size:
+                yield chunk
+                chunk = []
 
-                qname = line.split("\t", 1)[0]
-                shard_idx = _sam_shard_index(qname, workers)
-                handles[shard_idx].write(line)
-                shard_counts[shard_idx] += 1
-    finally:
-        for handle in handles:
-            handle.close()
-
-    return [path for path, count in zip(shard_paths, shard_counts) if count > 0]
+    if chunk:
+        yield chunk
 
 
-def _process_sam_shard(args):
-    shard_path, msa, seq_to_aln, gene_names, min_anchors = args
-    return _process_sam_to_dict_serial(shard_path, msa, seq_to_aln, gene_names, min_anchors)
+def _init_sam_chunk_worker(msa, seq_to_aln, gene_names, sam_header):
+    global _WORKER_MSA, _WORKER_SEQ_TO_ALN, _WORKER_GENE_NAMES, _WORKER_SAM_HEADER
+    _WORKER_MSA = msa
+    _WORKER_SEQ_TO_ALN = seq_to_aln
+    _WORKER_GENE_NAMES = gene_names
+    _WORKER_SAM_HEADER = sam_header
 
 
-def _process_sam_to_dict_parallel(sam_path, msa, seq_to_aln, gene_names, min_anchors, workers):
-    with tempfile.TemporaryDirectory(prefix="paradism_sam_shards_") as shard_dir:
-        shard_paths = _write_sam_shards(sam_path, workers, shard_dir)
-        if len(shard_paths) <= 1:
-            return _process_sam_to_dict_serial(sam_path, msa, seq_to_aln, gene_names, min_anchors)
+def _pack_assignment_evidence(qname_to_anchor_cols, qname_to_c2_false, all_qnames):
+    return (
+        {
+            gene: {qname: set(anchor_cols) for qname, anchor_cols in anchor_by_qname.items()}
+            for gene, anchor_by_qname in qname_to_anchor_cols.items()
+        },
+        {gene: set(qnames) for gene, qnames in qname_to_c2_false.items()},
+        set(all_qnames),
+    )
 
-        assignments = {}
-        worker_args = [
-            (str(shard_path), msa, seq_to_aln, gene_names, min_anchors)
-            for shard_path in shard_paths
-        ]
-        with ProcessPoolExecutor(max_workers=min(workers, len(shard_paths))) as executor:
-            for shard_assignments in executor.map(_process_sam_shard, worker_args):
-                assignments.update(shard_assignments)
-        return assignments
+
+def _process_sam_line_chunk(lines):
+    qname_to_anchor_cols, qname_to_c2_false, all_qnames = _new_assignment_evidence(_WORKER_GENE_NAMES)
+    sam_text = _WORKER_SAM_HEADER + "".join(lines)
+
+    with io.StringIO(sam_text) as sam_handle:
+        for alignment in AlignmentIterator(sam_handle):
+            _collect_alignment_evidence(
+                alignment,
+                _WORKER_MSA,
+                _WORKER_SEQ_TO_ALN,
+                _WORKER_GENE_NAMES,
+                qname_to_anchor_cols,
+                qname_to_c2_false,
+                all_qnames,
+            )
+
+    return _pack_assignment_evidence(qname_to_anchor_cols, qname_to_c2_false, all_qnames)
+
+
+def _merge_assignment_evidence(target_anchor_cols, target_c2_false, target_qnames, partial_evidence):
+    partial_anchor_cols, partial_c2_false, partial_qnames = partial_evidence
+    target_qnames.update(partial_qnames)
+
+    for gene, anchor_by_qname in partial_anchor_cols.items():
+        for qname, anchor_cols in anchor_by_qname.items():
+            target_anchor_cols[gene][qname].update(anchor_cols)
+
+    for gene, qnames in partial_c2_false.items():
+        target_c2_false[gene].update(qnames)
+
+
+def _process_sam_to_dict_parallel(
+    sam_path,
+    msa,
+    seq_to_aln,
+    gene_names,
+    min_anchors,
+    workers,
+    chunk_size=_SAM_CHUNK_LINES,
+):
+    qname_to_anchor_cols, qname_to_c2_false, all_qnames = _new_assignment_evidence(gene_names)
+    sam_header = _read_sam_header(sam_path)
+    pending_futures = set()
+    max_pending = max(1, workers * 2)
+    chunks_submitted = 0
+
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=_init_sam_chunk_worker,
+        initargs=(msa, seq_to_aln, gene_names, sam_header),
+    ) as executor:
+        for line_chunk in _iter_sam_line_chunks(sam_path, chunk_size):
+            pending_futures.add(executor.submit(_process_sam_line_chunk, line_chunk))
+            chunks_submitted += 1
+
+            if len(pending_futures) >= max_pending:
+                done_futures, pending_futures = wait(pending_futures, return_when=FIRST_COMPLETED)
+                for future in done_futures:
+                    _merge_assignment_evidence(
+                        qname_to_anchor_cols,
+                        qname_to_c2_false,
+                        all_qnames,
+                        future.result(),
+                    )
+
+        while pending_futures:
+            done_futures, pending_futures = wait(pending_futures, return_when=FIRST_COMPLETED)
+            for future in done_futures:
+                _merge_assignment_evidence(
+                    qname_to_anchor_cols,
+                    qname_to_c2_false,
+                    all_qnames,
+                    future.result(),
+                )
+
+    if chunks_submitted == 0:
+        return {}
+
+    return _assign_from_collected_evidence(
+        qname_to_anchor_cols,
+        qname_to_c2_false,
+        all_qnames,
+        gene_names,
+        min_anchors,
+    )
 
 
 def process_sam_to_dict(sam_path, msa, seq_to_aln, gene_names, min_anchors=1, workers=1):
