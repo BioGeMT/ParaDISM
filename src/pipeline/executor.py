@@ -645,18 +645,13 @@ class SimpleParaDISMExecutor:
 
         # 1. Determine output directories and print iteration header
         original_output_dir = self.output_dir
-        if iterations > 1:
-            # Create iteration_1 subdirectory for multiple iterations
-            iter1_output_dir = self.output_dir / "iteration_1"
-            iter1_output_dir.mkdir(exist_ok=True)
-            msa_output_dir = iter1_output_dir
-            sam_output_dir = iter1_output_dir
-            if show_header:
-                print(f"\n  \033[0;33m=== Iteration 1 ===\033[0m\n", file=sys.stderr)
-            self.logger.section("Iteration 1")
-        else:
-            msa_output_dir = self.output_dir
-            sam_output_dir = self.output_dir
+        iter1_output_dir = self.output_dir / "iteration_1"
+        iter1_output_dir.mkdir(exist_ok=True)
+        msa_output_dir = iter1_output_dir
+        sam_output_dir = iter1_output_dir
+        if show_header:
+            print(f"\n  \033[0;33m=== Iteration 1 ===\033[0m\n", file=sys.stderr)
+        self.logger.section("Iteration 1")
         
         # 2. Create MSA
         msa_output = msa_output_dir / "ref_seq_msa.aln"
@@ -743,9 +738,7 @@ class SimpleParaDISMExecutor:
                     )
 
         # 3. Run initial ParaDISM algorithm
-        if iterations > 1:
-            # Switch to iteration_1 directory for processing
-            self.output_dir = iter1_output_dir
+        self.output_dir = iter1_output_dir
         
         fastq_dir = self.output_dir / f"{self.prefix}_fastq"
         bam_dir = self.output_dir / f"{self.prefix}_bam"
@@ -786,17 +779,14 @@ class SimpleParaDISMExecutor:
         current_bam_dir = bam_dir
         final_msa = msa_output
 
-        # Store iteration outputs (only if we'll have multiple iterations)
-        iteration_outputs = []
-        if iterations > 1:
-            iteration_outputs.append({
-                'iteration': 1,
-                'reference': current_ref,
-                'output_dir': self.output_dir,
-                'assignments': current_assignments,
-                'bam_dir': current_bam_dir,
-            })
-            self.output_dir = original_output_dir
+        iteration_outputs = [{
+            'iteration': 1,
+            'reference': current_ref,
+            'output_dir': self.output_dir,
+            'assignments': current_assignments,
+            'bam_dir': current_bam_dir,
+        }]
+        self.output_dir = original_output_dir
 
         # Iterative refinement
         refinement_iterations = iterations - 1

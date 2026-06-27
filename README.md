@@ -85,8 +85,8 @@ behavior.
 
 ```text
 output/
-├── mapped_reads.sam                  # present for one-iteration runs
-├── iteration_1/mapped_reads.sam       # present for iterative runs
+├── iteration_1/
+│   └── mapped_reads.sam              # initial direct-alignment SAM
 └── final_outputs/
     ├── <prefix>_fastq/               # gene-specific FASTQs
     ├── <prefix>_bam/                 # gene-specific sorted BAMs

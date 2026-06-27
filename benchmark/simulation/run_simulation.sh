@@ -366,14 +366,9 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
                     echo "$seed,$aligner,$paradism_duration,$formatted_time" > "$timing_tmp_file"
 
                     # Reuse ParaDISM's initial SAM for direct alignment comparison.
-                    # Iterative runs write it under iteration_1/; one-iteration
-                    # runs write it directly under the output directory.
-                    if [[ -f "$paradism_output/iteration_1/mapped_reads.sam" ]]; then
-                        paradism_sam="$paradism_output/iteration_1/mapped_reads.sam"
-                    elif [[ -f "$paradism_output/mapped_reads.sam" ]]; then
-                        paradism_sam="$paradism_output/mapped_reads.sam"
-                    else
-                        echo "Error: ParaDISM SAM file not found in $paradism_output" >&2
+                    paradism_sam="$paradism_output/iteration_1/mapped_reads.sam"
+                    if [[ ! -f "$paradism_sam" ]]; then
+                        echo "Error: ParaDISM SAM file not found: $paradism_sam" >&2
                         exit 1
                     fi
                     base_bam="$aligner_dir/${aligner}_base.sorted.bam"

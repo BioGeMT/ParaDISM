@@ -82,7 +82,8 @@ python paradism.py \
     --prefix "$PREFIX"
 
 [[ -d "$OUTPUT_DIR" ]] || fail "Output directory was not created: $OUTPUT_DIR"
-[[ -f "${OUTPUT_DIR}/mapped_reads.sam" ]] || fail "Expected one-iteration SAM not found: ${OUTPUT_DIR}/mapped_reads.sam"
+INITIAL_SAM="${OUTPUT_DIR}/iteration_1/mapped_reads.sam"
+[[ -f "$INITIAL_SAM" ]] || fail "Expected initial SAM not found: $INITIAL_SAM"
 
 FINAL_FASTQ_DIR="${OUTPUT_DIR}/final_outputs/${PREFIX}_fastq"
 FINAL_BAM_DIR="${OUTPUT_DIR}/final_outputs/${PREFIX}_bam"
@@ -101,6 +102,6 @@ check_nonempty_glob "BAM index files in ${FINAL_BAM_DIR}" "${bam_indexes[@]}"
 
 echo "Tiny demo completed successfully."
 echo "Output directory: ${OUTPUT_DIR}"
-echo "SAM: ${OUTPUT_DIR}/mapped_reads.sam"
+echo "Initial SAM: ${INITIAL_SAM}"
 echo "Final FASTQs: ${FINAL_FASTQ_DIR}"
 echo "Final BAMs: ${FINAL_BAM_DIR}"

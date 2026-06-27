@@ -28,7 +28,7 @@ Usage:
   bash benchmark/giab/call_variants_raw_g60.sh --input-dir DIR --output-dir DIR [options]
 
 Required:
-  --input-dir DIR       ParaDISM run output directory (contains final_outputs and/or iteration_1)
+  --input-dir DIR       ParaDISM run output directory (contains final_outputs and iteration_1)
   --output-dir DIR      Destination directory for variant calling outputs
 
 Optional:
@@ -252,11 +252,7 @@ echo ""
 
 PARADISM_BAM_DIR="$INPUT_DIR/final_outputs/${BAM_PREFIX}_bam"
 PARADISM_OUT_DIR="$OUTPUT_DIR/paradism_raw"
-if [[ -f "$INPUT_DIR/iteration_1/mapped_reads.sam" ]]; then
-    BASE_SAM="$INPUT_DIR/iteration_1/mapped_reads.sam"
-else
-    BASE_SAM="$INPUT_DIR/mapped_reads.sam"
-fi
+BASE_SAM="$INPUT_DIR/iteration_1/mapped_reads.sam"
 BASE_OUT_DIR="$OUTPUT_DIR/basealigner_raw"
 
 if [[ -d "$PARADISM_BAM_DIR" ]]; then

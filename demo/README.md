@@ -32,7 +32,8 @@ Expected output layout:
 
 ```text
 demo/output/
-├── mapped_reads.sam
+├── iteration_1/
+│   └── mapped_reads.sam
 └── final_outputs/
     ├── tiny_demo_fastq/
     │   ├── tiny_demo_PARA1.fq
