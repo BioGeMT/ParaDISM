@@ -41,10 +41,14 @@ check_command bowtie2-build
 check_command samtools
 check_command dwgsim
 
-python - <<'PY' || fail "Required Python packages missing. Activate the paradism environment first."
-import Bio
-import pysam
-import rich
+python - <<'PY' || fail "Required Python packages missing. Activate or update the environment with: conda env update -f environment.yml --prune"
+import importlib.util
+import sys
+
+missing = [module for module in ("Bio", "pysam", "rich") if importlib.util.find_spec(module) is None]
+if missing:
+    print("Missing Python modules: " + ", ".join(missing), file=sys.stderr)
+    sys.exit(1)
 PY
 
 check_file "$REFERENCE"
