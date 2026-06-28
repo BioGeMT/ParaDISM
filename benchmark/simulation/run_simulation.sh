@@ -303,7 +303,7 @@ for ((batch_start=0; batch_start<total_seeds; batch_start+=SEEDS_PER_BATCH)); do
             elif [ -x "${DWGSIM_DIR}/dwgsim" ]; then
                 DWGSIM_BIN="${DWGSIM_DIR}/dwgsim"
             else
-                echo "Error: dwgsim not found. Install the pinned environment with: mamba env create -f environment.yml" >&2
+                echo "Error: dwgsim not found. Install the pinned environment with: conda env create -f environment.yml" >&2
                 exit 1
             fi
             

@@ -1,12 +1,10 @@
 # Tools
 
-Small command-line utilities that support ParaDISM outputs.
+Implementation modules used by ParaDISM commands.
 
-- `liftover.py`: converts ParaDISM VCF or BED files from gene-local reference
-  coordinates back to chromosomal coordinates using a user-provided positions
-  file.
+- `liftover.py`: implementation for `python paradism.py liftover`.
 
-The same liftover functionality is exposed through:
+Run liftover through the main ParaDISM entry point:
 
 ```bash
 python paradism.py liftover --bed input.bed --positions positions.txt --output lifted.bed

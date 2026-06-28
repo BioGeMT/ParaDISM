@@ -1,19 +1,13 @@
-#!/usr/bin/env python3
 """
-Liftover tool for converting ParaDISM VCF/BED coordinates from gene-local
+Liftover implementation for converting ParaDISM VCF/BED coordinates from gene-local
 to chromosomal (GRCh38) coordinates.
 
 ParaDISM produces variants called against a custom multi-gene reference
 where each gene is a separate contig. This tool converts those gene-local
 positions to standard chromosomal coordinates so they can be compared with
 results from standard mapping/calling pipelines.
-
-Usage:
-    python tools/liftover.py --vcf input.vcf --positions positions.txt --output lifted.vcf
-    python tools/liftover.py --bed input.bed --positions positions.txt --output lifted.bed
 """
 
-import argparse
 import gzip
 import re
 import sys
@@ -233,22 +227,8 @@ def liftover_bed(bed_path, positions, output_path):
     print(f"Lifted {len(lifted)} regions → {output_path}")
 
 
-def build_parser():
-    parser = argparse.ArgumentParser(
-        description="Liftover ParaDISM VCF/BED from gene-local to chromosomal coordinates",
-    )
-    parser.add_argument("--positions", required=True, help="Gene positions file with chromosomal source intervals")
-    parser.add_argument("--output", "-o", required=True, help="Output file path")
-
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--vcf", help="Input VCF file to liftover")
-    group.add_argument("--bed", help="Input BED file to liftover")
-
-    return parser
-
-
 def run_liftover(args):
-    """Run liftover from parsed arguments (used by both standalone and paradism.py)."""
+    """Run liftover from parsed paradism.py arguments."""
     positions = parse_positions_file(args.positions)
     if not positions:
         print("Error: no gene positions parsed from file", file=sys.stderr)
@@ -265,11 +245,5 @@ def run_liftover(args):
         liftover_bed(args.bed, positions, args.output)
 
 
-def main():
-    parser = build_parser()
-    args = parser.parse_args()
-    run_liftover(args)
-
-
 if __name__ == "__main__":
-    main()
+    raise SystemExit("Run liftover through: python paradism.py liftover ...")

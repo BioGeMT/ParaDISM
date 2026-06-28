@@ -11,16 +11,9 @@ manuscript or private data:
 From the repository root:
 
 ```bash
-mamba env create -f environment.yml
-mamba activate paradism
-bash demo/run_demo.sh
-```
-
-`conda` can be used instead of `mamba`:
-
-```bash
 conda env create -f environment.yml
 conda activate paradism
+bash demo/run_demo.sh
 ```
 
 By default, `run_demo.sh` writes generated reads to `demo/generated_reads/` and

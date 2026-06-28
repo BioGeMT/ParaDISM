@@ -125,7 +125,7 @@ fi
 for required_tool in freebayes bcftools samtools; do
     if ! command -v "$required_tool" >/dev/null 2>&1; then
         echo "Error: required tool not found on PATH: $required_tool" >&2
-        echo "Install the pinned environment with: mamba env create -f environment.yml" >&2
+        echo "Install the pinned environment with: conda env create -f environment.yml" >&2
         exit 1
     fi
 done

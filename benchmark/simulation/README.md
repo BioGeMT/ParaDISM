@@ -26,21 +26,6 @@ It runs `pkd1_panel` for one seed with 1,000 read pairs. Full paper-scale runs
 used larger seed/read counts and can be reproduced by increasing
 `--seeds` and `--reads-per-seed`.
 
-For a faster smoke test:
-
-```bash
-bash benchmark/simulation/run_simulation.sh \
-  --group hba_pair \
-  --reference benchmark/references/hba_pair.fa \
-  --seeds 1 \
-  --reads-per-seed 20 \
-  --aligners bowtie2 \
-  --iterations 1 \
-  --threads 1 \
-  --workers 1 \
-  --out results/simulation/smoke_hba_pair
-```
-
 ## Main Script
 
 `run_simulation.sh`
