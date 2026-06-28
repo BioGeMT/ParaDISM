@@ -27,5 +27,6 @@ gzip -cd "${PREFIX}.bwa.read1.fastq.gz" > "${OUT_DIR}/reads_R1.fq"
 gzip -cd "${PREFIX}.bwa.read2.fastq.gz" > "${OUT_DIR}/reads_R2.fq"
 
 echo "Generated ${READ_PAIRS} paired-end demo read pairs:"
+echo "  Reference: ${REFERENCE}"
 echo "  ${OUT_DIR}/reads_R1.fq"
 echo "  ${OUT_DIR}/reads_R2.fq"

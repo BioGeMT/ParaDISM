@@ -10,7 +10,7 @@ READ2="${READS_DIR}/reads_R2.fq"
 REFERENCE="${SCRIPT_DIR}/ref.fa"
 DEFAULT_OUTPUT_DIR="${SCRIPT_DIR}/output"
 OUTPUT_DIR="${OUTPUT_DIR:-${DEFAULT_OUTPUT_DIR}}"
-PREFIX="tiny_demo"
+PREFIX="pkd1_demo"
 if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
     PYTHON_BIN="${CONDA_PREFIX}/bin/python"
 else
@@ -59,9 +59,7 @@ PY
 
 check_file "$REFERENCE"
 
-if [[ ! -f "$READ1" || ! -f "$READ2" ]]; then
-    OUT_DIR="$READS_DIR" bash "${SCRIPT_DIR}/generate_demo_reads.sh"
-fi
+OUT_DIR="$READS_DIR" bash "${SCRIPT_DIR}/generate_demo_reads.sh"
 
 check_file "$READ1"
 check_file "$READ2"
@@ -110,7 +108,7 @@ check_nonempty_glob "final FASTQ files in ${FINAL_FASTQ_DIR}" "${final_fastqs[@]
 check_nonempty_glob "sorted BAM files in ${FINAL_BAM_DIR}" "${sorted_bams[@]}"
 check_nonempty_glob "BAM index files in ${FINAL_BAM_DIR}" "${bam_indexes[@]}"
 
-echo "Tiny demo completed successfully."
+echo "PKD1 demo completed successfully."
 echo "Output directory: ${OUTPUT_DIR}"
 echo "Initial SAM: ${INITIAL_SAM}"
 echo "Final FASTQs: ${FINAL_FASTQ_DIR}"

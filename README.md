@@ -1,35 +1,26 @@
 # ParaDISM: Paralog Disambiguating Mapper
 
-ParaDISM is a read-mapping workflow with optional refinement for highly
-homologous genomic regions. It aligns short or long reads to a multi-sequence
+ParaDISM is a read-mapping pipeline with optional refinement for highly
+homologous genomic regions. It aligns short reads to a multi-sequence
 reference, uses gene-informative positions in the multiple-sequence alignment
 to assign reads, and writes gene-specific FASTQ/BAM outputs.
 
 ## Installation
-
-The supported installation is the pinned conda environment. ParaDISM uses
-external bioinformatics binaries in addition to Python packages, so this
-repository does not use `uv` as the primary reproducibility mechanism.
 
 ```bash
 conda env create -f environment.yml
 conda activate paradism
 ```
 
-The environment pins ParaDISM's non-Python tools (`bowtie2`,
-`bwa-mem2`, `minimap2`, `samtools`, `bcftools`, `freebayes`, `mafft`, and
-`dwgsim`) as well as the required Python packages.
-
 ## Quick Demo
 
-Run the included synthetic demo first. It does not require downloads or private
-data:
+Run the included synthetic demo. It does not require downloads or private data:
 
 ```bash
 bash demo/run_demo.sh
 ```
 
-The demo uses:
+The demo generates simulated reads from a PKD1/pseudogene reference:
 
 - `demo/ref.fa`
 - 20 generated paired-end read pairs under `demo/generated_reads/`
