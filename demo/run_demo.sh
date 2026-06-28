@@ -11,6 +11,11 @@ REFERENCE="${SCRIPT_DIR}/ref.fa"
 DEFAULT_OUTPUT_DIR="${SCRIPT_DIR}/output"
 OUTPUT_DIR="${OUTPUT_DIR:-${DEFAULT_OUTPUT_DIR}}"
 PREFIX="tiny_demo"
+if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
+    PYTHON_BIN="${CONDA_PREFIX}/bin/python"
+else
+    PYTHON_BIN="$(command -v python || true)"
+fi
 
 fail() {
     echo "ERROR: $*" >&2
@@ -34,19 +39,20 @@ check_nonempty_glob() {
     [[ ${#matches[@]} -gt 0 ]] || fail "No ${label} found"
 }
 
-check_command python
+[[ -n "$PYTHON_BIN" ]] || fail "python not found. Activate the paradism environment first."
 check_command mafft
 check_command bowtie2
 check_command bowtie2-build
 check_command samtools
 check_command dwgsim
 
-python - <<'PY' || fail "Required Python packages missing. Activate or update the environment with: conda env update -f environment.yml --prune"
+"$PYTHON_BIN" - <<'PY' || fail "Required Python packages missing. Activate or update the environment with: conda env update -f environment.yml --prune"
 import importlib.util
 import sys
 
 missing = [module for module in ("Bio", "pysam", "rich") if importlib.util.find_spec(module) is None]
 if missing:
+    print(f"Python executable: {sys.executable}", file=sys.stderr)
     print("Missing Python modules: " + ", ".join(missing), file=sys.stderr)
     sys.exit(1)
 PY
@@ -75,7 +81,7 @@ if [[ -e "$OUTPUT_DIR" ]]; then
     fi
 fi
 
-python paradism.py \
+"$PYTHON_BIN" paradism.py \
     --read1 "$READ1" \
     --read2 "$READ2" \
     --reference "$REFERENCE" \
