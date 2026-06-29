@@ -30,7 +30,7 @@ from utils.validators import (
 )
 
 
-def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
+def interactive_mode(input_dir: str = ".", output_dir: str = "./output", reference: str | None = None):
     input_path = Path(input_dir)
     if not input_path.exists():
         console.print(f"[red]✗ Input directory not found: {input_dir}[/red]")
@@ -38,6 +38,17 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     if not input_path.is_dir():
         console.print(f"[red]✗ Not a directory: {input_dir}[/red]")
         sys.exit(1)
+
+    provided_reference = None
+    if reference:
+        provided_reference = Path(reference)
+        if not provided_reference.exists():
+            console.print(f"[red]✗ Reference file not found: {reference}[/red]")
+            sys.exit(1)
+        if not provided_reference.is_file():
+            console.print(f"[red]✗ Reference is not a file: {reference}[/red]")
+            sys.exit(1)
+        provided_reference = provided_reference.resolve()
     
     input_dir_resolved = str(input_path.resolve())
 
@@ -104,8 +115,12 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
     ref_files = find_references(input_dir_resolved)
     references = []
     for ref_path in ref_files:
+        if provided_reference and Path(ref_path).resolve() == provided_reference:
+            continue
         ref_size = os.path.getsize(ref_path)
         references.append((ref_path, ref_size))
+    if provided_reference:
+        references.insert(0, (str(provided_reference), os.path.getsize(provided_reference)))
 
     sam_file_paths = find_sam_files(input_dir_resolved)
     sam_files = []
@@ -265,7 +280,12 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         list(input_path.glob("*.fna"))
     )
 
-    if len(references) == 1:
+    if provided_reference:
+        ref_path = str(provided_reference)
+        console.print(f"[green]✓[/green] Using provided reference: [cyan]{provided_reference.name}[/cyan]")
+        ref_meta = scan_fasta_metadata(ref_path)
+        console.print()
+    elif len(references) == 1:
         ref_path, ref_size = references[0]
         console.print(f"[green]✓[/green] Auto-selected: [cyan]{Path(ref_path).name}[/cyan]")
         ref_meta = scan_fasta_metadata(ref_path)
@@ -343,7 +363,6 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
                 console.print("[yellow]Please answer y or n[/yellow]")
 
     aligner = "bowtie2"
-    minimap2_profile = "short"
     threads = 4
     workers = 1
     threshold = None
@@ -369,7 +388,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         aligner_table.add_column("Description", style="cyan")
         aligner_table.add_row("1", "Bowtie2", "(default for short reads)")
         aligner_table.add_row("2", "BWA-MEM2", "(alternative for short reads)")
-        aligner_table.add_row("3", "Minimap2", "(versatile, supports long reads)")
+        aligner_table.add_row("3", "Minimap2", "(short-read mode)")
 
         aligner_panel = Panel(
             aligner_table,
@@ -396,59 +415,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
                 break
             elif choice == "3":
                 aligner = "minimap2"
-
-                console.print()
-                print_section("Minimap2 Profile Selection")
-
-                profile_table = Table(show_header=False, box=None, padding=(0, 1), expand=False)
-                profile_table.add_column("Number", style="dim", width=4)
-                profile_table.add_column("Profile", style="bright_white")
-                profile_table.add_column("Description", style="cyan")
-                profile_table.add_row("1", "Short", "(Short-Read Sequencing)")
-                profile_table.add_row("2", "PacBio-HiFi", "(PacBio HiFi/CCS)")
-                profile_table.add_row("3", "PacBio-CLR", "(PacBio Continuous)")
-                profile_table.add_row("4", "ONT-Q20", "(Nanopore Q20+)")
-                profile_table.add_row("5", "ONT-Standard", "(Nanopore Standard)")
-
-                profile_panel = Panel(
-                    profile_table,
-                    title="[bold green]Select Minimap2 Profile[/bold green]",
-                    title_align="left",
-                    border_style="green",
-                    box=rbox.ROUNDED,
-                    expand=False,
-                    padding=(1, 2)
-                )
-                console.print(profile_panel)
-                console.print()
-
-                while True:
-                    profile_choice = console.input("[green]Select [1-5]:[/green] ").strip()
-
-                    if profile_choice == "1":
-                        minimap2_profile = "short"
-                        display_name = "Short"
-                        break
-                    elif profile_choice == "2":
-                        minimap2_profile = "pacbio-hifi"
-                        display_name = "PacBio-HiFi"
-                        break
-                    elif profile_choice == "3":
-                        minimap2_profile = "pacbio-clr"
-                        display_name = "PacBio-CLR"
-                        break
-                    elif profile_choice == "4":
-                        minimap2_profile = "ont-q20"
-                        display_name = "ONT-Q20"
-                        break
-                    elif profile_choice == "5":
-                        minimap2_profile = "ont-standard"
-                        display_name = "ONT-Standard"
-                        break
-                    else:
-                        console.print("[red]Invalid selection. Please enter 1-5[/red]")
-
-                console.print(f"[green]✓[/green] Selected: [cyan]Minimap2 ({display_name})[/cyan]")
+                console.print("[green]✓[/green] Selected: [cyan]Minimap2[/cyan]")
                 break
             else:
                 console.print("[red]Invalid selection. Please enter 1-3[/red]")
@@ -673,7 +640,6 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         threads=threads,
         workers=workers,
         sam_file=Path(sam_path).name if sam_path else None,
-        minimap2_profile=minimap2_profile if aligner == "minimap2" else None,
         output_dir=output_dir,
         iterations=iterations,
         n_anchors=n_anchors,
@@ -705,7 +671,6 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output"):
         aligner=aligner,
         threads=threads,
         sam=sam_path,
-        minimap2_profile=minimap2_profile,
         show_header=True,
         iterations=iterations,
         threshold=threshold,

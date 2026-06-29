@@ -5,6 +5,10 @@ demo and benchmark workflows. Each FASTA represents one multi-sequence
 gene/paralog group and can be passed directly to `paradism.py` or
 `benchmark/simulation/run_simulation.sh`.
 
+Each FASTA should contain the gene of interest and the homologous paralog or
+pseudogene sequences that reads may be assigned to. The FASTA record names are
+used as ParaDISM local contig/gene names.
+
 Additional reference annotation files:
 
 - `pkd1_exons.bed`: PKD1/PKD1P gene-local exon intervals for the committed

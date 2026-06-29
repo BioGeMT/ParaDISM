@@ -305,7 +305,6 @@ def display_pipeline_config(
     threads: int,
     workers: int = 1,
     sam_file: Optional[str] = None,
-    minimap2_profile: Optional[str] = None,
     output_dir: str = "./output",
     iterations: int = 0,
     n_anchors: int = 1,
@@ -337,21 +336,11 @@ def display_pipeline_config(
         "bowtie2": "Bowtie2",
         "minimap2": "Minimap2"
     }
-    profile_map = {
-        "short": "Short",
-        "pacbio-hifi": "PacBio-HiFi",
-        "pacbio-clr": "PacBio-CLR",
-        "ont-q20": "ONT-Q20",
-        "ont-standard": "ONT-Standard",
-    }
 
     if sam_file:
         lines.append(f"  SAM:        [cyan]{sam_file}[/cyan] [dim](using existing alignment)[/dim]")
     else:
         aligner_display = aligner_map.get(aligner, aligner.upper())
-        if minimap2_profile:
-            profile_display = profile_map.get(minimap2_profile, minimap2_profile.upper())
-            aligner_display += f" ({profile_display})"
         lines.append(f"  Aligner:    [cyan]{aligner_display}[/cyan]")
         lines.append(f"  Threads:    [cyan]{threads}[/cyan] cores")
     lines.append(f"  Assignment workers: [cyan]{workers}[/cyan]")

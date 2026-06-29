@@ -27,7 +27,25 @@ The demo generates simulated reads from a PKD1/pseudogene reference:
 
 and writes checked outputs to `demo/output/`.
 
-## Basic Usage
+## Usage
+
+### Interactive Mode
+
+Run without arguments to launch the guided CLI:
+
+```bash
+python paradism.py
+```
+
+Interactive mode scans the current directory for input files and guides you
+through file selection, aligner choice, run parameters, and optional settings.
+Use `--input-dir` to scan another directory, and provide `--reference` when the
+reference FASTA is stored outside that directory.
+
+### Non-Interactive Mode
+
+The reference input file should contain the sequence(s) you want ParaDISM to distinguish in FASTA format.
+The FASTA record names are used as the gene/local-contig names in the outputs.
 
 ```bash
 python paradism.py \
@@ -35,24 +53,40 @@ python paradism.py \
   --read2 reads_R2.fq \
   --reference ref.fa \
   --aligner bowtie2 \
-  --threads 4 \
-  --workers 2 \
+  --threads 8 \
+  --workers 8 \
   --iterations 1 \
   --output-dir output
 ```
 
-Supported aligners are `bowtie2`, `bwa-mem2`, and `minimap2`. For minimap2,
-also provide `--minimap2-profile`, for example `--minimap2-profile short`.
+Flags:
 
-Use `--iterations 1` for a single ParaDISM run. Larger values enable iterative
-refinement of reads initially assigned to `NONE`.
-
-Use `--n_anchors N` to require at least `N` distinct gene-unique C1 positions
-for read assignment. The default is `--n_anchors 1`, matching the original
-behavior.
-
-Use `--workers N` to process read assignment in parallel after alignment. This
-is separate from `--threads`, which controls the underlying aligner.
+- `--read1 READ1`: R1 FASTQ file, or single-end FASTQ file.
+- `--read2 READ2`: R2 FASTQ file for paired-end mode.
+- `--reference REFERENCE`: FASTA reference containing the gene/paralog
+  sequence(s) to distinguish.
+- `--sam SAM`: Existing SAM file to use instead of running a new alignment.
+- `--aligner ALIGNER`: Short-read base aligner, one of `bowtie2`, `bwa-mem2`,
+  or `minimap2`.
+- `--threads THREADS`: Threads passed to the base aligner.
+- `--workers WORKERS`: Worker processes for ParaDISM read assignment after
+  alignment.
+- `--output-dir OUTPUT_DIR`: Output directory.
+- `--prefix PREFIX`: Prefix for output files.
+- `--iterations N`: Number of ParaDISM runs; `1` is a single run, larger values
+  enable iterative refinement.
+- `--n_anchors N`: Minimum number of distinct gene-unique C1 anchor positions
+  required for read assignment.
+- `--input-dir INPUT_DIR`: Directory scanned by interactive mode.
+- `--threshold THRESHOLD`: Minimum alignment score threshold or Bowtie2 score
+  function.
+- `--min-alternate-count N`: Minimum alternate allele count for FreeBayes during
+  iterative variant calling.
+- `--add-quality-filters`: Apply quality filters during iterative variant
+  calling.
+- `--qual-threshold N`: Minimum QUAL score when quality filters are enabled.
+- `--dp-threshold N`: Minimum depth when quality filters are enabled.
+- `--af-threshold F`: Minimum allele frequency when quality filters are enabled.
 
 ## Output Layout
 
@@ -68,8 +102,9 @@ output/
 
 ## Liftover
 
-ParaDISM outputs use gene-local contig coordinates. To convert VCF or BED files
-back to chromosomal coordinates, use the liftover subcommand:
+ParaDISM reports VCF/BED positions on the local contigs in `ref.fa`. Use
+`liftover` only when you need to convert those local coordinates back to
+chromosomal coordinates:
 
 ```bash
 python paradism.py liftover \
@@ -78,9 +113,8 @@ python paradism.py liftover \
   --output lifted_exons.bed
 ```
 
-The `--positions` file must define the chromosomal interval and strand for
-each gene/reference contig being lifted. Each line should end with
-`CHR:START-END:STRAND`, for example:
+The `--positions` file maps each FASTA contig name to its chromosomal interval
+and strand:
 
 ```text
 PKD1 16:2088708-2135898:1
@@ -89,14 +123,12 @@ PKD1P1 16:16310341-16334190:1
 
 ## Reproducible Benchmarks
 
-Reviewer-facing benchmark workflows are under `benchmark/`:
-
 - `benchmark/references/`: committed FASTA references for the included
-  paralog groups.
+  gene/paralog groups.
 - `benchmark/simulation/`: synthetic read simulation with `dwgsim`, followed
-  by ParaDISM/direct-aligner read-assignment evaluation.
-- `benchmark/giab/`: public HG002/GIAB benchmark scripts. These require large
-  public GIAB read inputs and are intentionally separate from the quick demo.
+  by ParaDISM/Bowtie2/BWA-MEM2/minimap2 read-assignment evaluation. It writes
+  per-seed metrics, aggregate read-mapping CSVs, and timing data.
+- `benchmark/giab/`: public HG002/GIAB benchmark scripts that evaluate SNP
+  calls against GIAB truth.
 
-Private or unpublished-data workflows are not part of the public benchmark
-path.
+Private data workflows are not part of the public benchmark.

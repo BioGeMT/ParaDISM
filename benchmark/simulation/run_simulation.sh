@@ -53,7 +53,6 @@ ERROR_RATE=${ERROR_RATE:-0.01}             # default sequencing error rate (per 
 QUAL_THRESHOLD=${QUAL_THRESHOLD:-20}
 DP_THRESHOLD=${DP_THRESHOLD:-10}
 AF_THRESHOLD=${AF_THRESHOLD:-0.05}
-MINIMAP2_PROFILE="${MINIMAP2_PROFILE:-short}"     # sr preset
 SNP_RATE=${SNP_RATE:-0.005}              # DWGSIM SNP rate (per base)
 INDEL_RATE=${INDEL_RATE:-0.0005}           # DWGSIM indel rate (per base)
 INDEL_EXT=${INDEL_EXT:-0.5}               # DWGSIM indel extension probability
@@ -175,10 +174,6 @@ run_mapper() {
         --dp-threshold "$DP_THRESHOLD"
         --af-threshold "$AF_THRESHOLD"
     )
-    if [[ "$aligner" == "minimap2" ]]; then
-        cmd+=(--minimap2-profile "$MINIMAP2_PROFILE")
-    fi
-
     # Run mapper (may exit with status 1 even if successful)
     "${cmd[@]}" || true
 

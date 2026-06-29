@@ -54,17 +54,12 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         console.print(f"[red]✗ SAM file not found: {args.sam}[/red]")
         sys.exit(1)
 
-    if args.aligner == "minimap2" and not args.minimap2_profile:
-        console.print("[red]✗ --minimap2-profile must be provided when --aligner minimap2[/red]")
-        sys.exit(1)
     if args.n_anchors < 1:
         console.print("[red]✗ --n_anchors must be >= 1[/red]")
         sys.exit(1)
     if args.workers < 1:
         console.print("[red]✗ --workers must be >= 1[/red]")
         sys.exit(1)
-
-    profile = args.minimap2_profile or "short"
 
     executor = SimpleParaDISMExecutor(
         output_dir=args.output_dir,
@@ -82,7 +77,6 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         aligner=args.aligner,
         threads=args.threads,
         sam=args.sam,
-        minimap2_profile=profile,
         show_header=True,
         iterations=args.iterations,
         threshold=args.threshold,
@@ -153,7 +147,7 @@ Examples:
         default="bowtie2",
         choices=["bwa-mem2", "bowtie2", "minimap2"],
         help=(
-            "Read aligner [bwa-mem2|bowtie2|minimap2] (default: Bowtie2 for short reads)"
+            "Short-read aligner [bwa-mem2|bowtie2|minimap2] (default: bowtie2)"
         ),
     )
     optional.add_argument("--threads", metavar="THREADS", type=int, default=4, help="Threads to use (default: 4)")
@@ -163,14 +157,6 @@ Examples:
         type=int,
         default=1,
         help="Worker processes for ParaDISM read assignment (default: 1)",
-    )
-    optional.add_argument(
-        "--minimap2-profile",
-        metavar="PROFILE",
-        choices=["short", "pacbio-hifi", "pacbio-clr", "ont-q20", "ont-standard"],
-        help="Minimap2 profile (required when --aligner minimap2): "
-             "short (short-read), pacbio-hifi (PacBio HiFi/CCS), pacbio-clr (PacBio CLR), "
-             "ont-q20 (Nanopore Q20+), ont-standard (Nanopore standard).",
     )
     optional.add_argument(
         "--output-dir",
@@ -288,7 +274,11 @@ def main() -> None:
         console.print(f"[red]✗ Not a directory: {args.input_dir}[/red]")
         sys.exit(1)
 
-    interactive_mode(input_dir=str(input_dir.resolve()), output_dir=args.output_dir)
+    interactive_mode(
+        input_dir=str(input_dir.resolve()),
+        output_dir=args.output_dir,
+        reference=args.reference,
+    )
 
 
 if __name__ == "__main__":

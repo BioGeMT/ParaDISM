@@ -1,6 +1,7 @@
 # Demo and benchmark outputs
 demo/output/
 demo/generated_reads/
+output/
 results/
 benchmark/giab/giab_hg002_output*/
 benchmark/giab/giab_hg002_reads/

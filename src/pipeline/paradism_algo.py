@@ -451,7 +451,7 @@ def _split_interleaved_fastq(fastq_file: str, r1_fastq: str, r2_fastq: str) -> N
 
 
 def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_dir: str,
-                     aligner: str = 'bwa-mem2', threads: int = 4, minimap2_profile: str = 'short',
+                     aligner: str = 'bwa-mem2', threads: int = 4,
                      prefix: str = "", bowtie2_score_min: str = "G,40,40",
                      bwa_min_score: int = 240, minimap2_min_score: int = 240,
                      is_paired: bool = False) -> None:
@@ -504,15 +504,8 @@ def create_bam_files(genes: list[str], ref_fasta: str, fastq_dir: str, output_di
             else:
                 subprocess.run(f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} {index_base} {fastq_file} | {awk_filter} > {sam_path}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
         elif aligner == 'minimap2':
-            preset_map = {
-                'short': 'sr',
-                'pacbio-hifi': 'map-hifi',
-                'pacbio-clr': 'map-pb',
-                'ont-q20': 'lr:hq',
-                'ont-standard': 'map-ont',
-            }
-            preset = preset_map.get(minimap2_profile, 'sr')
-            score_threshold = f"-s {minimap2_min_score}" if preset == "sr" else ""
+            preset = "sr"
+            score_threshold = f"-s {minimap2_min_score}"
             index_mmi = f"{index_base}.mmi"
             subprocess.run(f"minimap2 -x {preset} -d {index_mmi} {tmp_ref}", shell=True, check=True, stdout=DEVNULL, stderr=DEVNULL)
             if is_paired:
@@ -573,9 +566,6 @@ def main():
                         help='Aligner to use')
     parser.add_argument('--threads', type=int, default=4,
                         help='Number of threads')
-    parser.add_argument('--minimap2-profile', default='short',
-                        choices=['short', 'pacbio-hifi', 'pacbio-clr', 'ont-q20', 'ont-standard'],
-                        help='Minimap2 profile')
     parser.add_argument('--prefix', default='',
                         help='Prefix for output files')
     parser.add_argument('--n_anchors', type=int, default=1,
@@ -620,7 +610,6 @@ def main():
             args.bam_dir,
             args.aligner,
             args.threads,
-            args.minimap2_profile,
             args.prefix,
             is_paired=args.r2 is not None,
         )

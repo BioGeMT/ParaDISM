@@ -2,9 +2,15 @@
 
 This workflow simulates paired-end reads from one reference FASTA with
 `dwgsim`, runs ParaDISM and direct aligners on the same reads, and summarizes
-read-assignment precision/recall/specificity.
+read-assignment precision, sensitivity, and specificity.
 
-Run one group at a time:
+The reference FASTA should contain one gene/paralog group: the gene of interest
+and homologous sequences that reads may be assigned to. Because the reads are
+simulated, the true source contig of each read is known.
+
+## Usage
+
+Run one group:
 
 ```bash
 bash benchmark/simulation/run_simulation.sh \
@@ -16,30 +22,19 @@ bash benchmark/simulation/run_simulation.sh \
   --out results/simulation/hba_pair
 ```
 
-The default command is intentionally small:
+Or run the default small benchmark:
 
 ```bash
 bash benchmark/simulation/run_simulation.sh
 ```
 
-It runs `pkd1_panel` for one seed with 1,000 read pairs. Full paper-scale runs
-used larger seed/read counts and can be reproduced by increasing
-`--seeds` and `--reads-per-seed`.
+The default uses `pkd1_panel`, one seed, and 1,000 read pairs.
 
-## Main Script
-
-`run_simulation.sh`
-
-- generates reads with `dwgsim`
-- runs ParaDISM for each requested aligner
-- reuses the initial ParaDISM SAM as the direct-aligner comparison
-- runs per-seed read-assignment analysis
-- writes aggregate metric CSVs and timing data
-
-Important options:
+## Options
 
 - `--group`: label for the gene/paralog group
-- `--reference`: FASTA to simulate from
+- `--reference`: FASTA to simulate from; defaults to
+  `benchmark/references/<group>.fa`
 - `--out`: output directory
 - `--seeds`: run seeds `1..N`
 - `--reads-per-seed`: read pairs generated per seed
@@ -48,11 +43,16 @@ Important options:
 - `--workers`: worker processes for ParaDISM read assignment
 - `--iterations`: ParaDISM iterations (default: 1)
 
-Outputs are written under the selected `--out` directory:
+## Output Layout
 
 ```text
 results/simulation/<group>/
-├── seed_*/
+├── seed_*/                              # simulated reads and per-aligner runs
 ├── aggregated_results/
+│   ├── read_mapping_aggregated_summary.csv
+│   └── per_seed_overall_metrics.csv
 └── timing_data.csv
 ```
+
+The aggregate CSVs report per-gene and overall precision, sensitivity, and
+specificity across seeds.

@@ -24,7 +24,7 @@ Usage:
   bash benchmark/giab/run_giab.sh [options]
 
 Options:
-  --reads-dir DIR       Directory containing HG002_R1.fq(.gz) and HG002_R2.fq(.gz)
+  --reads-dir DIR       Directory containing HG002_R1/HG002_R2 FASTQ files
   --reference FILE      ParaDISM reference FASTA (default: benchmark/references/pkd1_panel.fa)
   --output-dir DIR      Output directory (default: benchmark/giab/giab_hg002_output_bowtie2_G60_min5_qfilters)
   --threads N           Threads for ParaDISM (default: 8 or env THREADS)
@@ -95,16 +95,22 @@ if [[ ! -f "$REFERENCE" ]]; then
     exit 1
 fi
 
-# Find merged reads
-if [[ -f "${READS_DIR}/HG002_R1.fq.gz" ]]; then
-    R1_MERGED="${READS_DIR}/HG002_R1.fq.gz"
-    R2_MERGED="${READS_DIR}/HG002_R2.fq.gz"
-elif [[ -f "${READS_DIR}/HG002_R1.fq" ]]; then
-    R1_MERGED="${READS_DIR}/HG002_R1.fq"
-    R2_MERGED="${READS_DIR}/HG002_R2.fq"
-else
-    echo "Error: Merged reads not found in $READS_DIR"
-    echo "Expected: HG002_R1.fq.gz and HG002_R2.fq.gz"
+# Find merged or downsampled reads.
+R1_MERGED=""
+R2_MERGED=""
+for extension in fq.gz fastq.gz fq fastq; do
+    candidate_r1="${READS_DIR}/HG002_R1.${extension}"
+    candidate_r2="${READS_DIR}/HG002_R2.${extension}"
+    if [[ -f "$candidate_r1" && -f "$candidate_r2" ]]; then
+        R1_MERGED="$candidate_r1"
+        R2_MERGED="$candidate_r2"
+        break
+    fi
+done
+
+if [[ -z "$R1_MERGED" ]]; then
+    echo "Error: HG002 read pair not found in $READS_DIR"
+    echo "Expected: HG002_R1/HG002_R2 with extension .fq.gz, .fastq.gz, .fq, or .fastq"
     exit 1
 fi
 
