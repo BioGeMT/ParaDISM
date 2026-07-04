@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-READ1="${SCRIPT_DIR}/reads_R1.fq"
-READ2="${SCRIPT_DIR}/reads_R2.fq"
+READ1="${SCRIPT_DIR}/pkd1_sim_R1.fq"
+READ2="${SCRIPT_DIR}/pkd1_sim_R2.fq"
 REFERENCE="${SCRIPT_DIR}/ref.fa"
 DEFAULT_OUTPUT_DIR="${SCRIPT_DIR}/output"
 OUTPUT_DIR="${OUTPUT_DIR:-${DEFAULT_OUTPUT_DIR}}"

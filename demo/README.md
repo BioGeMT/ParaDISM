@@ -4,7 +4,7 @@ This directory contains a self-contained synthetic example that does not use
 manuscript or private data:
 
 - `ref.fa`: PKD1 plus six PKD1 pseudogene reference contigs
-- `reads_R1.fq` and `reads_R2.fq`: 20 committed paired-end read pairs
+- `pkd1_sim_R1.fq` and `pkd1_sim_R2.fq`: 20 committed paired-end read pairs
 - `run_demo.sh`: runs ParaDISM with Bowtie2 for one iteration and checks the
   expected outputs
 - `generate_demo_reads.sh`: optional script to regenerate the committed reads

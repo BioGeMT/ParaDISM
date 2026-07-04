@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REFERENCE="${SCRIPT_DIR}/ref.fa"
 WORK_DIR="${WORK_DIR:-${SCRIPT_DIR}/generated_reads}"
-READ1_OUT="${READ1_OUT:-${SCRIPT_DIR}/reads_R1.fq}"
-READ2_OUT="${READ2_OUT:-${SCRIPT_DIR}/reads_R2.fq}"
+READ1_OUT="${READ1_OUT:-${SCRIPT_DIR}/pkd1_sim_R1.fq}"
+READ2_OUT="${READ2_OUT:-${SCRIPT_DIR}/pkd1_sim_R2.fq}"
 PREFIX="${WORK_DIR}/demo_seed1"
 READ_PAIRS=20
 

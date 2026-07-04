@@ -23,8 +23,8 @@ bash demo/run_demo.sh
 The demo uses committed synthetic reads from a PKD1/pseudogene reference:
 
 - `demo/ref.fa`
-- `demo/reads_R1.fq`
-- `demo/reads_R2.fq`
+- `demo/pkd1_sim_R1.fq`
+- `demo/pkd1_sim_R2.fq`
 
 and writes checked outputs to `demo/output/`.
 
