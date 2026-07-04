@@ -65,6 +65,7 @@ def _select_input_directory(input_path: Path) -> Path:
                     f"  [green]{index}[/green]. {candidate.name} "
                     f"[dim]({fastq_count} FASTQ, {ref_count} FASTA)[/dim]"
                 )
+            console.print()
             prompt = f"[green]Select reads directory [1-{len(candidates)}], enter a reads directory path, or 'q' to quit:[/green] "
         else:
             prompt = "[green]Enter a reads directory path, or 'q' to quit:[/green] "
