@@ -45,7 +45,8 @@ python paradism.py
 ```
 
 Interactive mode scans the current directory for input files and guides you
-through file selection, aligner choice, run parameters, and optional settings.
+through file selection, aligner choice, output directory, run parameters, and
+optional settings.
 If the current directory has no FASTQ files, ParaDISM prompts for another input
 directory and lists immediate subdirectories that contain FASTQ files. Use
 `--input-dir` to start from a different directory, and provide `--reference`

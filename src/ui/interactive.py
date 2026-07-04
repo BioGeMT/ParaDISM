@@ -688,6 +688,12 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output", referen
 
     console.print()
 
+    choice = console.input(f"[green]Output directory (default: {output_dir}):[/green] ").strip()
+    if choice:
+        output_dir = str(Path(choice).expanduser())
+    console.print(f"[green]✓[/green] Output directory: [cyan]{output_dir}[/cyan]")
+    console.print()
+
     validations = []
 
     # Validate FASTQ files
