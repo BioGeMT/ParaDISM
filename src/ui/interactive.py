@@ -54,7 +54,7 @@ def _select_input_directory(input_path: Path) -> Path:
         if _find_fastq_files(input_path):
             return input_path
 
-        console.print(f"\n[red]✗ No FASTQ files found in {input_path.resolve()}[/red]")
+        console.print(f"\n[yellow]No FASTQ files found in {input_path.resolve()}[/yellow]")
         candidates = _candidate_input_directories(input_path)
         if candidates:
             console.print("[cyan]Directories with FASTQ files:[/cyan]")
@@ -93,7 +93,7 @@ def _select_input_directory(input_path: Path) -> Path:
 
 
 def _select_reference_path(input_path: Path) -> Path:
-    console.print(f"\n[red]✗ No reference FASTA files found in {input_path.resolve()}[/red]")
+    console.print(f"\n[yellow]No reference FASTA files found in {input_path.resolve()}[/yellow]")
     while True:
         choice = console.input("[green]Enter reference FASTA path, or 'q' to quit:[/green] ").strip()
         if choice.lower() in {"q", "quit", "exit"}:
