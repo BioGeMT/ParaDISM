@@ -14,6 +14,14 @@ from rich import box
 console = Console()
 
 
+def display_path(file_path: str) -> str:
+    path = Path(file_path)
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return path.name
+
+
 def format_bytes(bytes_size: int) -> str:
     """Return human-readable byte size."""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -65,7 +73,7 @@ def display_single_end_files(
         table.add_column("File", no_wrap=False)
 
         for idx, (ref_path, ref_size) in enumerate(references, 1):
-            ref_name = ref_path.split('/')[-1]
+            ref_name = display_path(ref_path)
             ref_info = format_bytes(ref_size)
 
             table.add_row(
@@ -184,7 +192,7 @@ def display_file_pairs(
         table.add_column("File", no_wrap=False)
 
         for idx, (ref_path, ref_size) in enumerate(references, 1):
-            ref_name = ref_path.split('/')[-1]
+            ref_name = display_path(ref_path)
             ref_info = format_bytes(ref_size)
 
             table.add_row(

@@ -34,6 +34,13 @@ def _find_fastq_files(input_path: Path) -> list[Path]:
     return sorted(list(input_path.glob("*.fq")) + list(input_path.glob("*.fastq")))
 
 
+def _find_reference_files(input_path: Path) -> list[Path]:
+    reference_files: list[Path] = []
+    for pattern in ("*.fa", "*.fasta", "*.fas", "*.fna"):
+        reference_files.extend(input_path.glob(pattern))
+    return sorted(reference_files)
+
+
 def _is_generated_output_path(path: Path, root_path: Path) -> bool:
     try:
         relative_parts = path.relative_to(root_path).parts
@@ -43,6 +50,30 @@ def _is_generated_output_path(path: Path, root_path: Path) -> bool:
         "final_outputs" in relative_parts
         or any(part.startswith("iteration_") for part in relative_parts)
     )
+
+
+def _candidate_reference_files(search_root: Path, reads_path: Path) -> list[Path]:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    for path in _find_reference_files(reads_path):
+        resolved_path = path.resolve()
+        candidates.append(resolved_path)
+        seen.add(resolved_path)
+
+    recursive_paths: list[Path] = []
+    for pattern in ("*.fa", "*.fasta", "*.fas", "*.fna"):
+        recursive_paths.extend(search_root.rglob(pattern))
+    for path in sorted(recursive_paths):
+        resolved_path = path.resolve()
+        if resolved_path in seen:
+            continue
+        if _is_generated_output_path(path.parent, search_root):
+            continue
+        candidates.append(resolved_path)
+        seen.add(resolved_path)
+
+    return candidates
 
 
 def _candidate_input_directories(input_path: Path) -> list[Path]:
@@ -70,6 +101,17 @@ def _select_input_directory(input_path: Path) -> Path:
 
         console.print(f"\n[yellow]No FASTQ files found in {input_path.resolve()}[/yellow]")
         candidates = _candidate_input_directories(input_path)
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            selected_path = candidate.resolve()
+            fastq_count = len(_find_fastq_files(selected_path))
+            ref_count = len(find_references(str(selected_path)))
+            console.print(
+                f"[green]✓[/green] Auto-selected reads directory: "
+                f"[cyan]{candidate.relative_to(input_path)}[/cyan] "
+                f"[dim]({fastq_count} FASTQ, {ref_count} FASTA)[/dim]"
+            )
+            return selected_path
         if candidates:
             console.print("[cyan]Reads directories with FASTQ files:[/cyan]")
             for index, candidate in enumerate(candidates, 1):
@@ -144,7 +186,8 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output", referen
             sys.exit(1)
         provided_reference = provided_reference.resolve()
     
-    input_dir_resolved = str(input_path.resolve())
+    search_root = input_path.resolve()
+    input_dir_resolved = str(search_root)
 
     print_header()
 
@@ -208,13 +251,12 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output", referen
             r2_size = os.path.getsize(r2_path)
             fastq_pairs.append((r1_path, r2_path, r1_size, r2_size))
 
-    ref_files = find_references(input_dir_resolved)
     references = []
+    ref_files = _candidate_reference_files(search_root, input_path)
     for ref_path in ref_files:
-        if provided_reference and Path(ref_path).resolve() == provided_reference:
+        if provided_reference and ref_path == provided_reference:
             continue
-        ref_size = os.path.getsize(ref_path)
-        references.append((ref_path, ref_size))
+        references.append((str(ref_path), os.path.getsize(ref_path)))
     if not references and not provided_reference:
         provided_reference = _select_reference_path(input_path)
     if provided_reference:
@@ -371,12 +413,7 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output", referen
 
     console.print()
 
-    all_ref_files = sorted(
-        list(input_path.glob("*.fa")) +
-        list(input_path.glob("*.fasta")) +
-        list(input_path.glob("*.fas")) +
-        list(input_path.glob("*.fna"))
-    )
+    all_ref_files = [Path(ref_path) for ref_path, _ref_size in references]
 
     if provided_reference:
         ref_path = str(provided_reference)

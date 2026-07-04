@@ -47,10 +47,13 @@ python paradism.py
 Interactive mode scans the current directory for input files and guides you
 through file selection, aligner choice, output directory, run parameters, and
 optional settings.
-If the current directory has no FASTQ files, ParaDISM prompts for a reads
-directory and lists immediate subdirectories that contain FASTQ files. Use
+If the current directory has no FASTQ files, ParaDISM searches nested
+directories for reads. It auto-selects a single reads directory, or prompts you
+to choose when multiple candidates are found. Use
 `--input-dir` to start from a different directory, and provide `--reference`
 when the reference FASTA is stored outside that directory.
+When run interactively, reference selection includes FASTA files in the selected
+reads directory and FASTA files under the original starting directory.
 
 ### Non-Interactive Mode
 
