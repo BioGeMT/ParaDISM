@@ -34,12 +34,26 @@ def _find_fastq_files(input_path: Path) -> list[Path]:
     return sorted(list(input_path.glob("*.fq")) + list(input_path.glob("*.fastq")))
 
 
+def _is_generated_output_path(path: Path, root_path: Path) -> bool:
+    try:
+        relative_parts = path.relative_to(root_path).parts
+    except ValueError:
+        return False
+    return (
+        "final_outputs" in relative_parts
+        or any(part.startswith("iteration_") for part in relative_parts)
+    )
+
+
 def _candidate_input_directories(input_path: Path) -> list[Path]:
-    return [
-        child
-        for child in sorted(input_path.iterdir())
-        if child.is_dir() and _find_fastq_files(child)
-    ]
+    return sorted(
+        {
+            path.parent
+            for pattern in ("*.fq", "*.fastq")
+            for path in input_path.rglob(pattern)
+            if path.parent != input_path and not _is_generated_output_path(path.parent, input_path)
+        }
+    )
 
 
 def _resolve_user_path(raw_path: str, base_path: Path) -> Path:
@@ -62,7 +76,7 @@ def _select_input_directory(input_path: Path) -> Path:
                 fastq_count = len(_find_fastq_files(candidate))
                 ref_count = len(find_references(str(candidate)))
                 console.print(
-                    f"  [green]{index}[/green]. {candidate.name} "
+                    f"  [green]{index}[/green]. {candidate.relative_to(input_path)} "
                     f"[dim]({fastq_count} FASTQ, {ref_count} FASTA)[/dim]"
                 )
             console.print()
