@@ -30,6 +30,85 @@ from utils.validators import (
 )
 
 
+def _find_fastq_files(input_path: Path) -> list[Path]:
+    return sorted(list(input_path.glob("*.fq")) + list(input_path.glob("*.fastq")))
+
+
+def _candidate_input_directories(input_path: Path) -> list[Path]:
+    return [
+        child
+        for child in sorted(input_path.iterdir())
+        if child.is_dir() and _find_fastq_files(child)
+    ]
+
+
+def _resolve_user_path(raw_path: str, base_path: Path) -> Path:
+    selected_path = Path(raw_path).expanduser()
+    if not selected_path.is_absolute():
+        selected_path = base_path / selected_path
+    return selected_path.resolve()
+
+
+def _select_input_directory(input_path: Path) -> Path:
+    while True:
+        if _find_fastq_files(input_path):
+            return input_path
+
+        console.print(f"\n[red]✗ No FASTQ files found in {input_path.resolve()}[/red]")
+        candidates = _candidate_input_directories(input_path)
+        if candidates:
+            console.print("[cyan]Directories with FASTQ files:[/cyan]")
+            for index, candidate in enumerate(candidates, 1):
+                fastq_count = len(_find_fastq_files(candidate))
+                ref_count = len(find_references(str(candidate)))
+                console.print(
+                    f"  [green]{index}[/green]. {candidate.name} "
+                    f"[dim]({fastq_count} FASTQ, {ref_count} FASTA)[/dim]"
+                )
+            prompt = f"[green]Select directory [1-{len(candidates)}], enter a path, or 'q' to quit:[/green] "
+        else:
+            prompt = "[green]Enter an input directory path, or 'q' to quit:[/green] "
+
+        choice = console.input(prompt).strip()
+        if choice.lower() in {"q", "quit", "exit"}:
+            sys.exit(1)
+
+        try:
+            index = int(choice) - 1
+        except ValueError:
+            selected_path = _resolve_user_path(choice, input_path)
+        else:
+            if not (0 <= index < len(candidates)):
+                console.print(f"[red]Invalid selection. Please enter 1-{len(candidates)} or a path[/red]")
+                continue
+            selected_path = candidates[index].resolve()
+
+        if not selected_path.exists():
+            console.print(f"[red]Input directory not found: {selected_path}[/red]")
+            continue
+        if not selected_path.is_dir():
+            console.print(f"[red]Not a directory: {selected_path}[/red]")
+            continue
+        input_path = selected_path
+
+
+def _select_reference_path(input_path: Path) -> Path:
+    console.print(f"\n[red]✗ No reference FASTA files found in {input_path.resolve()}[/red]")
+    while True:
+        choice = console.input("[green]Enter reference FASTA path, or 'q' to quit:[/green] ").strip()
+        if choice.lower() in {"q", "quit", "exit"}:
+            sys.exit(1)
+
+        selected_path = _resolve_user_path(choice, input_path)
+        if not selected_path.exists():
+            console.print(f"[red]Reference file not found: {selected_path}[/red]")
+            continue
+        if not selected_path.is_file():
+            console.print(f"[red]Reference is not a file: {selected_path}[/red]")
+            continue
+        return selected_path
+
+
 def interactive_mode(input_dir: str = ".", output_dir: str = "./output", reference: str | None = None):
     input_path = Path(input_dir)
     if not input_path.exists():
@@ -97,11 +176,13 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output", referen
 
     # Now detect files based on mode
     print_section("Input Files")
-    
-    if input_dir_resolved != ".":
-        console.print(f"[cyan]Scanning directory: {input_dir_resolved}[/cyan]\n")
 
-    all_fastq_files = sorted(list(input_path.glob("*.fq")) + list(input_path.glob("*.fastq")))
+    input_path = _select_input_directory(input_path)
+    if input_dir_resolved != ".":
+        console.print(f"[cyan]Scanning directory: {input_path.resolve()}[/cyan]\n")
+    input_dir_resolved = str(input_path.resolve())
+
+    all_fastq_files = _find_fastq_files(input_path)
 
     # Only auto-detect pairs if in paired-end mode
     fastq_pairs = []
@@ -119,6 +200,8 @@ def interactive_mode(input_dir: str = ".", output_dir: str = "./output", referen
             continue
         ref_size = os.path.getsize(ref_path)
         references.append((ref_path, ref_size))
+    if not references and not provided_reference:
+        provided_reference = _select_reference_path(input_path)
     if provided_reference:
         references.insert(0, (str(provided_reference), os.path.getsize(provided_reference)))
 

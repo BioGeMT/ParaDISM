@@ -3,8 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REFERENCE="${SCRIPT_DIR}/ref.fa"
-OUT_DIR="${OUT_DIR:-${SCRIPT_DIR}/generated_reads}"
-PREFIX="${OUT_DIR}/demo_seed1"
+WORK_DIR="${WORK_DIR:-${SCRIPT_DIR}/generated_reads}"
+READ1_OUT="${READ1_OUT:-${SCRIPT_DIR}/reads_R1.fq}"
+READ2_OUT="${READ2_OUT:-${SCRIPT_DIR}/reads_R2.fq}"
+PREFIX="${WORK_DIR}/demo_seed1"
 READ_PAIRS=20
 
 command -v dwgsim >/dev/null 2>&1 || {
@@ -12,7 +14,7 @@ command -v dwgsim >/dev/null 2>&1 || {
     exit 1
 }
 
-mkdir -p "$OUT_DIR"
+mkdir -p "$WORK_DIR"
 dwgsim \
     -z 1 \
     -N "$READ_PAIRS" \
@@ -23,10 +25,10 @@ dwgsim \
     -r 0.001 -R 0.0001 -X 0.5 \
     "$REFERENCE" "$PREFIX"
 
-gzip -cd "${PREFIX}.bwa.read1.fastq.gz" > "${OUT_DIR}/reads_R1.fq"
-gzip -cd "${PREFIX}.bwa.read2.fastq.gz" > "${OUT_DIR}/reads_R2.fq"
+gzip -cd "${PREFIX}.bwa.read1.fastq.gz" > "$READ1_OUT"
+gzip -cd "${PREFIX}.bwa.read2.fastq.gz" > "$READ2_OUT"
 
 echo "Generated ${READ_PAIRS} paired-end demo read pairs:"
 echo "  Reference: ${REFERENCE}"
-echo "  ${OUT_DIR}/reads_R1.fq"
-echo "  ${OUT_DIR}/reads_R2.fq"
+echo "  ${READ1_OUT}"
+echo "  ${READ2_OUT}"

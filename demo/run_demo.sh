@@ -4,9 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-READS_DIR="${SCRIPT_DIR}/generated_reads"
-READ1="${READS_DIR}/reads_R1.fq"
-READ2="${READS_DIR}/reads_R2.fq"
+READ1="${SCRIPT_DIR}/reads_R1.fq"
+READ2="${SCRIPT_DIR}/reads_R2.fq"
 REFERENCE="${SCRIPT_DIR}/ref.fa"
 DEFAULT_OUTPUT_DIR="${SCRIPT_DIR}/output"
 OUTPUT_DIR="${OUTPUT_DIR:-${DEFAULT_OUTPUT_DIR}}"
@@ -44,7 +43,6 @@ check_command mafft
 check_command bowtie2
 check_command bowtie2-build
 check_command samtools
-check_command dwgsim
 
 "$PYTHON_BIN" - <<'PY' || fail "Required Python packages missing. Activate or update the environment with: conda env update -f environment.yml --prune"
 import importlib.util
@@ -59,7 +57,9 @@ PY
 
 check_file "$REFERENCE"
 
-OUT_DIR="$READS_DIR" bash "${SCRIPT_DIR}/generate_demo_reads.sh"
+if [[ "${REGENERATE_READS:-0}" == "1" ]]; then
+    bash "${SCRIPT_DIR}/generate_demo_reads.sh"
+fi
 
 check_file "$READ1"
 check_file "$READ2"

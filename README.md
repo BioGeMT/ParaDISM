@@ -20,12 +20,19 @@ Run the included synthetic demo. It does not require downloads or private data:
 bash demo/run_demo.sh
 ```
 
-The demo generates simulated reads from a PKD1/pseudogene reference:
+The demo uses committed synthetic reads from a PKD1/pseudogene reference:
 
 - `demo/ref.fa`
-- 20 generated paired-end read pairs under `demo/generated_reads/`
+- `demo/reads_R1.fq`
+- `demo/reads_R2.fq`
 
 and writes checked outputs to `demo/output/`.
+
+To regenerate the tiny demo reads from `demo/ref.fa`, run:
+
+```bash
+bash demo/generate_demo_reads.sh
+```
 
 ## Usage
 
@@ -39,8 +46,10 @@ python paradism.py
 
 Interactive mode scans the current directory for input files and guides you
 through file selection, aligner choice, run parameters, and optional settings.
-Use `--input-dir` to scan another directory, and provide `--reference` when the
-reference FASTA is stored outside that directory.
+If the current directory has no FASTQ files, ParaDISM prompts for another input
+directory and lists immediate subdirectories that contain FASTQ files. Use
+`--input-dir` to start from a different directory, and provide `--reference`
+when the reference FASTA is stored outside that directory.
 
 ### Non-Interactive Mode
 
