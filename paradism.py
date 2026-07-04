@@ -190,7 +190,7 @@ Examples:
         "--input-dir",
         metavar="INPUT_DIR",
         default=".",
-        help="Input directory for interactive mode file scanning (default: current directory)",
+        help="Reads directory for interactive mode file scanning (default: current directory)",
     )
     optional.add_argument(
         "--threshold",

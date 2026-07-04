@@ -47,7 +47,7 @@ python paradism.py
 Interactive mode scans the current directory for input files and guides you
 through file selection, aligner choice, output directory, run parameters, and
 optional settings.
-If the current directory has no FASTQ files, ParaDISM prompts for another input
+If the current directory has no FASTQ files, ParaDISM prompts for a reads
 directory and lists immediate subdirectories that contain FASTQ files. Use
 `--input-dir` to start from a different directory, and provide `--reference`
 when the reference FASTA is stored outside that directory.
@@ -87,7 +87,7 @@ Flags:
   enable iterative refinement.
 - `--n_anchors N`: Minimum number of distinct gene-unique C1 anchor positions
   required for read assignment.
-- `--input-dir INPUT_DIR`: Directory scanned by interactive mode.
+- `--input-dir INPUT_DIR`: Reads directory scanned by interactive mode.
 - `--threshold THRESHOLD`: Minimum alignment score threshold or Bowtie2 score
   function.
 - `--min-alternate-count N`: Minimum alternate allele count for FreeBayes during

@@ -57,7 +57,7 @@ def _select_input_directory(input_path: Path) -> Path:
         console.print(f"\n[yellow]No FASTQ files found in {input_path.resolve()}[/yellow]")
         candidates = _candidate_input_directories(input_path)
         if candidates:
-            console.print("[cyan]Directories with FASTQ files:[/cyan]")
+            console.print("[cyan]Reads directories with FASTQ files:[/cyan]")
             for index, candidate in enumerate(candidates, 1):
                 fastq_count = len(_find_fastq_files(candidate))
                 ref_count = len(find_references(str(candidate)))
@@ -65,9 +65,9 @@ def _select_input_directory(input_path: Path) -> Path:
                     f"  [green]{index}[/green]. {candidate.name} "
                     f"[dim]({fastq_count} FASTQ, {ref_count} FASTA)[/dim]"
                 )
-            prompt = f"[green]Select directory [1-{len(candidates)}], enter a path, or 'q' to quit:[/green] "
+            prompt = f"[green]Select reads directory [1-{len(candidates)}], enter a reads directory path, or 'q' to quit:[/green] "
         else:
-            prompt = "[green]Enter an input directory path, or 'q' to quit:[/green] "
+            prompt = "[green]Enter a reads directory path, or 'q' to quit:[/green] "
 
         choice = console.input(prompt).strip()
         if choice.lower() in {"q", "quit", "exit"}:
@@ -79,12 +79,12 @@ def _select_input_directory(input_path: Path) -> Path:
             selected_path = _resolve_user_path(choice, input_path)
         else:
             if not (0 <= index < len(candidates)):
-                console.print(f"[red]Invalid selection. Please enter 1-{len(candidates)} or a path[/red]")
+                console.print(f"[red]Invalid selection. Please enter 1-{len(candidates)} or a reads directory path[/red]")
                 continue
             selected_path = candidates[index].resolve()
 
         if not selected_path.exists():
-            console.print(f"[red]Input directory not found: {selected_path}[/red]")
+            console.print(f"[red]Reads directory not found: {selected_path}[/red]")
             continue
         if not selected_path.is_dir():
             console.print(f"[red]Not a directory: {selected_path}[/red]")
