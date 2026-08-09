@@ -172,7 +172,7 @@ def _assign_from_collected_evidence(qname_to_anchor_cols, qname_to_c2_false, all
     for qname in all_qnames:
         passing_genes = []
         for gene in gene_names:
-            c1 = len(qname_to_anchor_cols[gene][qname]) >= min_anchors
+            c1 = len(qname_to_anchor_cols[gene].get(qname, ())) >= min_anchors
             c2 = qname not in qname_to_c2_false[gene]
             if c1 and c2:
                 passing_genes.append(gene)
