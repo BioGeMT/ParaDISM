@@ -108,13 +108,33 @@ Flags:
 
 ```text
 output/
+├── .paradism_complete               # written only after successful completion
+├── <prefix>_pipeline_<time>.log     # stage log and command output
 ├── iteration_1/
-│   └── mapped_reads.sam              # initial direct-alignment SAM
+│   ├── mapped_reads.sam             # initial direct-alignment records
+│   ├── <prefix>_fastq/              # assignments made in this iteration
+│   └── <prefix>_bam/                # per-contig BAMs for this iteration
+├── iteration_<n>/                   # present when refinement is requested
+│   ├── mapped_reads.sam             # realigned previously unresolved reads
+│   └── variant_calling/             # variants and updated refinement reference
 └── final_outputs/
-    ├── <prefix>_fastq/               # gene-specific FASTQs
-    ├── <prefix>_bam/                 # gene-specific sorted BAMs
-    └── <prefix>_none/                # optional unresolved-read outputs
+    ├── ref_seq_msa.aln              # MSA used for the final assignments
+    ├── <prefix>_fastq/              # assigned reads, one FASTQ per contig
+    ├── <prefix>_bam/                # sorted/indexed BAMs on the input reference
+    └── <prefix>_none/               # unresolved FASTQs and inspection BAM
 ```
+
+The FASTQ and BAM filenames contain the corresponding FASTA record name.
+`<prefix>_none/` retains reads that did not uniquely support one reference
+sequence; these reads are not silently forced onto a paralog. Iteration
+directories are diagnostic intermediates, whereas `final_outputs/` is the
+stable location intended for downstream analysis. Do not treat a run as
+complete unless `.paradism_complete` exists.
+
+The initial and refinement SAM files are intentionally retained so assignments
+can be audited and the base-aligner result can be evaluated. They can be very
+large for whole-genome inputs; see `benchmark/giab/README.md` before running the
+full HG002 benchmark.
 
 ## Liftover
 

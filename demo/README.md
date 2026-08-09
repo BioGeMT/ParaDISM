@@ -29,6 +29,8 @@ Expected output layout:
 
 ```text
 demo/output/
+├── .paradism_complete
+├── pkd1_demo_pipeline_<time>.log
 ├── iteration_1/
 │   └── mapped_reads.sam
 └── final_outputs/
@@ -42,6 +44,13 @@ demo/output/
 ```
 
 The output root also contains `demo_assignment_summary.tsv`.
+
+The completion marker is created only after all final files have been written.
+The pipeline log records stage boundaries and command output. The initial SAM
+contains the direct Bowtie2 alignments used for assignment; the final FASTQs
+contain assigned reads grouped by reference contig, the final BAMs provide
+sorted and indexed alignments for downstream inspection, and the `none`
+directory retains unresolved reads rather than discarding them.
 
 ## Expected result
 

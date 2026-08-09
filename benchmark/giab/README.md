@@ -41,7 +41,7 @@ From the repository root, after installing `environment.yml`:
 ```bash
 bash benchmark/giab/prepare_giab_truth.sh
 bash benchmark/giab/download_giab_hg002_reads.sh
-bash benchmark/giab/run_giab.sh --threads 8 --workers 2 --iterations 1
+bash benchmark/giab/run_giab.sh --threads 8 --workers 2 --iterations 10
 
 RUN_DIR=benchmark/giab/giab_hg002_output_bowtie2_G60_min5_qfilters
 OUT_DIR=benchmark/giab/vcf_out_full
@@ -55,6 +55,11 @@ For a smaller 10x-style read subset, run `downsample_hg002_fastq.sh` after
 downloading the HG002 shards, then pass the downsampled read directory to
 `run_giab.sh` with `--reads-dir`.
 
+`--iterations 10` reproduces the refinement setting used for the manuscript;
+the pipeline stops early if no additional reads can be rescued. Use
+`--iterations 1` only when a single, unrefined ParaDISM assignment pass is the
+intended comparison.
+
 ## Output Layout
 
 ```text
@@ -62,18 +67,61 @@ benchmark/giab/
 ├── giab_hg002_reads/                 # downloaded or downsampled FASTQs
 ├── giab_hg002_vcf/                   # prepared GIAB truth and BED files
 ├── giab_hg002_output_*/              # ParaDISM run output
-│   ├── iteration_1/
-│   └── final_outputs/
-└── vcf_out*/                         # evaluation CSV/JSON outputs
+│   ├── .paradism_complete
+│   ├── iteration_1/mapped_reads.sam  # direct Bowtie2 baseline alignment
+│   ├── iteration_<n>/                # refinement intermediates
+│   ├── final_outputs/                # final per-gene FASTQ/BAM outputs
+│   └── variant_calling/              # ParaDISM and baseline VCFs
+└── vcf_out*/                         # final evaluation CSV/JSON metrics
 ```
 
-Key output files:
+The post-processing script compares exact `CHROM`, `POS`, `REF`, and `ALT`
+matches after restricting both call sets to simple biallelic A/C/G/T SNPs and
+the GIAB benchmark regions. TP, FP, and FN denote true-positive,
+false-positive, and false-negative SNP calls. Precision is `TP/(TP+FP)`, recall
+or sensitivity is `TP/(TP+FN)`, and F1 is their harmonic mean. True-negative
+counts and specificity are not reported because the large number of invariant
+sites makes specificity uninformative for this comparison.
 
-- `variant_calling_metrics.csv` and `.json`
-- `confusion_matrices_overall.csv`
-- `per_gene_metrics/per_gene_metrics.csv` and `.json`
-- `confusion_matrices_by_coverage.csv`
-- `coverage_split_confusion_metrics.json`
+Key evaluation files:
+
+- `variant_calling_metrics.csv`: one row per method (`ParaDISM` and
+  `BaseAligner`) with TP, FP, FN, precision, recall, and F1 for all seven
+  PKD1/PKD1P contigs pooled together.
+- `variant_calling_metrics.json`: the same pooled metrics in a nested,
+  machine-readable structure, together with the truth-variant count.
+- `confusion_matrices_overall.csv`: the pooled TP/FP/FN counts without derived
+  rates, suitable for plotting a call-count matrix.
+- `per_gene_metrics/per_gene_metrics.csv`: truth count, TP, FP, FN, precision,
+  recall, and F1 for each method and each reference contig.
+- `per_gene_metrics/per_gene_metrics.json`: the same per-contig rows in
+  machine-readable form.
+- `confusion_matrices_by_coverage.csv`: TP/FP/FN counts for each method below
+  and above the selected read-depth threshold.
+- `coverage_split_confusion_metrics.json`: the coverage threshold and how it
+  was selected, plus pooled and coverage-stratified TP/FP/FN counts. By
+  default, the threshold is the rounded pooled median truth-site depth across
+  both methods.
+
+## Reference results
+
+The manuscript reports the following results for the archived, completed
+workflows. These values are reference targets for interpreting a regenerated
+run, not a substitute for checking the completion marker and the generated
+metric files.
+
+| Dataset | Method | TP | FP | FN | Precision | Recall | F1 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Full-depth HG002 | ParaDISM | 17 | 5 | 31 | 0.773 | 0.354 | 0.486 |
+| Full-depth HG002 | Bowtie2 baseline | 39 | 13 | 9 | 0.750 | 0.812 | 0.780 |
+| Downsampled ~10x HG002 | ParaDISM | 11 | 0 | 37 | 1.000 | 0.229 | 0.373 |
+| Downsampled ~10x HG002 | Bowtie2 baseline | 29 | 8 | 19 | 0.784 | 0.604 | 0.682 |
+
+The default coverage threshold selected for the archived full-depth run was 48
+reads; the threshold for the archived ~10x run was 6 reads. These results show
+the intended precision-sensitivity trade-off: under the tested settings,
+ParaDISM produced fewer false-positive calls but also recovered fewer true
+variants than the Bowtie2 baseline.
 
 ## Scripts
 
