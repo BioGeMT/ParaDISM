@@ -625,6 +625,8 @@ class SimpleParaDISMExecutor:
 
         # 1. Determine output directories and print iteration header
         original_output_dir = self.output_dir
+        completion_marker = original_output_dir / ".paradism_complete"
+        completion_marker.unlink(missing_ok=True)
         iter1_output_dir = self.output_dir / "iteration_1"
         iter1_output_dir.mkdir(exist_ok=True)
         msa_output_dir = iter1_output_dir
@@ -912,4 +914,5 @@ class SimpleParaDISMExecutor:
 
         print("  \033[0;36m✓ Cleaning up intermediate files\033[0m", file=sys.stderr)
         final_outputs_path = original_output_dir / "final_outputs"
+        completion_marker.write_text("completed\n", encoding="utf-8")
         print(f"\n  \033[0;36m✓ Pipeline complete. Final outputs in: {final_outputs_path}\033[0m", file=sys.stderr)

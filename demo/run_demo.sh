@@ -90,6 +90,7 @@ fi
     --prefix "$PREFIX"
 
 [[ -d "$OUTPUT_DIR" ]] || fail "Output directory was not created: $OUTPUT_DIR"
+check_file "${OUTPUT_DIR}/.paradism_complete"
 INITIAL_SAM="${OUTPUT_DIR}/iteration_1/mapped_reads.sam"
 [[ -f "$INITIAL_SAM" ]] || fail "Expected initial SAM not found: $INITIAL_SAM"
 

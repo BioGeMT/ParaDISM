@@ -89,6 +89,14 @@ done
 READS_DIR="$(to_abs_path "$READS_DIR")"
 REFERENCE="$(to_abs_path "$REFERENCE")"
 OUTPUT_G60="$(to_abs_path "$OUTPUT_G60")"
+COMPLETION_MARKER="$OUTPUT_G60/.paradism_complete"
+BAM_PREFIX="$(basename "$OUTPUT_G60")"
+FINAL_BAM_DIR="$OUTPUT_G60/final_outputs/${BAM_PREFIX}_bam"
+
+run_is_complete() {
+    [[ -f "$COMPLETION_MARKER" ]] || return 1
+    compgen -G "$FINAL_BAM_DIR/*.sorted.bam" >/dev/null
+}
 
 if [[ ! -f "$REFERENCE" ]]; then
     echo "Error: reference FASTA not found: $REFERENCE" >&2
@@ -136,9 +144,20 @@ if command -v conda >/dev/null 2>&1; then
 fi
 
 # Run G60 (recommended threshold)
-if [[ -d "$OUTPUT_G60/final_outputs" ]]; then
+if run_is_complete; then
     echo "G60 already complete, skipping..."
 else
+    if [[ -d "$OUTPUT_G60" ]]; then
+        shopt -s nullglob dotglob
+        existing_output=("$OUTPUT_G60"/*)
+        shopt -u nullglob dotglob
+        if [[ ${#existing_output[@]} -gt 0 ]]; then
+            echo "Error: incomplete ParaDISM output found: $OUTPUT_G60" >&2
+            echo "Choose a new --output-dir or move the partial output before rerunning." >&2
+            exit 1
+        fi
+    fi
+
     echo "=========================================="
     echo "Running G60 threshold..."
     echo "=========================================="
@@ -157,6 +176,11 @@ else
         --af-threshold 0.05 \
         --threshold "G,60,60" \
         --output-dir "$OUTPUT_G60"
+
+    if ! run_is_complete; then
+        echo "Error: ParaDISM exited without the required completion marker and final BAMs." >&2
+        exit 1
+    fi
 fi
 
 echo ""

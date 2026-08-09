@@ -185,8 +185,8 @@ call_raw_from_gene_bams() {
     done
 
     if [[ ${#gene_vcfs_raw[@]} -eq 0 ]]; then
-        echo "  No gene BAMs found; skipping merge"
-        return
+        echo "Error: no expected per-gene BAMs found in $bam_dir" >&2
+        return 1
     fi
 
     echo "  Merging ${#gene_vcfs_raw[@]} per-gene raw VCFs..."
@@ -255,21 +255,25 @@ PARADISM_OUT_DIR="$OUTPUT_DIR/paradism_raw"
 BASE_SAM="$INPUT_DIR/iteration_1/mapped_reads.sam"
 BASE_OUT_DIR="$OUTPUT_DIR/basealigner_raw"
 
-if [[ -d "$PARADISM_BAM_DIR" ]]; then
-    echo "=== ParaDISM (raw per-gene) ==="
-    call_raw_from_gene_bams "$PARADISM_BAM_DIR" \
-                            "$PARADISM_OUT_DIR" \
-                            "$BAM_PREFIX"
-else
-    echo "ParaDISM BAM directory not found, skipping: $PARADISM_BAM_DIR"
+if [[ ! -d "$PARADISM_BAM_DIR" ]]; then
+    echo "Error: ParaDISM BAM directory not found: $PARADISM_BAM_DIR" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
+    exit 1
 fi
 
-if [[ -f "$BASE_SAM" ]]; then
-    echo "=== Base Aligner (raw) ==="
-    call_raw_from_sam "$BASE_SAM" "$BASE_OUT_DIR"
-else
-    echo "Base aligner SAM not found, skipping: $BASE_SAM"
+if [[ ! -f "$BASE_SAM" ]]; then
+    echo "Error: base aligner SAM not found: $BASE_SAM" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
+    exit 1
 fi
+
+echo "=== ParaDISM (raw per-gene) ==="
+call_raw_from_gene_bams "$PARADISM_BAM_DIR" \
+                        "$PARADISM_OUT_DIR" \
+                        "$BAM_PREFIX"
+
+echo "=== Base Aligner (raw) ==="
+call_raw_from_sam "$BASE_SAM" "$BASE_OUT_DIR"
 
 echo ""
 echo "Done!"
