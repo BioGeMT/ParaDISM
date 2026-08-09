@@ -98,6 +98,10 @@ run_is_complete() {
     compgen -G "$FINAL_BAM_DIR/*.sorted.bam" >/dev/null
 }
 
+format_kib() {
+    awk -v kib="$1" 'BEGIN { printf "%.1f GiB", kib / 1048576 }'
+}
+
 if [[ ! -f "$REFERENCE" ]]; then
     echo "Error: reference FASTA not found: $REFERENCE" >&2
     exit 1
@@ -122,6 +126,12 @@ if [[ -z "$R1_MERGED" ]]; then
     exit 1
 fi
 
+OUTPUT_PARENT="$(dirname "$OUTPUT_G60")"
+mkdir -p "$OUTPUT_PARENT"
+INPUT_SIZE_KIB="$(du -sk "$R1_MERGED" "$R2_MERGED" | awk '{ total += $1 } END { print total + 0 }')"
+AVAILABLE_KIB="$(df -Pk "$OUTPUT_PARENT" | awk 'NR == 2 { print $4 }')"
+RECOMMENDED_FREE_KIB=$((1024 * 1024 * 1024))
+
 echo "=========================================="
 echo "ParaDISM GIAB HG002 - G60"
 echo "=========================================="
@@ -134,6 +144,16 @@ echo "  Threads: $THREADS"
 echo "  Workers: $WORKERS"
 echo "  Iterations: $ITERATIONS"
 echo "  Min-alternate-count: $MIN_ALT_COUNT"
+echo ""
+echo "Resource preflight:"
+echo "  Input FASTQ size on disk: $(format_kib "$INPUT_SIZE_KIB")"
+echo "  Available output-disk space: $(format_kib "$AVAILABLE_KIB")"
+echo "  Full HG002 planning target: at least 1.0 TiB free"
+echo "  Runtime: allow a multi-hour or longer batch window; exact time depends on hardware and input size"
+if (( AVAILABLE_KIB < RECOMMENDED_FREE_KIB )); then
+    echo "Warning: less than 1.0 TiB is available at $OUTPUT_PARENT" >&2
+    echo "The full HG002 workflow can exhaust this filesystem; choose another --output-dir if needed." >&2
+fi
 echo ""
 
 # Use the pinned environment if available, but also support already-active envs.

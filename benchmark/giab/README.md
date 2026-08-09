@@ -13,6 +13,27 @@ the base Bowtie2 BAM, using GIAB HG002 truth as the benchmark.
 - GIAB benchmark BED
 - `benchmark/references/pkd1_panel.fa`
 
+## Resource requirements
+
+The full public HG002 download is approximately 322.5 GB of compressed FASTQ
+data. Plan for at least 1 TiB of free disk space for the download, the initial
+SAM alignment, ParaDISM FASTQ/BAM outputs, and variant-calling intermediates.
+The download script retains the 68 source shards and creates merged R1/R2
+files, so two compressed copies of the reads coexist unless the source shards
+are archived or removed after the merged files have been verified.
+
+This is a long-running whole-genome benchmark, not a quick demo. Alignment and
+read assignment can each take hours; reserve a multi-hour or longer batch
+window and use a persistent session or scheduler. Exact runtime depends on CPU,
+available memory, storage throughput, worker count, and system load. The
+launcher prints the measured FASTQ footprint, available output-disk space, a
+warning when less than 1 TiB is available, elapsed time for each pipeline
+stage, and the growing SAM size during alignment.
+
+For a quick installation and correctness check, use `bash demo/run_demo.sh`
+instead. The committed 20-pair demo normally completes in under one minute on
+the tested macOS and Linux systems and validates its expected assignments.
+
 ## Usage
 
 From the repository root, after installing `environment.yml`:
