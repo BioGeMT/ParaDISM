@@ -5,8 +5,10 @@ manuscript or private data:
 
 - `ref.fa`: PKD1 plus six PKD1 pseudogene reference contigs
 - `pkd1_sim_R1.fq` and `pkd1_sim_R2.fq`: 20 committed paired-end read pairs
-- `run_demo.sh`: runs ParaDISM with Bowtie2 for one iteration and checks the
-  expected outputs
+- `run_demo.sh`: runs ParaDISM with Bowtie2 for one iteration and verifies the
+  expected pair-level assignments
+- `summarize_demo.py`: compares the output assignments with the true source
+  encoded in each simulated read name
 - `generate_demo_reads.sh`: optional script to regenerate the committed reads
   from `ref.fa` with `dwgsim`
 
@@ -32,10 +34,41 @@ demo/output/
 └── final_outputs/
     ├── pkd1_demo_fastq/
     │   └── pkd1_demo_<assigned_contig>.fq
-    └── pkd1_demo_bam/
-        ├── pkd1_demo_<assigned_contig>.sorted.bam
-        └── pkd1_demo_<assigned_contig>.sorted.bam.bai
+    ├── pkd1_demo_bam/
+    │   ├── pkd1_demo_<assigned_contig>.sorted.bam
+    │   └── pkd1_demo_<assigned_contig>.sorted.bam.bai
+    └── pkd1_demo_none/
+        └── pkd1_demo_NONE_r1.fq
 ```
+
+The output root also contains `demo_assignment_summary.tsv`.
+
+## Expected result
+
+The demo contains 20 read pairs with known source contigs. ParaDISM assigns a
+pair only when its sequence evidence supports exactly one contig; ambiguous
+pairs are reported as `NONE` rather than forced to a paralog.
+
+| True source | Input pairs | Correct | Unassigned | Incorrect |
+| --- | ---: | ---: | ---: | ---: |
+| PKD1 | 5 | 5 | 0 | 0 |
+| PKD1P1 | 3 | 0 | 3 | 0 |
+| PKD1P2 | 2 | 0 | 2 | 0 |
+| PKD1P3 | 3 | 0 | 3 | 0 |
+| PKD1P4 | 2 | 0 | 2 | 0 |
+| PKD1P5 | 3 | 2 | 1 | 0 |
+| PKD1P6 | 2 | 2 | 0 | 0 |
+| **Total** | **20** | **9** | **11** | **0** |
+
+The expected assignment precision is 100% (9/9 assigned pairs are correct),
+and assignment recall is 45% (9/20 input pairs are correctly assigned). The
+remaining 11 pairs are retained in the `pkd1_demo_none` outputs. These metrics
+describe read assignment in this deterministic example; they are not variant-
+calling metrics.
+
+`run_demo.sh` prints this table, writes it to
+`demo/output/demo_assignment_summary.tsv`, and exits with an error if any count
+differs from the documented result.
 
 To regenerate the small synthetic read set separately, run:
 

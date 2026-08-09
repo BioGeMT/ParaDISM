@@ -26,7 +26,10 @@ The demo uses committed synthetic reads from a PKD1/pseudogene reference:
 - `demo/pkd1_sim_R1.fq`
 - `demo/pkd1_sim_R2.fq`
 
-and writes checked outputs to `demo/output/`.
+and writes checked outputs to `demo/output/`. The deterministic result contains
+9 correctly assigned pairs, 11 unassigned pairs, and no incorrect assignments;
+the demo prints and validates these counts and writes
+`demo_assignment_summary.tsv`.
 
 To regenerate the tiny demo reads from `demo/ref.fa`, run:
 
