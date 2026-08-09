@@ -9,9 +9,27 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Iterable, Sequence
 
 from utils.logger import PipelineLogger
+
+
+def _format_elapsed(seconds: float) -> str:
+    minutes, remaining_seconds = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:d}:{minutes:02d}:{remaining_seconds:02d}"
+    return f"{minutes:02d}:{remaining_seconds:02d}"
+
+
+def _format_bytes(byte_count: int) -> str:
+    size = float(byte_count)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024 or unit == "TiB":
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    raise AssertionError("unreachable")
 
 
 class ProgressRunner:
@@ -32,18 +50,37 @@ class ProgressRunner:
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
-    def run_with_spinner(self, cmd: Sequence[str] | str, message: str, *, shell: bool = False) -> subprocess.CompletedProcess:
+    def run_with_spinner(
+        self,
+        cmd: Sequence[str] | str,
+        message: str,
+        *,
+        shell: bool = False,
+        progress_path: str | Path | None = None,
+    ) -> subprocess.CompletedProcess:
         """Run a short-lived command, showing a spinner until completion."""
 
         self.logger.section(message)
 
         stop_event = threading.Event()
+        started_at = time.monotonic()
+        progress_file = Path(progress_path) if progress_path else None
+
+        def status_text() -> str:
+            status = f"elapsed {_format_elapsed(time.monotonic() - started_at)}"
+            if progress_file is not None and progress_file.exists():
+                status += f", {_format_bytes(progress_file.stat().st_size)} written"
+            return status
 
         def spin() -> None:
             index = 0
             while not stop_event.is_set():
                 char = self.spinner_chars[index % len(self.spinner_chars)]
-                print(f"\r  {char} {message}", end="", file=sys.stderr)
+                print(
+                    f"\r  {char} {message} ({status_text()})\033[K",
+                    end="",
+                    file=sys.stderr,
+                )
                 sys.stderr.flush()
                 index += 1
                 time.sleep(0.1)
@@ -63,7 +100,10 @@ class ProgressRunner:
             self.logger.write(result.stderr or "")
             stop_event.set()
             thread.join()
-            print(f"\r  \033[0;36m✓ {message}\033[0m", file=sys.stderr)
+            print(
+                f"\r  \033[0;36m✓ {message} ({status_text()})\033[0m\033[K",
+                file=sys.stderr,
+            )
             return result
         except subprocess.CalledProcessError:
             stop_event.set()

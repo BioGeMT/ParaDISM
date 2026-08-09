@@ -44,17 +44,33 @@ class SimpleParaDISMExecutor:
         self.logger = PipelineLogger(self.log_file)
         self.progress = ProgressRunner(self.logger)
 
-    def _run_spinner(self, command: Sequence[str] | str | callable, message: str, *, shell: bool = False):
+    def _run_spinner(
+        self,
+        command: Sequence[str] | str | callable,
+        message: str,
+        *,
+        shell: bool = False,
+        progress_path: str | Path | None = None,
+    ):
         """Run command or callable with spinner. Returns result if callable."""
         if callable(command):
             # It's a Python function - run with spinner wrapper
             stop_event = threading.Event()
+            started_at = time.monotonic()
             
             def spin():
                 index = 0
                 while not stop_event.is_set():
                     char = self.progress.spinner_chars[index % len(self.progress.spinner_chars)]
-                    print(f"\r  {char} {message}", end="", file=sys.stderr)
+                    elapsed = time.strftime(
+                        "%H:%M:%S",
+                        time.gmtime(time.monotonic() - started_at),
+                    )
+                    print(
+                        f"\r  {char} {message} (elapsed {elapsed})\033[K",
+                        end="",
+                        file=sys.stderr,
+                    )
                     sys.stderr.flush()
                     index += 1
                     time.sleep(0.1)
@@ -66,7 +82,14 @@ class SimpleParaDISMExecutor:
                 result = command()
                 stop_event.set()
                 spinner_thread.join()
-                print(f"\r  \033[0;36m✓ {message}\033[0m", file=sys.stderr)
+                elapsed = time.strftime(
+                    "%H:%M:%S",
+                    time.gmtime(time.monotonic() - started_at),
+                )
+                print(
+                    f"\r  \033[0;36m✓ {message} (elapsed {elapsed})\033[0m\033[K",
+                    file=sys.stderr,
+                )
                 return result
             except Exception:
                 stop_event.set()
@@ -75,7 +98,12 @@ class SimpleParaDISMExecutor:
                 raise
         else:
             # It's a command - use progress runner
-            self.progress.run_with_spinner(command, message, shell=shell)
+            self.progress.run_with_spinner(
+                command,
+                message,
+                shell=shell,
+                progress_path=progress_path,
+            )
             return None
 
     def _extract_none_reads_from_assignments(self, assignments: dict[str, str]) -> set[str]:
@@ -461,12 +489,14 @@ class SimpleParaDISMExecutor:
                     f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{iter_index}' -1 '{none_r1_path}' -2 '{none_r2_path}' -S '{iter_sam}'",
                     "Aligning reads with Bowtie2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
             else:
                 self._run_spinner(
                     f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{iter_index}' -U '{none_r1_path}' -S '{iter_sam}'",
                     "Aligning reads with Bowtie2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
         elif aligner == "bwa-mem2":
             iter_index = iter_output_dir / "ref_index"
@@ -480,12 +510,14 @@ class SimpleParaDISMExecutor:
                     f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{iter_index}' '{none_r1_path}' '{none_r2_path}' | {awk_filter} > '{iter_sam}'",
                     "Aligning reads with BWA-MEM2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
             else:
                 self._run_spinner(
                     f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{iter_index}' '{none_r1_path}' | {awk_filter} > '{iter_sam}'",
                     "Aligning reads with BWA-MEM2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
         elif aligner == "minimap2":
             iter_index = iter_output_dir / "ref_index.mmi"
@@ -500,12 +532,14 @@ class SimpleParaDISMExecutor:
                     f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{iter_index}' '{none_r1_path}' '{none_r2_path}' > '{iter_sam}'",
                     "Aligning reads with minimap2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
             else:
                 self._run_spinner(
                     f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{iter_index}' '{none_r1_path}' > '{iter_sam}'",
                     "Aligning reads with minimap2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
         
         # Run ParaDISM on NONE reads
@@ -664,12 +698,14 @@ class SimpleParaDISMExecutor:
                         f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
+                        progress_path=sam_output,
                     )
                 else:
                     self._run_spinner(
                         f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -U '{r1}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
+                        progress_path=sam_output,
                     )
             elif aligner == "bwa-mem2":
                 index_base = self.output_dir / "ref_index"
@@ -683,12 +719,14 @@ class SimpleParaDISMExecutor:
                         f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{r1}' '{r2}' | {awk_filter} > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
+                        progress_path=sam_output,
                     )
                 else:
                     self._run_spinner(
                         f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{r1}' | {awk_filter} > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
+                        progress_path=sam_output,
                     )
             elif aligner == "minimap2":
                 index_file = self.output_dir / "ref_index.mmi"
@@ -704,12 +742,14 @@ class SimpleParaDISMExecutor:
                         f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{index_file}' '{r1}' '{r2}' > '{sam_output}'",
                         "Aligning reads with minimap2",
                         shell=True,
+                        progress_path=sam_output,
                     )
                 else:
                     self._run_spinner(
                         f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{index_file}' '{r1}' > '{sam_output}'",
                         "Aligning reads with minimap2",
                         shell=True,
+                        progress_path=sam_output,
                     )
 
         # 3. Run initial ParaDISM algorithm
@@ -718,10 +758,10 @@ class SimpleParaDISMExecutor:
         fastq_dir = self.output_dir / f"{self.prefix}_fastq"
         bam_dir = self.output_dir / f"{self.prefix}_bam"
 
-        # Run ParaDISM algorithm directly (not via subprocess) to get assignments dict
-        def _run_paradism():
-            msa_obj, seq_to_aln, gene_names = load_msa(str(msa_output))
-            assignments = process_sam_to_dict(
+        msa_obj, seq_to_aln, gene_names = load_msa(str(msa_output))
+
+        def _assign_reads():
+            return process_sam_to_dict(
                 str(sam_output),
                 msa_obj,
                 seq_to_aln,
@@ -729,10 +769,30 @@ class SimpleParaDISMExecutor:
                 min_anchors=n_anchors,
                 workers=workers,
             )
-            genes = write_fastq_outputs(assignments, r1, r2, str(fastq_dir), self.prefix)
-            if genes:
+
+        current_assignments = self._run_spinner(
+            _assign_reads,
+            "Assigning reads from SAM alignments",
+        )
+
+        def _write_initial_fastqs():
+            return write_fastq_outputs(
+                current_assignments,
+                r1,
+                r2,
+                str(fastq_dir),
+                self.prefix,
+            )
+
+        initial_genes = self._run_spinner(
+            _write_initial_fastqs,
+            "Writing assigned-read FASTQ files",
+        )
+
+        if initial_genes:
+            def _create_initial_bams():
                 create_bam_files(
-                    genes,
+                    initial_genes,
                     ref,
                     str(fastq_dir),
                     str(bam_dir),
@@ -744,12 +804,11 @@ class SimpleParaDISMExecutor:
                     minimap2_min_score,
                     is_paired=is_paired,
                 )
-            return assignments
 
-        current_assignments = self._run_spinner(
-            _run_paradism,
-            "Running ParaDISM algorithm",
-        )
+            self._run_spinner(
+                _create_initial_bams,
+                "Creating assigned-read BAM files",
+            )
         current_ref = Path(ref)
         current_bam_dir = bam_dir
         final_msa = msa_output
