@@ -40,6 +40,27 @@ For a quick installation and correctness check, use `bash demo/run_demo.sh`
 instead. The committed 20-pair demo normally completes in under one minute on
 the tested macOS and Linux systems and validates its expected assignments.
 
+### Observed runtimes
+
+Archived full-depth HG002 measurements on a Linux server with two Intel Xeon
+Gold 6342 CPUs provide practical reference points; they are not guaranteed
+runtimes for other systems.
+
+- A targeted `PKD1`/`PKD1P` family workflow using pre-extracted reads,
+  Bowtie2, 16 threads, a single assignment process, and early convergence took
+  14 min 54 s including FASTQ preparation, ParaDISM, variant calling,
+  filtering, and final callset generation.
+- Sequential targeted processing of all 13 configured families took
+  2 h 21 min 25 s. Extracting all family-specific read sets from the indexed
+  HG002 BAM was a separate approximately 1 min 7 s preparation step.
+- An archived run that supplied the complete HG002 FASTQs directly to the
+  `PKD1`/`PKD1P` reference took 16 h 33 min 25 s and converged after five
+  iterations. Its iteration-1 SAM was 497,903,998,666 bytes (463.7 GiB).
+
+The targeted-read workflow is therefore the practical reference for routine
+family analysis. Direct raw-WGS processing requires a substantially longer
+batch window and enough temporary space for the uncompressed SAM.
+
 ## Usage
 
 From the repository root, after installing `environment.yml`:
