@@ -87,6 +87,9 @@ Flags:
 - `--threads THREADS`: Threads passed to the base aligner.
 - `--workers WORKERS`: Worker processes for ParaDISM read assignment after
   alignment.
+- `--compress-intermediate-sam`: After assignment, validate and replace each
+  `mapped_reads.sam` with `mapped_reads.bam`. This reduces retained disk usage
+  but not the temporary peak while the aligner is writing SAM.
 - `--output-dir OUTPUT_DIR`: Output directory.
 - `--prefix PREFIX`: Prefix for output files.
 - `--iterations N`: Number of ParaDISM runs; `1` is a single run, larger values
@@ -131,10 +134,12 @@ directories are diagnostic intermediates, whereas `final_outputs/` is the
 stable location intended for downstream analysis. Do not treat a run as
 complete unless `.paradism_complete` exists.
 
-The initial and refinement SAM files are intentionally retained so assignments
-can be audited and the base-aligner result can be evaluated. They can be very
-large for whole-genome inputs; see `benchmark/giab/README.md` before running the
-full HG002 benchmark.
+The initial and refinement alignments are retained so assignments can be
+audited and the base-aligner result can be evaluated. By default they remain
+as SAM. With `--compress-intermediate-sam`, each consumed SAM is validated and
+atomically replaced by a BAM with the same stem; the original SAM is preserved
+if conversion fails. See `benchmark/giab/README.md` before running the full
+HG002 benchmark.
 
 ## Liftover
 

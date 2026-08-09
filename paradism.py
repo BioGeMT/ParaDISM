@@ -82,6 +82,7 @@ def run_with_arguments(args: argparse.Namespace) -> None:
         threshold=args.threshold,
         n_anchors=args.n_anchors,
         workers=args.workers,
+        compress_intermediate_sam=args.compress_intermediate_sam,
     )
 
 
@@ -157,6 +158,15 @@ Examples:
         type=int,
         default=1,
         help="Worker processes for ParaDISM read assignment (default: 1)",
+    )
+    optional.add_argument(
+        "--compress-intermediate-sam",
+        action="store_true",
+        help=(
+            "Replace each mapped_reads.sam with mapped_reads.bam after ParaDISM "
+            "has consumed it. This reduces retained disk usage but not the peak "
+            "space needed while the aligner is writing SAM."
+        ),
     )
     optional.add_argument(
         "--output-dir",

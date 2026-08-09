@@ -22,6 +22,12 @@ The download script retains the 68 source shards and creates merged R1/R2
 files, so two compressed copies of the reads coexist unless the source shards
 are archived or removed after the merged files have been verified.
 
+The GIAB launcher enables `--compress-intermediate-sam`. ParaDISM therefore
+validates and replaces each consumed `mapped_reads.sam` with
+`mapped_reads.bam`, while GIAB post-processing accepts either format. The raw
+SAM still exists while the aligner is producing it, so compression reduces
+retained disk usage rather than the peak space required during alignment.
+
 This is a long-running whole-genome benchmark, not a quick demo. Alignment and
 read assignment can each take hours; reserve a multi-hour or longer batch
 window and use a persistent session or scheduler. Exact runtime depends on CPU,
@@ -68,7 +74,7 @@ benchmark/giab/
 ├── giab_hg002_vcf/                   # prepared GIAB truth and BED files
 ├── giab_hg002_output_*/              # ParaDISM run output
 │   ├── .paradism_complete
-│   ├── iteration_1/mapped_reads.sam  # direct Bowtie2 baseline alignment
+│   ├── iteration_1/mapped_reads.bam  # compressed direct Bowtie2 alignment
 │   ├── iteration_<n>/                # refinement intermediates
 │   ├── final_outputs/                # final per-gene FASTQ/BAM outputs
 │   └── variant_calling/              # ParaDISM and baseline VCFs

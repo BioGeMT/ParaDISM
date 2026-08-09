@@ -110,6 +110,38 @@ class SimpleParaDISMExecutor:
         """Extract read IDs that mapped to NONE from assignments dict."""
         return {read_name for read_name, gene in assignments.items() if gene == "NONE"}
 
+    def _compress_intermediate_sam(self, sam_path: Path, threads: int) -> Path:
+        """Convert a consumed intermediate SAM to BAM without risking the SAM."""
+        bam_path = sam_path.with_suffix(".bam")
+        partial_bam = Path(f"{bam_path}.partial")
+        partial_bam.unlink(missing_ok=True)
+
+        try:
+            subprocess.run(
+                [
+                    "samtools",
+                    "view",
+                    "-@",
+                    str(threads),
+                    "-b",
+                    "-o",
+                    str(partial_bam),
+                    str(sam_path),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["samtools", "quickcheck", str(partial_bam)],
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            partial_bam.unlink(missing_ok=True)
+            raise
+
+        partial_bam.replace(bam_path)
+        sam_path.unlink()
+        return bam_path
+
     def _extract_reads_from_fastq(self, fastq_path: Path, read_ids: set[str], output_path: Path) -> int:
         """Extract reads from FASTQ file based on read IDs. Returns count of extracted reads."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -385,6 +417,7 @@ class SimpleParaDISMExecutor:
         minimap2_min_score: int = 240,
         n_anchors: int = 1,
         workers: int = 1,
+        compress_intermediate_sam: bool = False,
     ) -> tuple[Path, dict[str, str], bool]:
         """
         Run one iteration of refinement on NONE reads only.
@@ -556,6 +589,12 @@ class SimpleParaDISMExecutor:
             return new_assignments
         
         new_assignments = self._run_spinner(_run_paradism_iteration, "Running ParaDISM algorithm")
+
+        if compress_intermediate_sam:
+            self._run_spinner(
+                lambda: self._compress_intermediate_sam(iter_sam, threads),
+                "Compressing consumed intermediate SAM to BAM",
+            )
         
         # 5. Merge assignments
         merged_assignments = self._merge_assignments(previous_assignments, new_assignments)
@@ -614,6 +653,7 @@ class SimpleParaDISMExecutor:
         threshold: str | None = None,
         n_anchors: int = 1,
         workers: int = 1,
+        compress_intermediate_sam: bool = False,
     ) -> None:
         """Execute the ParaDISM pipeline with optional iterative refinement.
 
@@ -623,6 +663,7 @@ class SimpleParaDISMExecutor:
                       For bowtie2: score function (e.g., "G,40,40"). Default based on aligner.
             n_anchors: Minimum number of distinct gene-unique C1 positions required for assignment.
             workers: Worker processes for the ParaDISM read-assignment step.
+            compress_intermediate_sam: Replace consumed mapped_reads.sam files with BAM files.
         """
 
         is_paired = r2 is not None
@@ -775,6 +816,12 @@ class SimpleParaDISMExecutor:
             "Assigning reads from SAM alignments",
         )
 
+        if compress_intermediate_sam:
+            self._run_spinner(
+                lambda: self._compress_intermediate_sam(sam_output, threads),
+                "Compressing consumed intermediate SAM to BAM",
+            )
+
         def _write_initial_fastqs():
             return write_fastq_outputs(
                 current_assignments,
@@ -841,6 +888,7 @@ class SimpleParaDISMExecutor:
                     minimap2_min_score=minimap2_min_score,
                     n_anchors=n_anchors,
                     workers=workers,
+                    compress_intermediate_sam=compress_intermediate_sam,
                 )
 
                 if converged:

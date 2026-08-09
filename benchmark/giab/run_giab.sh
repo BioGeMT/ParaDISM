@@ -188,6 +188,7 @@ else
         --aligner bowtie2 \
         --threads "$THREADS" \
         --workers "$WORKERS" \
+        --compress-intermediate-sam \
         --iterations "$ITERATIONS" \
         --min-alternate-count "$MIN_ALT_COUNT" \
         --add-quality-filters \
