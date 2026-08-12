@@ -87,6 +87,16 @@ the pipeline stops early if no additional reads can be rescued. Use
 `--iterations 1` only when a single, unrefined ParaDISM assignment pass is the
 intended comparison.
 
+### Interrupted runs
+
+A run is complete only when `.paradism_complete` and the expected final BAMs
+are present. If an interrupted run leaves a nonempty output directory,
+`run_giab.sh` exits instead of treating that directory as complete or mixing a
+new run with partial files. Preserve or move the partial directory for
+diagnosis, then choose a new `--output-dir`. GIAB post-processing also exits
+when the completion marker or expected BAMs are absent. It does not skip the
+missing ParaDISM result and continue with only the base aligner.
+
 ## Output Layout
 
 ```text
