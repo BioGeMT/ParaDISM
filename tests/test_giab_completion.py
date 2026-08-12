@@ -80,6 +80,40 @@ class GiabCompletionTest(unittest.TestCase):
             result.stdout + result.stderr,
         )
 
+    def test_post_processing_wrapper_rejects_missing_completion_marker(self):
+        project_root = Path(__file__).resolve().parents[1]
+        script = (
+            project_root
+            / "benchmark"
+            / "giab"
+            / "run_variant_calling_to_vcf_out.sh"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            input_dir = temp_path / "partial-run"
+            input_dir.mkdir()
+            benchmark_bed = temp_path / "benchmark.bed"
+            benchmark_bed.write_text("PKD1\t0\t1\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(script),
+                    "--run-dir",
+                    str(input_dir),
+                    "--out-dir",
+                    str(temp_path / "variant-calling"),
+                    "--benchmark-bed",
+                    str(benchmark_bed),
+                ],
+                cwd=project_root,
+                text=True,
+                capture_output=True,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("completion marker not found", result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

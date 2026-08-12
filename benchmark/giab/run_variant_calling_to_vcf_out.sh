@@ -110,6 +110,12 @@ if [[ ! -d "$RUN_DIR" ]]; then
     exit 1
 fi
 
+if [[ ! -f "$RUN_DIR/.paradism_complete" ]]; then
+    echo "Error: ParaDISM completion marker not found: $RUN_DIR/.paradism_complete" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
+    exit 1
+fi
+
 for required in "$CALL_SCRIPT" "$FILTER_SCRIPT" "$EVAL_SCRIPT" "$COVERAGE_EVAL_SCRIPT"; do
     if [[ ! -f "$required" ]]; then
         echo "Error: required script not found: $required" >&2
