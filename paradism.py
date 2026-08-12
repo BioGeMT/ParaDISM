@@ -263,7 +263,17 @@ def main() -> None:
 
     # Check if we have minimum required arguments for CLI mode
     if args.read1 and args.reference:
-        run_with_arguments(args)
+        try:
+            run_with_arguments(args)
+        except MemoryError as error:
+            print(
+                "Error: ParaDISM exhausted the available memory. The run is "
+                "incomplete and no completion marker was written. Reduce "
+                "--workers, free memory, or use a host with more available "
+                "memory.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from error
         return
 
     _, interactive_mode, console = _lazy_imports()
