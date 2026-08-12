@@ -588,7 +588,10 @@ class SimpleParaDISMExecutor:
             )
             return new_assignments
         
-        new_assignments = self._run_spinner(_run_paradism_iteration, "Running ParaDISM algorithm")
+        new_assignments = self._run_spinner(
+            _run_paradism_iteration,
+            "Assigning reads from SAM alignments",
+        )
 
         if compress_intermediate_sam:
             self._run_spinner(
@@ -610,14 +613,21 @@ class SimpleParaDISMExecutor:
         # 7. Build full per-gene FASTQ/BAM outputs for merged assignments.
         # These BAMs are used for variant calling in the next iteration and must
         # include all currently assigned reads, not only newly rescued NONE reads.
-        def _write_iteration_outputs():
-            iter_genes = self._write_fastq_outputs(
+        def _write_iteration_fastqs():
+            return self._write_fastq_outputs(
                 merged_assignments,
                 r1,
                 r2,
                 iter_fastq_dir,
             )
-            if iter_genes:
+
+        iter_genes = self._run_spinner(
+            _write_iteration_fastqs,
+            "Writing assigned-read FASTQ files",
+        )
+
+        if iter_genes:
+            def _create_iteration_bams():
                 create_bam_files(
                     iter_genes,
                     str(updated_ref),
@@ -632,7 +642,10 @@ class SimpleParaDISMExecutor:
                     is_paired=is_paired,
                 )
 
-        self._run_spinner(_write_iteration_outputs, "Writing merged iteration outputs")
+            self._run_spinner(
+                _create_iteration_bams,
+                "Creating assigned-read BAM files",
+            )
         
         return updated_ref, merged_assignments, False
 
@@ -913,14 +926,21 @@ class SimpleParaDISMExecutor:
             final_fastq_dir = final_outputs_dir / f"{self.prefix}_fastq"
             final_bam_dir = final_outputs_dir / f"{self.prefix}_bam"
             
-            def _write_final_outputs():
-                final_genes = self._write_fastq_outputs(
+            def _write_final_fastqs():
+                return self._write_fastq_outputs(
                     final_output['assignments'],
                     r1,
                     r2,
                     str(final_fastq_dir)
                 )
-                if final_genes:
+
+            final_genes = self._run_spinner(
+                _write_final_fastqs,
+                "Writing final assigned-read FASTQ files",
+            )
+
+            if final_genes:
+                def _create_final_bams():
                     create_bam_files(
                         final_genes,
                         str(original_ref),
@@ -934,7 +954,14 @@ class SimpleParaDISMExecutor:
                         minimap2_min_score,
                         is_paired=is_paired,
                     )
-                self._write_none_read_inspection_outputs(
+
+                self._run_spinner(
+                    _create_final_bams,
+                    "Creating final assigned-read BAM files",
+                )
+
+            self._run_spinner(
+                lambda: self._write_none_read_inspection_outputs(
                     assignments=final_output['assignments'],
                     r1_path=r1,
                     r2_path=r2,
@@ -945,12 +972,12 @@ class SimpleParaDISMExecutor:
                     bowtie2_score_min=bowtie2_score_min,
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
-                )
-                shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
+                ),
+                "Writing unresolved-read inspection outputs",
+            )
+            shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
 
             print(f"\n  Iterative refinement complete.\n", file=sys.stderr)
-            
-            self._run_spinner(_write_final_outputs, "Writing final outputs")
         
         # Write final outputs for single iteration case
         if iterations == 1:
@@ -958,14 +985,21 @@ class SimpleParaDISMExecutor:
             final_fastq_dir = final_outputs_dir / f"{self.prefix}_fastq"
             final_bam_dir = final_outputs_dir / f"{self.prefix}_bam"
             
-            def _write_final_outputs():
-                final_genes = self._write_fastq_outputs(
+            def _write_final_fastqs():
+                return self._write_fastq_outputs(
                     current_assignments,
                     r1,
                     r2,
                     str(final_fastq_dir)
                 )
-                if final_genes:
+
+            final_genes = self._run_spinner(
+                _write_final_fastqs,
+                "Writing final assigned-read FASTQ files",
+            )
+
+            if final_genes:
+                def _create_final_bams():
                     create_bam_files(
                         final_genes,
                         str(original_ref),
@@ -979,7 +1013,14 @@ class SimpleParaDISMExecutor:
                         minimap2_min_score,
                         is_paired=is_paired,
                     )
-                self._write_none_read_inspection_outputs(
+
+                self._run_spinner(
+                    _create_final_bams,
+                    "Creating final assigned-read BAM files",
+                )
+
+            self._run_spinner(
+                lambda: self._write_none_read_inspection_outputs(
                     assignments=current_assignments,
                     r1_path=r1,
                     r2_path=r2,
@@ -990,10 +1031,10 @@ class SimpleParaDISMExecutor:
                     bowtie2_score_min=bowtie2_score_min,
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
-                )
-                shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
-
-            self._run_spinner(_write_final_outputs, "Writing final outputs")
+                ),
+                "Writing unresolved-read inspection outputs",
+            )
+            shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
 
         # 4. Cleanup intermediate files
         time.sleep(0.2)
