@@ -29,7 +29,8 @@ The demo uses committed synthetic reads from a PKD1/pseudogene reference:
 and writes checked outputs to `demo/output/`. The deterministic result contains
 9 correctly assigned pairs, 11 unassigned pairs, and no incorrect assignments;
 the demo prints and validates these counts and writes
-`demo_assignment_summary.tsv`.
+`demo_assignment_summary.tsv`. The demo permits up to three iterations and
+converges when no variants are found as iteration 2 begins.
 
 To regenerate the tiny demo reads from `demo/ref.fa`, run:
 

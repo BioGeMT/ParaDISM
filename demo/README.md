@@ -5,8 +5,8 @@ manuscript or private data:
 
 - `ref.fa`: PKD1 plus six PKD1 pseudogene reference contigs
 - `pkd1_sim_R1.fq` and `pkd1_sim_R2.fq`: 20 committed paired-end read pairs
-- `run_demo.sh`: runs ParaDISM with Bowtie2 for one iteration and verifies the
-  expected pair-level assignments
+- `run_demo.sh`: runs ParaDISM with Bowtie2 for up to three iterations and
+  verifies the expected pair-level assignments
 - `summarize_demo.py`: compares the output assignments with the true source
   encoded in each simulated read name
 - `generate_demo_reads.sh`: optional script to regenerate the committed reads
@@ -33,6 +33,9 @@ demo/output/
 ├── pkd1_demo_pipeline_<time>.log
 ├── iteration_1/
 │   └── mapped_reads.sam
+├── iteration_2/
+│   └── variant_calling/
+│       └── variants.vcf
 └── final_outputs/
     ├── pkd1_demo_fastq/
     │   └── pkd1_demo_<assigned_contig>.fq
@@ -51,6 +54,13 @@ contains the direct Bowtie2 alignments used for assignment; the final FASTQs
 contain assigned reads grouped by reference contig, the final BAMs provide
 sorted and indexed alignments for downstream inspection, and the `none`
 directory retains unresolved reads rather than discarding them.
+
+The demo permits up to three iterations so that it also exercises ParaDISM's
+refinement stopping rule. With this small read set, no variants are found when
+iteration 2 begins, so the pipeline reports convergence and stops without
+updating the reference. The iteration 2 VCF therefore contains no variant
+records. The larger GIAB workflow is the appropriate example for evaluating
+refinement when variants are present.
 
 ## Expected result
 

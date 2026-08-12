@@ -85,7 +85,7 @@ fi
     --reference "$REFERENCE" \
     --aligner bowtie2 \
     --threads 1 \
-    --iterations 1 \
+    --iterations 3 \
     --output-dir "$OUTPUT_DIR" \
     --prefix "$PREFIX"
 
