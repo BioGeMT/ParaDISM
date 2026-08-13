@@ -130,7 +130,7 @@ OUTPUT_PARENT="$(dirname "$OUTPUT_G60")"
 mkdir -p "$OUTPUT_PARENT"
 INPUT_SIZE_KIB="$(du -sk "$R1_MERGED" "$R2_MERGED" | awk '{ total += $1 } END { print total + 0 }')"
 AVAILABLE_KIB="$(df -Pk "$OUTPUT_PARENT" | awk 'NR == 2 { print $4 }')"
-RECOMMENDED_FREE_KIB=$((1024 * 1024 * 1024))
+RECOMMENDED_FREE_KIB=$((2 * 1024 * 1024 * 1024))
 
 echo "=========================================="
 echo "ParaDISM GIAB HG002 - G60"
@@ -148,10 +148,10 @@ echo ""
 echo "Resource preflight:"
 echo "  Input FASTQ size on disk: $(format_kib "$INPUT_SIZE_KIB")"
 echo "  Available output-disk space: $(format_kib "$AVAILABLE_KIB")"
-echo "  Full HG002 planning target: at least 1.0 TiB free"
+echo "  Full HG002 planning target: at least 2.0 TiB free"
 echo "  Runtime: allow a multi-hour or longer batch window; exact time depends on hardware and input size"
 if (( AVAILABLE_KIB < RECOMMENDED_FREE_KIB )); then
-    echo "Warning: less than 1.0 TiB is available at $OUTPUT_PARENT" >&2
+    echo "Warning: less than 2.0 TiB is available at $OUTPUT_PARENT" >&2
     echo "The full HG002 workflow can exhaust this filesystem; choose another --output-dir if needed." >&2
 fi
 echo ""

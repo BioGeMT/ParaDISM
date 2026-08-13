@@ -16,7 +16,7 @@ the base Bowtie2 BAM, using GIAB HG002 truth as the benchmark.
 ## Resource requirements
 
 The full public HG002 download is approximately 322.5 GB of compressed FASTQ
-data. Plan for at least 1 TiB of free disk space for the download, the initial
+data. Plan for at least 2 TiB of free disk space for the download, the initial
 SAM alignment, ParaDISM FASTQ/BAM outputs, and variant-calling intermediates.
 The download script retains the 68 source shards and creates merged R1/R2
 files, so two compressed copies of the reads coexist unless the source shards
@@ -33,7 +33,7 @@ read assignment can each take hours; reserve a multi-hour or longer batch
 window and use a persistent session or scheduler. Exact runtime depends on CPU,
 available memory, storage throughput, worker count, and system load. The
 launcher prints the measured FASTQ footprint, available output-disk space, a
-warning when less than 1 TiB is available, elapsed time for each pipeline
+warning when less than 2 TiB is available, elapsed time for each pipeline
 stage, and the growing SAM size during alignment.
 
 For a quick installation and correctness check, use `bash demo/run_demo.sh`
@@ -60,7 +60,9 @@ runtimes for other systems.
   alignment threads, and 2 assignment workers took 26 h 9 min 51 s and had a
   peak resident set size of 78.5 GiB. Subsequent variant calling and filtering
   took 1 h 23 min 9 s and had a peak resident set size of 6.7 GiB. These are
-  single wall-clock measurements from a shared server.
+  single wall-clock measurements from a shared server. The run output peaked
+  at approximately 1.5 TiB and occupied 898 GiB after intermediate alignment
+  compression and post-processing.
 
 The targeted-read workflow is therefore the practical reference for routine
 family analysis. Direct raw-WGS processing requires a substantially longer
