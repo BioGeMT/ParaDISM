@@ -114,6 +114,73 @@ class GiabCompletionTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("completion marker not found", result.stdout + result.stderr)
 
+    def test_post_processing_wrapper_validates_truth_before_tools(self):
+        project_root = Path(__file__).resolve().parents[1]
+        script = (
+            project_root
+            / "benchmark"
+            / "giab"
+            / "run_variant_calling_to_vcf_out.sh"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            input_dir = temp_path / "completed-run"
+            input_dir.mkdir()
+            (input_dir / ".paradism_complete").write_text("", encoding="utf-8")
+            truth_dir = temp_path / "truth"
+            truth_dir.mkdir()
+            benchmark_bed = truth_dir / "benchmark.bed"
+            benchmark_bed.write_text("PKD1\t0\t1\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(script),
+                    "--run-dir",
+                    str(input_dir),
+                    "--out-dir",
+                    str(temp_path / "variant-calling"),
+                    "--benchmark-bed",
+                    str(benchmark_bed),
+                ],
+                cwd=project_root,
+                text=True,
+                capture_output=True,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("truth VCF not found", result.stdout + result.stderr)
+        self.assertNotIn("required tool not found", result.stdout + result.stderr)
+
+    def test_evaluators_do_not_replace_an_explicit_missing_truth_vcf(self):
+        project_root = Path(__file__).resolve().parents[1]
+        scripts = (
+            project_root / "benchmark" / "giab" / "evaluate_final_vcfs.py",
+            project_root / "benchmark" / "giab" / "evaluate_coverage_split.py",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            missing_truth = temp_path / "missing-truth.vcf.gz"
+            for script in scripts:
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(script),
+                        "--dataset-dir",
+                        str(temp_path / "dataset"),
+                        "--out-dir",
+                        str(temp_path / "metrics"),
+                        "--truth-vcf",
+                        str(missing_truth),
+                    ],
+                    cwd=project_root,
+                    text=True,
+                    capture_output=True,
+                )
+
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(str(missing_truth), result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

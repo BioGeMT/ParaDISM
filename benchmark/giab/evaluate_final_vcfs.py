@@ -242,7 +242,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     truth_vcf = Path(args.truth_vcf) if args.truth_vcf else DEFAULT_TRUTH_VCF
-    if not truth_vcf.exists():
+    if args.truth_vcf is None and not truth_vcf.exists():
         truth_vcf = DEFAULT_TRUTH_FALLBACK
 
     benchmark_intervals = load_benchmark_intervals_chr16(Path(args.benchmark_bed))
