@@ -12,18 +12,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-
-# Match benchmark/giab/make_truth_gene_coords_vcf.py.
-# Coordinates are 1-based, inclusive on chr16.
-GENE_COORDS: dict[str, tuple[int, int]] = {
-    "PKD1": (2088707, 2135898),
-    "PKD1P1": (16310133, 16334190),
-    "PKD1P2": (16356223, 16377507),
-    "PKD1P3": (14911550, 14935708),
-    "PKD1P4": (18334399, 18352476),
-    "PKD1P5": (18374520, 18402014),
-    "PKD1P6": (15125138, 15154873),
-}
+from pkd1_panel_coordinates import EVALUATION_REGIONS, PANEL_COORDINATES
 
 
 def load_and_merge_chr16_bed_intervals(path: Path) -> list[tuple[int, int]]:
@@ -82,21 +71,21 @@ def merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
 def map_chr16_to_gene_coords(
     chr16_intervals: list[tuple[int, int]],
 ) -> dict[str, list[tuple[int, int]]]:
-    out: dict[str, list[tuple[int, int]]] = {gene: [] for gene in GENE_COORDS}
-    for gene, (gene_start_1based, gene_end_1based) in GENE_COORDS.items():
-        gene_start0 = gene_start_1based - 1
-        gene_end0 = gene_end_1based  # inclusive -> end-exclusive in 0-based
-
+    out: dict[str, list[tuple[int, int]]] = {
+        gene: [] for gene in PANEL_COORDINATES
+    }
+    for gene, coordinate in PANEL_COORDINATES.items():
+        evaluation_start0, evaluation_end0 = EVALUATION_REGIONS[gene]
         mapped: list[tuple[int, int]] = []
         for start0, end0 in chr16_intervals:
-            overlap_start0 = max(start0, gene_start0)
-            overlap_end0 = min(end0, gene_end0)
-            if overlap_end0 <= overlap_start0:
+            overlap_start0 = max(start0, evaluation_start0)
+            overlap_end0 = min(end0, evaluation_end0)
+            interval = coordinate.genomic_to_contig_interval(
+                overlap_start0, overlap_end0
+            )
+            if interval is None:
                 continue
-
-            gene_rel_start0 = overlap_start0 - gene_start0
-            gene_rel_end0 = overlap_end0 - gene_start0
-            mapped.append((gene_rel_start0, gene_rel_end0))
+            mapped.append(interval)
 
         out[gene] = merge_intervals(mapped)
     return out
@@ -138,19 +127,24 @@ def main() -> int:
 
     args.output_bed.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output_bed, "w") as out:
-        for gene in GENE_COORDS:
+        for gene in PANEL_COORDINATES:
             for start0, end0 in gene_intervals[gene]:
                 out.write(f"{gene}\t{start0}\t{end0}\n")
 
-    genes_with_intervals = sum(1 for gene in GENE_COORDS if gene_intervals[gene])
+    genes_with_intervals = sum(
+        1 for gene in PANEL_COORDINATES if gene_intervals[gene]
+    )
     total_intervals = sum(len(v) for v in gene_intervals.values())
     total_bases = sum(total_bp(v) for v in gene_intervals.values())
 
     print(f"Wrote: {args.output_bed}")
-    print(f"Genes with benchmarkable intervals: {genes_with_intervals}/{len(GENE_COORDS)}")
+    print(
+        "Genes with benchmarkable intervals:"
+        f" {genes_with_intervals}/{len(PANEL_COORDINATES)}"
+    )
     print(f"Total intervals: {total_intervals}")
     print(f"Total benchmarkable bases (gene coords): {total_bases}")
-    for gene in GENE_COORDS:
+    for gene in PANEL_COORDINATES:
         intervals = gene_intervals[gene]
         if not intervals:
             continue

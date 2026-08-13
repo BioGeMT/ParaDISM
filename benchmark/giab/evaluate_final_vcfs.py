@@ -8,6 +8,8 @@ import subprocess
 from bisect import bisect_right
 from pathlib import Path
 
+from pkd1_panel_coordinates import PANEL_COORDINATES, find_contig_position
+
 SCRIPT_DIR = Path(__file__).parent
 DEFAULT_DATASET_DIR = SCRIPT_DIR / "giab_hg002_output_bowtie2_G60_min5_qfilters"
 DEFAULT_OUT_DIR = SCRIPT_DIR / "vcf_out"
@@ -24,18 +26,6 @@ DEFAULT_TRUTH_FALLBACK = SCRIPT_DIR / "giab_hg002_vcf/HG002_PKD1_genes_SNPs_exac
 DEFAULT_BENCHMARK_BED = (
     SCRIPT_DIR / "giab_hg002_vcf/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
 )
-
-# GRCh38 1-based inclusive coordinates matching benchmark/references/pkd1_panel.fa.
-GENE_COORDS = {
-    "PKD1": (2088707, 2135898),
-    "PKD1P1": (16310133, 16334190),
-    "PKD1P2": (16356223, 16377507),
-    "PKD1P3": (14911550, 14935708),
-    "PKD1P4": (18334399, 18352476),
-    "PKD1P5": (18374520, 18402014),
-    "PKD1P6": (15125138, 15154873),
-}
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -119,10 +109,19 @@ def load_truth_variants(
             continue
         if not is_benchmarkable_chr16_pos(pos, benchmark_intervals):
             continue
-        for gene, (start, end) in GENE_COORDS.items():
-            if start <= pos <= end:
-                variants.add((gene, pos - start + 1, ref, alt))
-                break
+        mapped = find_contig_position(pos)
+        if mapped is None:
+            continue
+        gene, gene_pos = mapped
+        coordinate = PANEL_COORDINATES[gene]
+        variants.add(
+            (
+                gene,
+                gene_pos,
+                coordinate.orient_allele(ref),
+                coordinate.orient_allele(alt),
+            )
+        )
     return variants
 
 
@@ -132,10 +131,11 @@ def load_called_variants(
 ) -> set[tuple[str, int, str, str]]:
     variants = set()
     for chrom, pos, ref, alt in query_vcf(vcf_path):
-        if chrom not in GENE_COORDS:
+        if chrom not in PANEL_COORDINATES:
             continue
-        gene_start, _ = GENE_COORDS[chrom]
-        genome_pos = gene_start + pos - 1
+        genome_pos = PANEL_COORDINATES[chrom].contig_to_genomic_position(pos)
+        if genome_pos is None:
+            continue
         if is_benchmarkable_chr16_pos(genome_pos, benchmark_intervals):
             variants.add((chrom, pos, ref, alt))
     return variants
@@ -201,7 +201,7 @@ def write_per_gene(out_dir: Path, truth, paradism_called, base_called) -> None:
     per_gene_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
-    for gene in GENE_COORDS:
+    for gene in PANEL_COORDINATES:
         gene_truth = {variant for variant in truth if variant[0] == gene}
         for method, called in (
             ("ParaDISM", paradism_called),

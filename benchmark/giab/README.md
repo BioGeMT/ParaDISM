@@ -56,6 +56,11 @@ runtimes for other systems.
 - An archived run that supplied the complete HG002 FASTQs directly to the
   `PKD1`/`PKD1P` reference took 16 h 33 min 25 s and converged after five
   iterations. Its iteration-1 SAM was 497,903,998,666 bytes (463.7 GiB).
+- A fresh one-iteration reproduction with the complete HG002 FASTQs, 8
+  alignment threads, and 2 assignment workers took 26 h 9 min 51 s and had a
+  peak resident set size of 78.5 GiB. Subsequent variant calling and filtering
+  took 1 h 23 min 9 s and had a peak resident set size of 6.7 GiB. These are
+  single wall-clock measurements from a shared server.
 
 The targeted-read workflow is therefore the practical reference for routine
 family analysis. Direct raw-WGS processing requires a substantially longer
@@ -114,7 +119,9 @@ benchmark/giab/
 
 The post-processing script compares exact `CHROM`, `POS`, `REF`, and `ALT`
 matches after restricting both call sets to simple biallelic A/C/G/T SNPs and
-the GIAB benchmark regions. TP, FP, and FN denote true-positive,
+the GIAB benchmark regions. It maps GRCh38 truth positions to the exact panel
+contig offsets and reverse-complements alleles for reverse-strand contigs. TP,
+FP, and FN denote true-positive,
 false-positive, and false-negative SNP calls. Precision is `TP/(TP+FP)`, recall
 or sensitivity is `TP/(TP+FN)`, and F1 is their harmonic mean. True-negative
 counts and specificity are not reported because the large number of invariant
@@ -149,6 +156,8 @@ metric files.
 
 | Dataset | Method | TP | FP | FN | Precision | Recall | F1 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Fresh full-depth HG002, one iteration | ParaDISM | 18 | 1 | 30 | 0.947 | 0.375 | 0.537 |
+| Fresh full-depth HG002, one iteration | Bowtie2 baseline | 40 | 2 | 8 | 0.952 | 0.833 | 0.889 |
 | Full-depth HG002 | ParaDISM | 17 | 5 | 31 | 0.773 | 0.354 | 0.486 |
 | Full-depth HG002 | Bowtie2 baseline | 39 | 13 | 9 | 0.750 | 0.812 | 0.780 |
 | Downsampled ~10x HG002 | ParaDISM | 11 | 0 | 37 | 1.000 | 0.229 | 0.373 |
@@ -159,6 +168,10 @@ reads; the threshold for the archived ~10x run was 6 reads. These results show
 the intended precision-sensitivity trade-off: under the tested settings,
 ParaDISM produced fewer false-positive calls but also recovered fewer true
 variants than the Bowtie2 baseline.
+
+The fresh one-iteration rows are a reproduction check of the reviewer-facing
+command. The remaining rows are the archived manuscript workflows and use the
+iteration settings described in the manuscript.
 
 ## Scripts
 

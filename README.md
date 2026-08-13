@@ -159,7 +159,7 @@ The `--positions` file maps each FASTA contig name to its chromosomal interval
 and strand:
 
 ```text
-PKD1 16:2088708-2135898:1
+PKD1 16:2088708-2135898:-1
 PKD1P1 16:16310341-16334190:1
 ```
 

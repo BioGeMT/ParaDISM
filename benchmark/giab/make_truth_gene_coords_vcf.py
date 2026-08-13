@@ -19,23 +19,11 @@ from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 
+from pkd1_panel_coordinates import PANEL_COORDINATES, find_contig_position
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-
-# Coordinate mapping: contig -> (chr16_start, chr16_end) on GRCh38 (1-based, inclusive).
-# These intervals are defined to match the sequences in benchmark/references/pkd1_panel.fa and can
-# include flanking sequence beyond the annotated gene models.
-GENE_COORDS: dict[str, tuple[int, int]] = {
-    "PKD1": (2088707, 2135898),
-    "PKD1P1": (16310133, 16334190),
-    "PKD1P2": (16356223, 16377507),
-    "PKD1P3": (14911550, 14935708),
-    "PKD1P4": (18334399, 18352476),
-    "PKD1P5": (18374520, 18402014),
-    "PKD1P6": (15125138, 15154873),
-}
-
 
 @dataclass(frozen=True)
 class VariantRow:
@@ -129,13 +117,6 @@ def _is_benchmarkable_pos(pos_1based: int, intervals: tuple[list[int], list[tupl
     return start0 <= pos0 < end0
 
 
-def _find_gene_for_chr16_pos(pos_1based: int) -> tuple[str, int] | None:
-    for gene, (start, end) in GENE_COORDS.items():
-        if start <= pos_1based <= end:
-            return gene, pos_1based - start + 1
-    return None
-
-
 def _bgzip_and_index(vcf_path: Path, out_vcf_gz: Path) -> None:
     """
     bgzip-compress and bcftools-index the VCF.
@@ -217,9 +198,9 @@ def main() -> int:
 
     benchmark_intervals = _load_benchmark_intervals_chr16(args.benchmark_bed)
     ref_seqs = _load_fasta_sequences(args.ref_fasta)
-    contig_order = [name for name in ref_seqs.keys() if name in GENE_COORDS]
-    if set(GENE_COORDS.keys()) - set(ref_seqs.keys()):
-        missing = sorted(set(GENE_COORDS.keys()) - set(ref_seqs.keys()))
+    contig_order = [name for name in ref_seqs.keys() if name in PANEL_COORDINATES]
+    if set(PANEL_COORDINATES) - set(ref_seqs):
+        missing = sorted(set(PANEL_COORDINATES) - set(ref_seqs))
         print(f"ERROR: ref fasta missing contigs: {', '.join(missing)}", file=sys.stderr)
         return 2
 
@@ -263,14 +244,17 @@ def main() -> int:
                 skipped_not_benchmarkable += 1
                 continue
 
-            mapped = _find_gene_for_chr16_pos(pos)
+            mapped = find_contig_position(pos)
             if mapped is None:
                 skipped_outside_gene += 1
                 continue
             gene, gene_pos = mapped
+            coordinate = PANEL_COORDINATES[gene]
+            contig_ref = coordinate.orient_allele(ref)
+            contig_alt = coordinate.orient_allele(alt)
 
             ref_base = ref_seqs[gene][gene_pos - 1]
-            if ref_base != ref:
+            if ref_base != contig_ref:
                 ref_mismatch += 1
                 continue
 
@@ -284,7 +268,9 @@ def main() -> int:
                 if idx < len(sample):
                     gt = sample[idx]
 
-            rows.append(VariantRow(gene, gene_pos, ref, alt, qual, flt, gt))
+            rows.append(
+                VariantRow(gene, gene_pos, contig_ref, contig_alt, qual, flt, gt)
+            )
 
     def _sort_key(r: VariantRow) -> tuple[int, int]:
         return (contig_order.index(r.chrom), r.pos)
