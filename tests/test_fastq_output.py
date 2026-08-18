@@ -27,10 +27,11 @@ class FastqOutputTest(unittest.TestCase):
                 str(r2_path),
                 str(output_dir),
             )
-            records = [
-                (record.id, str(record.seq))
-                for record in SeqIO.parse(output_dir / "GENE_A.fq", "fastq")
-            ]
+            with (output_dir / "GENE_A.fq").open(encoding="utf-8") as handle:
+                records = [
+                    (record.id, str(record.seq))
+                    for record in SeqIO.parse(handle, "fastq")
+                ]
 
             self.assertEqual(
                 (["GENE_A"], [("read_a/1", "ACGT"), ("read_a/2", "TGCA")]),
