@@ -116,6 +116,26 @@ if [[ -z "$BAM_PREFIX" ]]; then
     BAM_PREFIX="$(basename "$INPUT_DIR")"
 fi
 
+PARADISM_BAM_DIR="$INPUT_DIR/final_outputs/${BAM_PREFIX}_bam"
+PARADISM_OUT_DIR="$OUTPUT_DIR/paradism_raw"
+BASE_ALIGNMENT="$INPUT_DIR/iteration_1/mapped_reads.sam"
+if [[ ! -f "$BASE_ALIGNMENT" ]]; then
+    BASE_ALIGNMENT="$INPUT_DIR/iteration_1/mapped_reads.bam"
+fi
+BASE_OUT_DIR="$OUTPUT_DIR/basealigner_raw"
+
+if [[ ! -d "$PARADISM_BAM_DIR" ]]; then
+    echo "Error: ParaDISM BAM directory not found: $PARADISM_BAM_DIR" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
+    exit 1
+fi
+
+if [[ ! -f "$BASE_ALIGNMENT" ]]; then
+    echo "Error: base aligner SAM/BAM not found in: $INPUT_DIR/iteration_1" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
+    exit 1
+fi
+
 if command -v conda >/dev/null 2>&1; then
     # shellcheck disable=SC1091
     source "$(conda info --base)/etc/profile.d/conda.sh" 2>/dev/null || true
@@ -249,26 +269,6 @@ echo "SNP filter args: ${SNP_FILTER_ARGS[*]}"
 echo "SNP ACGT expr: $SNP_ACGT_EXPR"
 echo "Atomize script: $ATOMIZE_SCRIPT"
 echo ""
-
-PARADISM_BAM_DIR="$INPUT_DIR/final_outputs/${BAM_PREFIX}_bam"
-PARADISM_OUT_DIR="$OUTPUT_DIR/paradism_raw"
-BASE_ALIGNMENT="$INPUT_DIR/iteration_1/mapped_reads.sam"
-if [[ ! -f "$BASE_ALIGNMENT" ]]; then
-    BASE_ALIGNMENT="$INPUT_DIR/iteration_1/mapped_reads.bam"
-fi
-BASE_OUT_DIR="$OUTPUT_DIR/basealigner_raw"
-
-if [[ ! -d "$PARADISM_BAM_DIR" ]]; then
-    echo "Error: ParaDISM BAM directory not found: $PARADISM_BAM_DIR" >&2
-    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
-    exit 1
-fi
-
-if [[ ! -f "$BASE_ALIGNMENT" ]]; then
-    echo "Error: base aligner SAM/BAM not found in: $INPUT_DIR/iteration_1" >&2
-    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
-    exit 1
-fi
 
 echo "=== ParaDISM (raw per-gene) ==="
 call_raw_from_gene_bams "$PARADISM_BAM_DIR" \
