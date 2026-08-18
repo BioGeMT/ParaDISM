@@ -20,6 +20,8 @@ OUT_DIR=""
 THREADS=8
 SKIP_CALL=0
 BENCHMARK_BED="$SCRIPT_DIR/giab_hg002_vcf/HG002_PKD1_genes_benchmarkable_gene_coords.bed"
+TRUTH_VCF=""
+COVERAGE_TRUTH_VCF=""
 
 CALL_SCRIPT="$SCRIPT_DIR/call_variants_raw_g60.sh"
 FILTER_SCRIPT="$SCRIPT_DIR/filter_simple_snps_acgt_final.sh"
@@ -42,6 +44,11 @@ Optional:
   --threads N            Threads for variant calling sort steps (default: 8)
   --benchmark-bed FILE   Benchmark BED in gene coordinates
                          (default: benchmark/giab/giab_hg002_vcf/HG002_PKD1_genes_benchmarkable_gene_coords.bed)
+  --truth-vcf FILE       Benchmarkable GIAB truth VCF in genomic coordinates
+                         (default: sibling of --benchmark-bed)
+  --coverage-truth-vcf FILE
+                         Benchmarkable GIAB truth VCF in gene coordinates
+                         (default: sibling of --benchmark-bed)
   --skip-call            Skip call_variants_raw_g60.sh and only do sort/filter/evaluation
   -h, --help             Show help
 EOF
@@ -74,6 +81,14 @@ while [[ $# -gt 0 ]]; do
             BENCHMARK_BED="$2"
             shift 2
             ;;
+        --truth-vcf)
+            TRUTH_VCF="$2"
+            shift 2
+            ;;
+        --coverage-truth-vcf)
+            COVERAGE_TRUTH_VCF="$2"
+            shift 2
+            ;;
         --skip-call)
             SKIP_CALL=1
             shift
@@ -99,6 +114,15 @@ fi
 RUN_DIR="$(to_abs_path "$RUN_DIR")"
 OUT_DIR="$(to_abs_path "$OUT_DIR")"
 BENCHMARK_BED="$(to_abs_path "$BENCHMARK_BED")"
+TRUTH_DIR="$(dirname "$BENCHMARK_BED")"
+if [[ -z "$TRUTH_VCF" ]]; then
+    TRUTH_VCF="$TRUTH_DIR/HG002_PKD1_genes_SNPs_exact_benchmarkable.vcf.gz"
+fi
+if [[ -z "$COVERAGE_TRUTH_VCF" ]]; then
+    COVERAGE_TRUTH_VCF="$TRUTH_DIR/HG002_PKD1_genes_SNPs_exact_benchmarkable_gene_coords.vcf.gz"
+fi
+TRUTH_VCF="$(to_abs_path "$TRUTH_VCF")"
+COVERAGE_TRUTH_VCF="$(to_abs_path "$COVERAGE_TRUTH_VCF")"
 
 if ! [[ "$THREADS" =~ ^[0-9]+$ ]] || (( THREADS <= 0 )); then
     echo "Error: --threads must be a positive integer (got: $THREADS)" >&2
@@ -107,6 +131,12 @@ fi
 
 if [[ ! -d "$RUN_DIR" ]]; then
     echo "Error: run directory not found: $RUN_DIR" >&2
+    exit 1
+fi
+
+if [[ ! -f "$RUN_DIR/.paradism_complete" ]]; then
+    echo "Error: ParaDISM completion marker not found: $RUN_DIR/.paradism_complete" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
     exit 1
 fi
 
@@ -119,6 +149,16 @@ done
 
 if [[ ! -f "$BENCHMARK_BED" ]]; then
     echo "Error: benchmark BED not found: $BENCHMARK_BED" >&2
+    exit 1
+fi
+
+if [[ ! -f "$TRUTH_VCF" ]]; then
+    echo "Error: truth VCF not found: $TRUTH_VCF" >&2
+    exit 1
+fi
+
+if [[ ! -f "$COVERAGE_TRUTH_VCF" ]]; then
+    echo "Error: coverage truth VCF not found: $COVERAGE_TRUTH_VCF" >&2
     exit 1
 fi
 
@@ -143,6 +183,8 @@ echo "Run dir:       $RUN_DIR"
 echo "Out dir:       $OUT_DIR"
 echo "Threads:       $THREADS"
 echo "Benchmark BED: $BENCHMARK_BED"
+echo "Truth VCF:     $TRUTH_VCF"
+echo "Coverage VCF:  $COVERAGE_TRUTH_VCF"
 echo ""
 
 if [[ $SKIP_CALL -eq 0 ]]; then
@@ -193,13 +235,15 @@ echo ""
 echo "4) Generating comparison metrics..."
 python "$EVAL_SCRIPT" \
     --dataset-dir "$RUN_DIR" \
-    --out-dir "$OUT_DIR"
+    --out-dir "$OUT_DIR" \
+    --truth-vcf "$TRUTH_VCF"
 
 echo ""
 echo "5) Generating coverage-split confusion metrics..."
 python "$COVERAGE_EVAL_SCRIPT" \
     --dataset-dir "$RUN_DIR" \
-    --out-dir "$OUT_DIR"
+    --out-dir "$OUT_DIR" \
+    --truth-vcf "$COVERAGE_TRUTH_VCF"
 
 echo ""
 echo "Done."

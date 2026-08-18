@@ -116,6 +116,26 @@ if [[ -z "$BAM_PREFIX" ]]; then
     BAM_PREFIX="$(basename "$INPUT_DIR")"
 fi
 
+PARADISM_BAM_DIR="$INPUT_DIR/final_outputs/${BAM_PREFIX}_bam"
+PARADISM_OUT_DIR="$OUTPUT_DIR/paradism_raw"
+BASE_ALIGNMENT="$INPUT_DIR/iteration_1/mapped_reads.sam"
+if [[ ! -f "$BASE_ALIGNMENT" ]]; then
+    BASE_ALIGNMENT="$INPUT_DIR/iteration_1/mapped_reads.bam"
+fi
+BASE_OUT_DIR="$OUTPUT_DIR/basealigner_raw"
+
+if [[ ! -d "$PARADISM_BAM_DIR" ]]; then
+    echo "Error: ParaDISM BAM directory not found: $PARADISM_BAM_DIR" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
+    exit 1
+fi
+
+if [[ ! -f "$BASE_ALIGNMENT" ]]; then
+    echo "Error: base aligner SAM/BAM not found in: $INPUT_DIR/iteration_1" >&2
+    echo "The ParaDISM run is incomplete; do not start GIAB post-processing." >&2
+    exit 1
+fi
+
 if command -v conda >/dev/null 2>&1; then
     # shellcheck disable=SC1091
     source "$(conda info --base)/etc/profile.d/conda.sh" 2>/dev/null || true
@@ -185,8 +205,8 @@ call_raw_from_gene_bams() {
     done
 
     if [[ ${#gene_vcfs_raw[@]} -eq 0 ]]; then
-        echo "  No gene BAMs found; skipping merge"
-        return
+        echo "Error: no expected per-gene BAMs found in $bam_dir" >&2
+        return 1
     fi
 
     echo "  Merging ${#gene_vcfs_raw[@]} per-gene raw VCFs..."
@@ -200,22 +220,22 @@ call_raw_from_gene_bams() {
     bcftools index -f "${out_dir}/variants_simple_snps_acgt.vcf.gz"
 }
 
-call_raw_from_sam() {
-    local sam_file=$1
+call_raw_from_alignment() {
+    local alignment_file=$1
     local out_dir=$2
 
-    echo "Calling RAW variants from original SAM: $sam_file"
+    echo "Calling RAW variants from original alignment: $alignment_file"
     mkdir -p "$out_dir"
 
-    if [[ ! -f "$sam_file" ]]; then
-        echo "  SAM file not found: $sam_file"
+    if [[ ! -f "$alignment_file" ]]; then
+        echo "  Alignment file not found: $alignment_file"
         return
     fi
 
     local sorted_bam="${out_dir}/mapped_reads.sorted.bam"
     if [[ ! -f "$sorted_bam" ]]; then
-        echo "  Converting SAM to sorted BAM..."
-        samtools view -bS "$sam_file" | samtools sort -@ "$THREADS" -o "$sorted_bam"
+        echo "  Sorting base-alignment SAM/BAM..."
+        samtools sort -@ "$THREADS" -o "$sorted_bam" "$alignment_file"
         samtools index "$sorted_bam"
     fi
 
@@ -250,26 +270,13 @@ echo "SNP ACGT expr: $SNP_ACGT_EXPR"
 echo "Atomize script: $ATOMIZE_SCRIPT"
 echo ""
 
-PARADISM_BAM_DIR="$INPUT_DIR/final_outputs/${BAM_PREFIX}_bam"
-PARADISM_OUT_DIR="$OUTPUT_DIR/paradism_raw"
-BASE_SAM="$INPUT_DIR/iteration_1/mapped_reads.sam"
-BASE_OUT_DIR="$OUTPUT_DIR/basealigner_raw"
+echo "=== ParaDISM (raw per-gene) ==="
+call_raw_from_gene_bams "$PARADISM_BAM_DIR" \
+                        "$PARADISM_OUT_DIR" \
+                        "$BAM_PREFIX"
 
-if [[ -d "$PARADISM_BAM_DIR" ]]; then
-    echo "=== ParaDISM (raw per-gene) ==="
-    call_raw_from_gene_bams "$PARADISM_BAM_DIR" \
-                            "$PARADISM_OUT_DIR" \
-                            "$BAM_PREFIX"
-else
-    echo "ParaDISM BAM directory not found, skipping: $PARADISM_BAM_DIR"
-fi
-
-if [[ -f "$BASE_SAM" ]]; then
-    echo "=== Base Aligner (raw) ==="
-    call_raw_from_sam "$BASE_SAM" "$BASE_OUT_DIR"
-else
-    echo "Base aligner SAM not found, skipping: $BASE_SAM"
-fi
+echo "=== Base Aligner (raw) ==="
+call_raw_from_alignment "$BASE_ALIGNMENT" "$BASE_OUT_DIR"
 
 echo ""
 echo "Done!"

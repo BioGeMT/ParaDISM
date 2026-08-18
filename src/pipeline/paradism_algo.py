@@ -1,4 +1,5 @@
 import argparse
+import gzip
 import io
 import os
 import subprocess
@@ -172,7 +173,7 @@ def _assign_from_collected_evidence(qname_to_anchor_cols, qname_to_c2_false, all
     for qname in all_qnames:
         passing_genes = []
         for gene in gene_names:
-            c1 = len(qname_to_anchor_cols[gene][qname]) >= min_anchors
+            c1 = len(qname_to_anchor_cols[gene].get(qname, ())) >= min_anchors
             c2 = qname not in qname_to_c2_false[gene]
             if c1 and c2:
                 passing_genes.append(gene)
@@ -370,6 +371,12 @@ def _base_read_id(read_id: str) -> str:
     return read_id
 
 
+def _open_fastq(fastq_path: str):
+    if str(fastq_path).endswith(".gz"):
+        return gzip.open(fastq_path, "rt")
+    return open(fastq_path, "rt")
+
+
 def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str | None, 
                        fastq_dir: str, prefix: str = "") -> list[str]:
     """
@@ -385,14 +392,18 @@ def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str 
 
     handles = {}
     processed_genes = set()
+    r1_handle = None
+    r2_handle = None
 
     try:
         for gene in target_genes:
             filename = f"{prefix}_{gene}.fq" if prefix else f"{gene}.fq"
             handles[gene] = open(os.path.join(fastq_dir, filename), "w")
 
-        r1_iter = SeqIO.parse(r1_path, "fastq")
-        r2_iter = SeqIO.parse(r2_path, "fastq") if is_paired else None
+        r1_handle = _open_fastq(r1_path)
+        r2_handle = _open_fastq(r2_path) if is_paired else None
+        r1_iter = SeqIO.parse(r1_handle, "fastq")
+        r2_iter = SeqIO.parse(r2_handle, "fastq") if r2_handle is not None else None
 
         for r1 in r1_iter:
             r2 = next(r2_iter) if r2_iter is not None else None
@@ -425,6 +436,10 @@ def write_fastq_outputs(assignments: dict[str, str], r1_path: str, r2_path: str 
 
             processed_genes.add(gene)
     finally:
+        if r1_handle is not None:
+            r1_handle.close()
+        if r2_handle is not None:
+            r2_handle.close()
         for handle in handles.values():
             handle.close()
 

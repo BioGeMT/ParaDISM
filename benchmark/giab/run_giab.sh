@@ -89,6 +89,18 @@ done
 READS_DIR="$(to_abs_path "$READS_DIR")"
 REFERENCE="$(to_abs_path "$REFERENCE")"
 OUTPUT_G60="$(to_abs_path "$OUTPUT_G60")"
+COMPLETION_MARKER="$OUTPUT_G60/.paradism_complete"
+BAM_PREFIX="$(basename "$OUTPUT_G60")"
+FINAL_BAM_DIR="$OUTPUT_G60/final_outputs/${BAM_PREFIX}_bam"
+
+run_is_complete() {
+    [[ -f "$COMPLETION_MARKER" ]] || return 1
+    compgen -G "$FINAL_BAM_DIR/*.sorted.bam" >/dev/null
+}
+
+format_kib() {
+    awk -v kib="$1" 'BEGIN { printf "%.1f GiB", kib / 1048576 }'
+}
 
 if [[ ! -f "$REFERENCE" ]]; then
     echo "Error: reference FASTA not found: $REFERENCE" >&2
@@ -114,6 +126,12 @@ if [[ -z "$R1_MERGED" ]]; then
     exit 1
 fi
 
+OUTPUT_PARENT="$(dirname "$OUTPUT_G60")"
+mkdir -p "$OUTPUT_PARENT"
+INPUT_SIZE_KIB="$(du -sk "$R1_MERGED" "$R2_MERGED" | awk '{ total += $1 } END { print total + 0 }')"
+AVAILABLE_KIB="$(df -Pk "$OUTPUT_PARENT" | awk 'NR == 2 { print $4 }')"
+RECOMMENDED_FREE_KIB=$((2 * 1024 * 1024 * 1024))
+
 echo "=========================================="
 echo "ParaDISM GIAB HG002 - G60"
 echo "=========================================="
@@ -127,6 +145,16 @@ echo "  Workers: $WORKERS"
 echo "  Iterations: $ITERATIONS"
 echo "  Min-alternate-count: $MIN_ALT_COUNT"
 echo ""
+echo "Resource preflight:"
+echo "  Input FASTQ size on disk: $(format_kib "$INPUT_SIZE_KIB")"
+echo "  Available output-disk space: $(format_kib "$AVAILABLE_KIB")"
+echo "  Full HG002 planning target: at least 2.0 TiB free"
+echo "  Runtime: allow a multi-hour or longer batch window; exact time depends on hardware and input size"
+if (( AVAILABLE_KIB < RECOMMENDED_FREE_KIB )); then
+    echo "Warning: less than 2.0 TiB is available at $OUTPUT_PARENT" >&2
+    echo "The full HG002 workflow can exhaust this filesystem; choose another --output-dir if needed." >&2
+fi
+echo ""
 
 # Use the pinned environment if available, but also support already-active envs.
 if command -v conda >/dev/null 2>&1; then
@@ -136,9 +164,20 @@ if command -v conda >/dev/null 2>&1; then
 fi
 
 # Run G60 (recommended threshold)
-if [[ -d "$OUTPUT_G60/final_outputs" ]]; then
+if run_is_complete; then
     echo "G60 already complete, skipping..."
 else
+    if [[ -d "$OUTPUT_G60" ]]; then
+        shopt -s nullglob dotglob
+        existing_output=("$OUTPUT_G60"/*)
+        shopt -u nullglob dotglob
+        if [[ ${#existing_output[@]} -gt 0 ]]; then
+            echo "Error: incomplete ParaDISM output found: $OUTPUT_G60" >&2
+            echo "Choose a new --output-dir or move the partial output before rerunning." >&2
+            exit 1
+        fi
+    fi
+
     echo "=========================================="
     echo "Running G60 threshold..."
     echo "=========================================="
@@ -149,6 +188,7 @@ else
         --aligner bowtie2 \
         --threads "$THREADS" \
         --workers "$WORKERS" \
+        --compress-intermediate-sam \
         --iterations "$ITERATIONS" \
         --min-alternate-count "$MIN_ALT_COUNT" \
         --add-quality-filters \
@@ -157,6 +197,11 @@ else
         --af-threshold 0.05 \
         --threshold "G,60,60" \
         --output-dir "$OUTPUT_G60"
+
+    if ! run_is_complete; then
+        echo "Error: ParaDISM exited without the required completion marker and final BAMs." >&2
+        exit 1
+    fi
 fi
 
 echo ""

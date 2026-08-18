@@ -85,18 +85,23 @@ fi
     --reference "$REFERENCE" \
     --aligner bowtie2 \
     --threads 1 \
-    --iterations 1 \
+    --iterations 3 \
     --output-dir "$OUTPUT_DIR" \
     --prefix "$PREFIX"
 
 [[ -d "$OUTPUT_DIR" ]] || fail "Output directory was not created: $OUTPUT_DIR"
+check_file "${OUTPUT_DIR}/.paradism_complete"
 INITIAL_SAM="${OUTPUT_DIR}/iteration_1/mapped_reads.sam"
 [[ -f "$INITIAL_SAM" ]] || fail "Expected initial SAM not found: $INITIAL_SAM"
 
 FINAL_FASTQ_DIR="${OUTPUT_DIR}/final_outputs/${PREFIX}_fastq"
 FINAL_BAM_DIR="${OUTPUT_DIR}/final_outputs/${PREFIX}_bam"
+FINAL_NONE_DIR="${OUTPUT_DIR}/final_outputs/${PREFIX}_none"
+UNASSIGNED_READ1="${FINAL_NONE_DIR}/${PREFIX}_NONE_r1.fq"
+SUMMARY_PATH="${OUTPUT_DIR}/demo_assignment_summary.tsv"
 [[ -d "$FINAL_FASTQ_DIR" ]] || fail "Final FASTQ directory not found: $FINAL_FASTQ_DIR"
 [[ -d "$FINAL_BAM_DIR" ]] || fail "Final BAM directory not found: $FINAL_BAM_DIR"
+check_file "$UNASSIGNED_READ1"
 
 shopt -s nullglob
 final_fastqs=("${FINAL_FASTQ_DIR}"/*.fq)
@@ -108,8 +113,17 @@ check_nonempty_glob "final FASTQ files in ${FINAL_FASTQ_DIR}" "${final_fastqs[@]
 check_nonempty_glob "sorted BAM files in ${FINAL_BAM_DIR}" "${sorted_bams[@]}"
 check_nonempty_glob "BAM index files in ${FINAL_BAM_DIR}" "${bam_indexes[@]}"
 
+"$PYTHON_BIN" "${SCRIPT_DIR}/summarize_demo.py" \
+    --read1 "$READ1" \
+    --assigned-dir "$FINAL_FASTQ_DIR" \
+    --unassigned-read1 "$UNASSIGNED_READ1" \
+    --prefix "$PREFIX" \
+    --summary "$SUMMARY_PATH" \
+    || fail "Demo assignments did not match the documented expected result."
+
 echo "PKD1 demo completed successfully."
 echo "Output directory: ${OUTPUT_DIR}"
 echo "Initial SAM: ${INITIAL_SAM}"
 echo "Final FASTQs: ${FINAL_FASTQ_DIR}"
 echo "Final BAMs: ${FINAL_BAM_DIR}"
+echo "Assignment summary: ${SUMMARY_PATH}"

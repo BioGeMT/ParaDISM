@@ -44,17 +44,33 @@ class SimpleParaDISMExecutor:
         self.logger = PipelineLogger(self.log_file)
         self.progress = ProgressRunner(self.logger)
 
-    def _run_spinner(self, command: Sequence[str] | str | callable, message: str, *, shell: bool = False):
+    def _run_spinner(
+        self,
+        command: Sequence[str] | str | callable,
+        message: str,
+        *,
+        shell: bool = False,
+        progress_path: str | Path | None = None,
+    ):
         """Run command or callable with spinner. Returns result if callable."""
         if callable(command):
             # It's a Python function - run with spinner wrapper
             stop_event = threading.Event()
+            started_at = time.monotonic()
             
             def spin():
                 index = 0
                 while not stop_event.is_set():
                     char = self.progress.spinner_chars[index % len(self.progress.spinner_chars)]
-                    print(f"\r  {char} {message}", end="", file=sys.stderr)
+                    elapsed = time.strftime(
+                        "%H:%M:%S",
+                        time.gmtime(time.monotonic() - started_at),
+                    )
+                    print(
+                        f"\r  {char} {message} (elapsed {elapsed})\033[K",
+                        end="",
+                        file=sys.stderr,
+                    )
                     sys.stderr.flush()
                     index += 1
                     time.sleep(0.1)
@@ -66,7 +82,14 @@ class SimpleParaDISMExecutor:
                 result = command()
                 stop_event.set()
                 spinner_thread.join()
-                print(f"\r  \033[0;36m✓ {message}\033[0m", file=sys.stderr)
+                elapsed = time.strftime(
+                    "%H:%M:%S",
+                    time.gmtime(time.monotonic() - started_at),
+                )
+                print(
+                    f"\r  \033[0;36m✓ {message} (elapsed {elapsed})\033[0m\033[K",
+                    file=sys.stderr,
+                )
                 return result
             except Exception:
                 stop_event.set()
@@ -75,12 +98,49 @@ class SimpleParaDISMExecutor:
                 raise
         else:
             # It's a command - use progress runner
-            self.progress.run_with_spinner(command, message, shell=shell)
+            self.progress.run_with_spinner(
+                command,
+                message,
+                shell=shell,
+                progress_path=progress_path,
+            )
             return None
 
     def _extract_none_reads_from_assignments(self, assignments: dict[str, str]) -> set[str]:
         """Extract read IDs that mapped to NONE from assignments dict."""
         return {read_name for read_name, gene in assignments.items() if gene == "NONE"}
+
+    def _compress_intermediate_sam(self, sam_path: Path, threads: int) -> Path:
+        """Convert a consumed intermediate SAM to BAM without risking the SAM."""
+        bam_path = sam_path.with_suffix(".bam")
+        partial_bam = Path(f"{bam_path}.partial")
+        partial_bam.unlink(missing_ok=True)
+
+        try:
+            subprocess.run(
+                [
+                    "samtools",
+                    "view",
+                    "-@",
+                    str(threads),
+                    "-b",
+                    "-o",
+                    str(partial_bam),
+                    str(sam_path),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["samtools", "quickcheck", str(partial_bam)],
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            partial_bam.unlink(missing_ok=True)
+            raise
+
+        partial_bam.replace(bam_path)
+        sam_path.unlink()
+        return bam_path
 
     def _extract_reads_from_fastq(self, fastq_path: Path, read_ids: set[str], output_path: Path) -> int:
         """Extract reads from FASTQ file based on read IDs. Returns count of extracted reads."""
@@ -357,6 +417,7 @@ class SimpleParaDISMExecutor:
         minimap2_min_score: int = 240,
         n_anchors: int = 1,
         workers: int = 1,
+        compress_intermediate_sam: bool = False,
     ) -> tuple[Path, dict[str, str], bool]:
         """
         Run one iteration of refinement on NONE reads only.
@@ -461,12 +522,14 @@ class SimpleParaDISMExecutor:
                     f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{iter_index}' -1 '{none_r1_path}' -2 '{none_r2_path}' -S '{iter_sam}'",
                     "Aligning reads with Bowtie2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
             else:
                 self._run_spinner(
                     f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{iter_index}' -U '{none_r1_path}' -S '{iter_sam}'",
                     "Aligning reads with Bowtie2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
         elif aligner == "bwa-mem2":
             iter_index = iter_output_dir / "ref_index"
@@ -480,12 +543,14 @@ class SimpleParaDISMExecutor:
                     f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{iter_index}' '{none_r1_path}' '{none_r2_path}' | {awk_filter} > '{iter_sam}'",
                     "Aligning reads with BWA-MEM2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
             else:
                 self._run_spinner(
                     f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{iter_index}' '{none_r1_path}' | {awk_filter} > '{iter_sam}'",
                     "Aligning reads with BWA-MEM2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
         elif aligner == "minimap2":
             iter_index = iter_output_dir / "ref_index.mmi"
@@ -500,12 +565,14 @@ class SimpleParaDISMExecutor:
                     f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{iter_index}' '{none_r1_path}' '{none_r2_path}' > '{iter_sam}'",
                     "Aligning reads with minimap2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
             else:
                 self._run_spinner(
                     f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{iter_index}' '{none_r1_path}' > '{iter_sam}'",
                     "Aligning reads with minimap2",
                     shell=True,
+                    progress_path=iter_sam,
                 )
         
         # Run ParaDISM on NONE reads
@@ -521,7 +588,16 @@ class SimpleParaDISMExecutor:
             )
             return new_assignments
         
-        new_assignments = self._run_spinner(_run_paradism_iteration, "Running ParaDISM algorithm")
+        new_assignments = self._run_spinner(
+            _run_paradism_iteration,
+            "Assigning reads from SAM alignments",
+        )
+
+        if compress_intermediate_sam:
+            self._run_spinner(
+                lambda: self._compress_intermediate_sam(iter_sam, threads),
+                "Compressing consumed intermediate SAM to BAM",
+            )
         
         # 5. Merge assignments
         merged_assignments = self._merge_assignments(previous_assignments, new_assignments)
@@ -537,14 +613,21 @@ class SimpleParaDISMExecutor:
         # 7. Build full per-gene FASTQ/BAM outputs for merged assignments.
         # These BAMs are used for variant calling in the next iteration and must
         # include all currently assigned reads, not only newly rescued NONE reads.
-        def _write_iteration_outputs():
-            iter_genes = self._write_fastq_outputs(
+        def _write_iteration_fastqs():
+            return self._write_fastq_outputs(
                 merged_assignments,
                 r1,
                 r2,
                 iter_fastq_dir,
             )
-            if iter_genes:
+
+        iter_genes = self._run_spinner(
+            _write_iteration_fastqs,
+            "Writing assigned-read FASTQ files",
+        )
+
+        if iter_genes:
+            def _create_iteration_bams():
                 create_bam_files(
                     iter_genes,
                     str(updated_ref),
@@ -559,7 +642,10 @@ class SimpleParaDISMExecutor:
                     is_paired=is_paired,
                 )
 
-        self._run_spinner(_write_iteration_outputs, "Writing merged iteration outputs")
+            self._run_spinner(
+                _create_iteration_bams,
+                "Creating assigned-read BAM files",
+            )
         
         return updated_ref, merged_assignments, False
 
@@ -580,6 +666,7 @@ class SimpleParaDISMExecutor:
         threshold: str | None = None,
         n_anchors: int = 1,
         workers: int = 1,
+        compress_intermediate_sam: bool = False,
     ) -> None:
         """Execute the ParaDISM pipeline with optional iterative refinement.
 
@@ -589,6 +676,7 @@ class SimpleParaDISMExecutor:
                       For bowtie2: score function (e.g., "G,40,40"). Default based on aligner.
             n_anchors: Minimum number of distinct gene-unique C1 positions required for assignment.
             workers: Worker processes for the ParaDISM read-assignment step.
+            compress_intermediate_sam: Replace consumed mapped_reads.sam files with BAM files.
         """
 
         is_paired = r2 is not None
@@ -625,6 +713,8 @@ class SimpleParaDISMExecutor:
 
         # 1. Determine output directories and print iteration header
         original_output_dir = self.output_dir
+        completion_marker = original_output_dir / ".paradism_complete"
+        completion_marker.unlink(missing_ok=True)
         iter1_output_dir = self.output_dir / "iteration_1"
         iter1_output_dir.mkdir(exist_ok=True)
         msa_output_dir = iter1_output_dir
@@ -662,12 +752,14 @@ class SimpleParaDISMExecutor:
                         f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -1 '{r1}' -2 '{r2}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
+                        progress_path=sam_output,
                     )
                 else:
                     self._run_spinner(
                         f"bowtie2 --local --score-min {bowtie2_score_min} -p {threads} -x '{index_base}' -U '{r1}' -S '{sam_output}'",
                         "Aligning reads with Bowtie2",
                         shell=True,
+                        progress_path=sam_output,
                     )
             elif aligner == "bwa-mem2":
                 index_base = self.output_dir / "ref_index"
@@ -681,12 +773,14 @@ class SimpleParaDISMExecutor:
                         f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{r1}' '{r2}' | {awk_filter} > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
+                        progress_path=sam_output,
                     )
                 else:
                     self._run_spinner(
                         f"bwa-mem2 mem -A 2 -B 8 -T {bwa_min_score} -t {threads} '{index_base}' '{r1}' | {awk_filter} > '{sam_output}'",
                         "Aligning reads with BWA-MEM2",
                         shell=True,
+                        progress_path=sam_output,
                     )
             elif aligner == "minimap2":
                 index_file = self.output_dir / "ref_index.mmi"
@@ -702,12 +796,14 @@ class SimpleParaDISMExecutor:
                         f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{index_file}' '{r1}' '{r2}' > '{sam_output}'",
                         "Aligning reads with minimap2",
                         shell=True,
+                        progress_path=sam_output,
                     )
                 else:
                     self._run_spinner(
                         f"minimap2 -ax {preset} --MD {score_threshold} -t {threads} '{index_file}' '{r1}' > '{sam_output}'",
                         "Aligning reads with minimap2",
                         shell=True,
+                        progress_path=sam_output,
                     )
 
         # 3. Run initial ParaDISM algorithm
@@ -716,10 +812,10 @@ class SimpleParaDISMExecutor:
         fastq_dir = self.output_dir / f"{self.prefix}_fastq"
         bam_dir = self.output_dir / f"{self.prefix}_bam"
 
-        # Run ParaDISM algorithm directly (not via subprocess) to get assignments dict
-        def _run_paradism():
-            msa_obj, seq_to_aln, gene_names = load_msa(str(msa_output))
-            assignments = process_sam_to_dict(
+        msa_obj, seq_to_aln, gene_names = load_msa(str(msa_output))
+
+        def _assign_reads():
+            return process_sam_to_dict(
                 str(sam_output),
                 msa_obj,
                 seq_to_aln,
@@ -727,10 +823,36 @@ class SimpleParaDISMExecutor:
                 min_anchors=n_anchors,
                 workers=workers,
             )
-            genes = write_fastq_outputs(assignments, r1, r2, str(fastq_dir), self.prefix)
-            if genes:
+
+        current_assignments = self._run_spinner(
+            _assign_reads,
+            "Assigning reads from SAM alignments",
+        )
+
+        if compress_intermediate_sam:
+            self._run_spinner(
+                lambda: self._compress_intermediate_sam(sam_output, threads),
+                "Compressing consumed intermediate SAM to BAM",
+            )
+
+        def _write_initial_fastqs():
+            return write_fastq_outputs(
+                current_assignments,
+                r1,
+                r2,
+                str(fastq_dir),
+                self.prefix,
+            )
+
+        initial_genes = self._run_spinner(
+            _write_initial_fastqs,
+            "Writing assigned-read FASTQ files",
+        )
+
+        if initial_genes:
+            def _create_initial_bams():
                 create_bam_files(
-                    genes,
+                    initial_genes,
                     ref,
                     str(fastq_dir),
                     str(bam_dir),
@@ -742,12 +864,11 @@ class SimpleParaDISMExecutor:
                     minimap2_min_score,
                     is_paired=is_paired,
                 )
-            return assignments
 
-        current_assignments = self._run_spinner(
-            _run_paradism,
-            "Running ParaDISM algorithm",
-        )
+            self._run_spinner(
+                _create_initial_bams,
+                "Creating assigned-read BAM files",
+            )
         current_ref = Path(ref)
         current_bam_dir = bam_dir
         final_msa = msa_output
@@ -780,6 +901,7 @@ class SimpleParaDISMExecutor:
                     minimap2_min_score=minimap2_min_score,
                     n_anchors=n_anchors,
                     workers=workers,
+                    compress_intermediate_sam=compress_intermediate_sam,
                 )
 
                 if converged:
@@ -804,14 +926,21 @@ class SimpleParaDISMExecutor:
             final_fastq_dir = final_outputs_dir / f"{self.prefix}_fastq"
             final_bam_dir = final_outputs_dir / f"{self.prefix}_bam"
             
-            def _write_final_outputs():
-                final_genes = self._write_fastq_outputs(
+            def _write_final_fastqs():
+                return self._write_fastq_outputs(
                     final_output['assignments'],
                     r1,
                     r2,
                     str(final_fastq_dir)
                 )
-                if final_genes:
+
+            final_genes = self._run_spinner(
+                _write_final_fastqs,
+                "Writing final assigned-read FASTQ files",
+            )
+
+            if final_genes:
+                def _create_final_bams():
                     create_bam_files(
                         final_genes,
                         str(original_ref),
@@ -825,7 +954,14 @@ class SimpleParaDISMExecutor:
                         minimap2_min_score,
                         is_paired=is_paired,
                     )
-                self._write_none_read_inspection_outputs(
+
+                self._run_spinner(
+                    _create_final_bams,
+                    "Creating final assigned-read BAM files",
+                )
+
+            self._run_spinner(
+                lambda: self._write_none_read_inspection_outputs(
                     assignments=final_output['assignments'],
                     r1_path=r1,
                     r2_path=r2,
@@ -836,12 +972,12 @@ class SimpleParaDISMExecutor:
                     bowtie2_score_min=bowtie2_score_min,
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
-                )
-                shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
+                ),
+                "Writing unresolved-read inspection outputs",
+            )
+            shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
 
             print(f"\n  Iterative refinement complete.\n", file=sys.stderr)
-            
-            self._run_spinner(_write_final_outputs, "Writing final outputs")
         
         # Write final outputs for single iteration case
         if iterations == 1:
@@ -849,14 +985,21 @@ class SimpleParaDISMExecutor:
             final_fastq_dir = final_outputs_dir / f"{self.prefix}_fastq"
             final_bam_dir = final_outputs_dir / f"{self.prefix}_bam"
             
-            def _write_final_outputs():
-                final_genes = self._write_fastq_outputs(
+            def _write_final_fastqs():
+                return self._write_fastq_outputs(
                     current_assignments,
                     r1,
                     r2,
                     str(final_fastq_dir)
                 )
-                if final_genes:
+
+            final_genes = self._run_spinner(
+                _write_final_fastqs,
+                "Writing final assigned-read FASTQ files",
+            )
+
+            if final_genes:
+                def _create_final_bams():
                     create_bam_files(
                         final_genes,
                         str(original_ref),
@@ -870,7 +1013,14 @@ class SimpleParaDISMExecutor:
                         minimap2_min_score,
                         is_paired=is_paired,
                     )
-                self._write_none_read_inspection_outputs(
+
+                self._run_spinner(
+                    _create_final_bams,
+                    "Creating final assigned-read BAM files",
+                )
+
+            self._run_spinner(
+                lambda: self._write_none_read_inspection_outputs(
                     assignments=current_assignments,
                     r1_path=r1,
                     r2_path=r2,
@@ -881,10 +1031,10 @@ class SimpleParaDISMExecutor:
                     bowtie2_score_min=bowtie2_score_min,
                     bwa_min_score=bwa_min_score,
                     minimap2_min_score=minimap2_min_score,
-                )
-                shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
-
-            self._run_spinner(_write_final_outputs, "Writing final outputs")
+                ),
+                "Writing unresolved-read inspection outputs",
+            )
+            shutil.copy2(final_msa, final_outputs_dir / "ref_seq_msa.aln")
 
         # 4. Cleanup intermediate files
         time.sleep(0.2)
@@ -912,4 +1062,5 @@ class SimpleParaDISMExecutor:
 
         print("  \033[0;36m✓ Cleaning up intermediate files\033[0m", file=sys.stderr)
         final_outputs_path = original_output_dir / "final_outputs"
+        completion_marker.write_text("completed\n", encoding="utf-8")
         print(f"\n  \033[0;36m✓ Pipeline complete. Final outputs in: {final_outputs_path}\033[0m", file=sys.stderr)
