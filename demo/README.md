@@ -85,6 +85,15 @@ remaining 11 pairs are retained in the `pkd1_demo_none` outputs. These metrics
 describe read assignment in this deterministic example; they are not variant-
 calling metrics.
 
+## IGV example
+
+The PKD1P5 view below shows how the final outputs partition the initial Bowtie2
+alignments. Bowtie2 placed three read pairs on PKD1P5. ParaDISM assigned the two
+pairs with PKD1P5-specific support and retained the ambiguous pair near 1.5 kb
+in the `NONE` output rather than assigning it to PKD1P5.
+
+![IGV view of initial and final PKD1P5 read assignments](igv_pkd1p5_read_assignment.png)
+
 `run_demo.sh` prints this table, writes it to
 `demo/output/demo_assignment_summary.tsv`, and exits with an error if any count
 differs from the documented result.
