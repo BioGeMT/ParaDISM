@@ -43,7 +43,10 @@ demo/output/
     │   ├── pkd1_demo_<assigned_contig>.sorted.bam
     │   └── pkd1_demo_<assigned_contig>.sorted.bam.bai
     └── pkd1_demo_none/
-        └── pkd1_demo_NONE_r1.fq
+        ├── pkd1_demo_NONE_r1.fq
+        ├── pkd1_demo_NONE_r2.fq
+        ├── pkd1_demo_NONE_all_refs.sorted.bam
+        └── pkd1_demo_NONE_all_refs.sorted.bam.bai
 ```
 
 The output root also contains `demo_assignment_summary.tsv`.
@@ -55,12 +58,12 @@ contain assigned reads grouped by reference contig, the final BAMs provide
 sorted and indexed alignments for downstream inspection, and the `none`
 directory retains unresolved reads rather than discarding them.
 
-The demo permits up to three iterations so that it also exercises ParaDISM's
-refinement stopping rule. With this small read set, no variants are found when
-iteration 2 begins, so the pipeline reports convergence and stops without
-updating the reference. The iteration 2 VCF therefore contains no variant
-records. The larger GIAB workflow is the appropriate example for evaluating
-refinement when variants are present.
+The demo allows up to three iterations. In practice, iteration 1 completes the
+initial alignment and read assignment. Iteration 2 begins variant calling,
+finds no variants, and stops before any reference update or realignment.
+Iteration 3 is not run. The empty iteration 2 VCF records this stopping
+condition. Use the larger GIAB workflow to evaluate refinement when variants
+are present.
 
 ## Expected result
 
@@ -85,6 +88,10 @@ remaining 11 pairs are retained in the `pkd1_demo_none` outputs. These metrics
 describe read assignment in this deterministic example; they are not variant-
 calling metrics.
 
+`run_demo.sh` prints this table, writes it to
+`demo/output/demo_assignment_summary.tsv`, and exits with an error if any count
+differs from the documented result.
+
 ## IGV example
 
 The PKD1P5 view below shows how the final outputs partition the initial Bowtie2
@@ -93,10 +100,6 @@ pairs with PKD1P5-specific support and retained the ambiguous pair near 1.5 kb
 in the `NONE` output rather than assigning it to PKD1P5.
 
 ![IGV view of initial and final PKD1P5 read assignments](igv_pkd1p5_read_assignment.png)
-
-`run_demo.sh` prints this table, writes it to
-`demo/output/demo_assignment_summary.tsv`, and exits with an error if any count
-differs from the documented result.
 
 To regenerate the small synthetic read set separately, run:
 
