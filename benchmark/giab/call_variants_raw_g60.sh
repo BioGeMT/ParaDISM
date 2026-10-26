@@ -153,7 +153,7 @@ done
 GENES=()
 while IFS= read -r gene_name; do
     GENES+=("$gene_name")
-done < <(grep "^>" "$REFERENCE" | sed 's/^>//')
+done < <(grep "^>" "$REFERENCE" | sed 's/^>//;s/[[:space:]].*//')
 
 FREEBAYES_ARGS=(--ploidy 2)
 SNP_FILTER_ARGS=(-v snps -m2 -M2)
