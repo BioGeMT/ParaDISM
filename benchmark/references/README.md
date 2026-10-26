@@ -13,6 +13,8 @@ Additional reference annotation files:
 
 - `pkd1_exons.bed`: PKD1/PKD1P gene-local exon intervals for the committed
   `pkd1_panel.fa` reference.
+- `pkd1_panel_positions.txt`: exact GRCh38 intervals of the `pkd1_panel.fa`
+  contigs, for `python paradism.py liftover`.
 
 Included groups:
 

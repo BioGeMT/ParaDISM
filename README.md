@@ -151,17 +151,29 @@ chromosomal coordinates:
 ```bash
 python paradism.py liftover \
   --bed benchmark/references/pkd1_exons.bed \
-  --positions positions.txt \
+  --ref benchmark/references/pkd1_panel.fa \
+  --positions benchmark/references/pkd1_panel_positions.txt \
   --output lifted_exons.bed
 ```
 
-The `--positions` file maps each FASTA contig name to its chromosomal interval
-and strand:
+The `--positions` file maps each FASTA contig name to the exact chromosomal
+interval it was cut from, including any flanking sequence, and its strand
+(`-1` when the contig is the reverse complement of the interval). Chromosome
+names are written to the output as given:
 
 ```text
-PKD1 16:2088708-2135898:-1
-PKD1P1 16:16310341-16334190:1
+PKD1 chr16:2088108-2136498:-1
+PKD1P1 chr16:16309741-16334790:1
 ```
+
+`liftover` stops with an error if a contig length in `--ref` differs from its
+interval. With `--genome genome.fa`, it also checks each contig sequence
+against the genome and writes chromosome lengths to the VCF header. On
+minus-strand contigs, VCF alleles are reverse complemented and indels are
+left-aligned again with `bcftools norm`.
+
+`liftover` does not convert between genome assemblies. For that, use a chain
+file with a tool such as transanno, CrossMap or Picard `LiftoverVcf`.
 
 ## Reproducible Benchmarks
 

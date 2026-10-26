@@ -1,101 +1,116 @@
 """
-Liftover implementation for converting ParaDISM VCF/BED coordinates from gene-local
-to chromosomal (GRCh38) coordinates.
+Liftover implementation for converting ParaDISM VCF/BED coordinates from
+reference contigs to chromosomal coordinates.
 
 ParaDISM produces variants called against a custom multi-gene reference
-where each gene is a separate contig. This tool converts those gene-local
-positions to standard chromosomal coordinates so they can be compared with
-results from standard mapping/calling pipelines.
+where each gene is a separate contig. The positions file gives the exact
+chromosomal interval each contig was cut from, so contig positions can be
+converted to chromosomal positions and compared with results from standard
+mapping/calling pipelines.
 """
 
 import gzip
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
+from Bio import SeqIO
 
-_COMPLEMENT = str.maketrans("ACGTacgtNn", "TGCAtgcaNn")
 
-# GRCh38 chromosome lengths (for VCF contig headers)
-_CHR_LENGTHS = {"chr16": 90338345, "16": 90338345}
+_COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
 
-# The reference sequences in ParaDISM have this many bp of flanking
-# sequence on each side beyond the gene's chromosomal span.
-_FLANKING_BP = 600
+_INTERVAL_PATTERN = re.compile(r"^(.+):(\d+)-(\d+):(-?1)$")
+
+_SEQUENCE_ALLELE_PATTERN = re.compile(r"^[ACGTNacgtn]+$")
 
 _GENE_INFO_ID = "PARADISM_GENE"
 
 
-def parse_positions_file(path):
-    """Parse a gene positions file.
+def reverse_complement(seq):
+    return seq.translate(_COMPLEMENT)[::-1]
 
-    Expected format (one gene per line):
-        GENE (Human Gene) ENSID CHR:START-END:STRAND
-        e.g. PKD1 (Human Gene) ENSG00000008710 16:2088708-2135898:-1
+
+def parse_positions_file(path):
+    """Parse a positions file.
+
+    Expected format (one contig per line):
+        CONTIG ... CHR:START-END:STRAND
+        e.g. PKD1 chr16:2088108-2136498:-1
+
+    START-END is the exact 1-based inclusive interval the contig was cut from,
+    including any flanking sequence. STRAND -1 means the contig is the reverse
+    complement of that interval.
 
     Returns:
-        dict: {gene_name: (chrom_name, start, end, strand)}
-              where strand is +1 or -1, start/end are ints (1-based inclusive).
+        dict: {contig: (chrom, start, end, strand)} in file order.
     """
-    genes = {}
+    intervals = {}
     with open(path) as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
+        for line_number, line in enumerate(fh, 1):
+            fields = line.split()
+            if not fields:
                 continue
-            parts = line.split()
-            gene = parts[0]
-            # Last field is CHR:START-END:STRAND
-            coord_str = parts[-1]
-            m = re.match(r"(\w+):(\d+)-(\d+):(-?1)", coord_str)
-            if not m:
-                print(f"Warning: could not parse coordinates for {gene}: {coord_str}", file=sys.stderr)
-                continue
-            chrom_num = m.group(1)
-            chrom = f"chr{chrom_num}"
-            start = int(m.group(2))
-            end = int(m.group(3))
-            strand = int(m.group(4))
-            genes[gene] = (chrom, start, end, strand)
-    return genes
+            match = _INTERVAL_PATTERN.match(fields[-1]) if len(fields) >= 2 else None
+            if not match:
+                sys.exit(f"Error: {path}:{line_number}: expected 'CONTIG CHR:START-END:STRAND', got: {line.strip()}")
+            contig = fields[0]
+            chrom, start, end, strand = match.group(1), int(match.group(2)), int(match.group(3)), int(match.group(4))
+            if start < 1 or end < start:
+                sys.exit(f"Error: {path}:{line_number}: invalid interval {fields[-1]}")
+            if contig in intervals:
+                sys.exit(f"Error: {path}:{line_number}: {contig} is listed more than once")
+            intervals[contig] = (chrom, start, end, strand)
+    if not intervals:
+        sys.exit(f"Error: no contig intervals in {path}")
+    return intervals
 
 
-def local_to_chrom(local_pos, gene_start, gene_end, strand):
-    """Convert a 1-based gene-local position to a chromosomal position.
+def load_oriented_contigs(ref_path, intervals):
+    """Return each contig's sequence in chromosome orientation.
 
-    The gene reference has _FLANKING_BP bp of flanking on each side.
-    For + strand genes, position 1 = gene_start - _FLANKING_BP on the chromosome.
-    For - strand genes, the sequence is reverse-complemented, so
-    position 1 = gene_end + _FLANKING_BP on the chromosome.
+    Stops if a contig is missing from the reference or its length differs
+    from its interval.
     """
-    if strand == 1:
-        return gene_start - _FLANKING_BP - 1 + local_pos
-    else:
-        return gene_end + _FLANKING_BP + 1 - local_pos
+    sequences = {record.id: str(record.seq).upper() for record in SeqIO.parse(ref_path, "fasta")}
+    oriented = {}
+    for contig, (chrom, start, end, strand) in intervals.items():
+        if contig not in sequences:
+            sys.exit(f"Error: {contig} from the positions file is not a contig in {ref_path}")
+        sequence = sequences[contig]
+        interval_length = end - start + 1
+        if len(sequence) != interval_length:
+            sys.exit(
+                f"Error: {contig} is {len(sequence)} bp in {ref_path}, but its interval "
+                f"{chrom}:{start}-{end} is {interval_length} bp. The positions file must give "
+                "the exact interval of each contig, including any flanking sequence."
+            )
+        oriented[contig] = sequence if strand == 1 else reverse_complement(sequence)
+    return oriented
 
 
-def local_to_chrom_bed(local_start, local_end, gene_start, gene_end, strand):
-    """Convert 0-based half-open BED coordinates to chromosomal coordinates.
+def check_genome(genome_path, intervals, oriented):
+    """Check each contig against the genome and return the chromosome lengths."""
+    import pysam
 
-    Returns (chrom_start, chrom_end) in 0-based half-open format.
-    """
-    if strand == 1:
-        # + strand: straightforward shift
-        offset = gene_start - _FLANKING_BP - 1  # 0-based offset
-        return (offset + local_start, offset + local_end)
-    else:
-        # - strand: reverse-complement, so coordinates invert
-        # local_start (0-based) corresponds to higher chr position
-        # local_end (0-based exclusive) corresponds to lower chr position
-        offset = gene_end + _FLANKING_BP  # 1-based end of rev-comp seq
-        chrom_end = offset - local_start
-        chrom_start = offset - local_end
-        return (chrom_start, chrom_end)
-
-
-def complement_seq(seq):
-    """Complement a DNA sequence (does NOT reverse)."""
-    return seq.translate(_COMPLEMENT)
+    genome = pysam.FastaFile(genome_path)
+    chrom_lengths = {}
+    for contig, (chrom, start, end, strand) in intervals.items():
+        if chrom not in genome.references:
+            sys.exit(f"Error: {chrom} (interval of {contig}) is not a sequence in {genome_path}")
+        genomic = genome.fetch(chrom, start - 1, end).upper()
+        if genomic != oriented[contig]:
+            differences = abs(len(genomic) - len(oriented[contig])) + sum(
+                a != b for a, b in zip(genomic, oriented[contig])
+            )
+            sys.exit(
+                f"Error: {contig} differs from {genome_path} {chrom}:{start}-{end} "
+                f"(strand {strand}) at {differences} positions"
+            )
+        chrom_lengths[chrom] = genome.get_reference_length(chrom)
+    return chrom_lengths
 
 
 def _upsert_info_tag(info_field, key, value):
@@ -108,79 +123,118 @@ def _upsert_info_tag(info_field, key, value):
     return ";".join(items)
 
 
-def liftover_vcf(vcf_path, positions, output_path):
-    """Liftover a VCF from gene-local to chromosomal coordinates."""
+def _orient_variant(fields, contig_length, strand, vcf_path):
+    """Convert a VCF record from contig to chromosome orientation in place."""
+    pos = int(fields[1])
+    ref = fields[3]
+    last = pos + len(ref) - 1
+    if pos < 1 or last > contig_length:
+        sys.exit(f"Error: {vcf_path}: {fields[0]}:{pos} {ref} lies outside the contig")
+    if strand == 1:
+        return
+    alts = fields[4].split(",")
+    for allele in [ref] + alts:
+        if allele not in ("*", ".") and not _SEQUENCE_ALLELE_PATTERN.match(allele):
+            sys.exit(f"Error: {vcf_path}: {fields[0]}:{pos} has allele {allele}, which cannot be reverse complemented")
+    fields[1] = str(contig_length - last + 1)
+    fields[3] = reverse_complement(ref)
+    fields[4] = ",".join(allele if allele in ("*", ".") else reverse_complement(allele) for allele in alts)
+
+
+def liftover_vcf(vcf_path, intervals, oriented, chrom_lengths, output_path):
+    """Liftover a VCF from contig to chromosomal coordinates."""
+    bcftools = shutil.which("bcftools")
+    if bcftools is None:
+        sys.exit("Error: bcftools is required for VCF liftover")
+
     opener = gzip.open if str(vcf_path).endswith(".gz") else open
     open_mode = "rt" if str(vcf_path).endswith(".gz") else "r"
 
-    header_lines = []
-    variant_lines = []
-    contigs_seen = set()
-    target_chrom = None
-
-    has_gene_info_header = False
-    has_liftover_source_header = False
-
+    input_header = []
+    records = []
     with opener(vcf_path, open_mode) as fh:
         for line in fh:
             line = line.rstrip("\n")
-            if line.startswith("##"):
-                if line.startswith(f"##INFO=<ID={_GENE_INFO_ID},"):
-                    has_gene_info_header = True
-                if line == "##liftover_source=ParaDISM":
-                    has_liftover_source_header = True
-                # Replace contig headers
-                if line.startswith("##contig="):
-                    m = re.match(r"##contig=<ID=(\w+)", line)
-                    if m:
-                        gene = m.group(1)
-                        if gene in positions:
-                            chrom = positions[gene][0]
-                            target_chrom = chrom
-                            if chrom not in contigs_seen:
-                                contigs_seen.add(chrom)
-                                chrom_len = _CHR_LENGTHS.get(chrom, "")
-                                if chrom_len:
-                                    header_lines.append(f"##contig=<ID={chrom},length={chrom_len}>")
-                                else:
-                                    header_lines.append(f"##contig=<ID={chrom}>")
-                        else:
-                            header_lines.append(line)
-                else:
-                    header_lines.append(line)
-            elif line.startswith("#CHROM"):
-                # Add liftover provenance before column header
-                if not has_gene_info_header:
-                    header_lines.append(
-                        f"##INFO=<ID={_GENE_INFO_ID},Number=1,Type=String,"
-                        "Description=\"Original ParaDISM gene/pseudogene contig before liftover\">"
-                    )
-                if not has_liftover_source_header:
-                    header_lines.append("##liftover_source=ParaDISM")
-                header_lines.append(line)
-            else:
-                # Variant line
-                fields = line.split("\t")
-                gene = fields[0]
-                if gene not in positions:
-                    print(f"Warning: gene '{gene}' not in positions file, skipping variant", file=sys.stderr)
-                    continue
-                chrom, gene_start, gene_end, strand = positions[gene]
-                local_pos = int(fields[1])
-                chr_pos = local_to_chrom(local_pos, gene_start, gene_end, strand)
-                fields[0] = chrom
-                fields[1] = str(chr_pos)
-                fields[7] = _upsert_info_tag(fields[7], _GENE_INFO_ID, gene)
-                if strand == -1:
-                    # Complement REF and ALT
-                    fields[3] = complement_seq(fields[3])
-                    # ALT can have multiple alleles separated by commas
-                    alts = fields[4].split(",")
-                    fields[4] = ",".join(complement_seq(a) for a in alts)
-                variant_lines.append(fields)
+            if line.startswith("##contig="):
+                continue
+            if line.startswith("#"):
+                input_header.append(line)
+                continue
+            fields = line.split("\t")
+            contig = fields[0]
+            if contig not in intervals:
+                sys.exit(f"Error: {vcf_path} has variants on {contig}, which is not in the positions file")
+            _orient_variant(fields, len(oriented[contig]), intervals[contig][3], vcf_path)
+            records.append(fields)
 
-    # Sort variants by chromosome position
-    variant_lines.sort(key=lambda f: int(f[1]))
+    contig_order = {contig: index for index, contig in enumerate(intervals)}
+    records.sort(key=lambda f: (contig_order[f[0]], int(f[1])))
+
+    # Reverse-complemented indels are anchored on their right base; bcftools norm
+    # re-anchors and left-aligns them against the contigs in chromosome orientation.
+    with tempfile.TemporaryDirectory() as tmp:
+        oriented_fasta = Path(tmp) / "oriented_contigs.fa"
+        oriented_vcf = Path(tmp) / "oriented.vcf"
+        normalized_vcf = Path(tmp) / "normalized.vcf"
+        with open(oriented_fasta, "w") as out:
+            for contig, sequence in oriented.items():
+                out.write(f">{contig}\n{sequence}\n")
+        with open(oriented_vcf, "w") as out:
+            for line in input_header:
+                if line.startswith("#CHROM"):
+                    for contig, sequence in oriented.items():
+                        out.write(f"##contig=<ID={contig},length={len(sequence)}>\n")
+                out.write(line + "\n")
+            for fields in records:
+                out.write("\t".join(fields) + "\n")
+        result = subprocess.run(
+            [bcftools, "norm", "--no-version", "--check-ref", "e", "-f", str(oriented_fasta),
+             "-O", "v", "-o", str(normalized_vcf), str(oriented_vcf)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            sys.exit(
+                "Error: bcftools norm failed (positions and alleles below are on the contig "
+                f"in chromosome orientation):\n{result.stderr}"
+            )
+        with open(normalized_vcf) as fh:
+            normalized_lines = [line.rstrip("\n") for line in fh]
+
+    header_lines = []
+    variant_lines = []
+    for line in normalized_lines:
+        if line.startswith("##contig=") or line.startswith("#CHROM"):
+            continue
+        if line.startswith("#"):
+            header_lines.append(line)
+            continue
+        fields = line.split("\t")
+        contig = fields[0]
+        chrom, start, _, _ = intervals[contig]
+        fields[0] = chrom
+        fields[1] = str(start + int(fields[1]) - 1)
+        fields[7] = _upsert_info_tag(fields[7], _GENE_INFO_ID, contig)
+        variant_lines.append(fields)
+
+    chrom_order = {}
+    for chrom, _, _, _ in intervals.values():
+        chrom_order.setdefault(chrom, len(chrom_order))
+    for chrom in chrom_order:
+        if chrom in chrom_lengths:
+            header_lines.append(f"##contig=<ID={chrom},length={chrom_lengths[chrom]}>")
+        else:
+            header_lines.append(f"##contig=<ID={chrom}>")
+    if not any(line.startswith(f"##INFO=<ID={_GENE_INFO_ID},") for line in header_lines):
+        header_lines.append(
+            f"##INFO=<ID={_GENE_INFO_ID},Number=1,Type=String,"
+            "Description=\"Original ParaDISM gene/pseudogene contig before liftover\">"
+        )
+    if "##liftover_source=ParaDISM" not in header_lines:
+        header_lines.append("##liftover_source=ParaDISM")
+    header_lines.append(next(line for line in input_header if line.startswith("#CHROM")))
+
+    variant_lines.sort(key=lambda f: (chrom_order[f[0]], int(f[1])))
 
     with open(output_path, "w") as out:
         for line in header_lines:
@@ -188,37 +242,44 @@ def liftover_vcf(vcf_path, positions, output_path):
         for fields in variant_lines:
             out.write("\t".join(fields) + "\n")
 
-    n_variants = len(variant_lines)
-    print(f"Lifted {n_variants} variants → {output_path}")
+    print(f"Lifted {len(variant_lines)} variants → {output_path}")
 
 
-def liftover_bed(bed_path, positions, output_path):
-    """Liftover a BED file from gene-local to chromosomal coordinates."""
+def liftover_bed(bed_path, intervals, oriented, output_path):
+    """Liftover a BED file from contig to chromosomal coordinates."""
+    chrom_order = {}
+    for chrom, _, _, _ in intervals.values():
+        chrom_order.setdefault(chrom, len(chrom_order))
+
     lifted = []
     with open(bed_path) as fh:
-        for line in fh:
+        for line_number, line in enumerate(fh, 1):
             line = line.rstrip("\n")
-            if not line or line.startswith("#") or line.startswith("track"):
+            if not line or line.startswith(("#", "track", "browser")):
                 continue
             fields = line.split("\t")
-            gene = fields[0]
-            if gene not in positions:
-                print(f"Warning: gene '{gene}' not in positions file, skipping: {line}", file=sys.stderr)
-                continue
-            chrom, gene_start, gene_end, strand = positions[gene]
+            if len(fields) > 6:
+                sys.exit(f"Error: {bed_path}:{line_number}: only BED3 to BED6 are supported")
+            contig = fields[0]
+            if contig not in intervals:
+                sys.exit(f"Error: {bed_path}:{line_number}: {contig} is not in the positions file")
+            chrom, start, end, strand = intervals[contig]
             local_start = int(fields[1])
             local_end = int(fields[2])
-            chr_start, chr_end = local_to_chrom_bed(local_start, local_end, gene_start, gene_end, strand)
+            if not 0 <= local_start <= local_end <= len(oriented[contig]):
+                sys.exit(f"Error: {bed_path}:{line_number}: interval lies outside {contig}")
+            if strand == 1:
+                chr_start, chr_end = start - 1 + local_start, start - 1 + local_end
+            else:
+                chr_start, chr_end = end - local_end, end - local_start
             fields[0] = chrom
             fields[1] = str(chr_start)
             fields[2] = str(chr_end)
-            # Update strand field if present (column 6 in standard BED)
-            if len(fields) >= 6:
-                fields[5] = "-" if strand == -1 else "+"
+            if len(fields) == 6 and strand == -1:
+                fields[5] = {"+": "-", "-": "+"}.get(fields[5], fields[5])
             lifted.append(fields)
 
-    # Sort by chromosome position
-    lifted.sort(key=lambda f: int(f[1]))
+    lifted.sort(key=lambda f: (chrom_order[f[0]], int(f[1])))
 
     with open(output_path, "w") as out:
         for fields in lifted:
@@ -229,20 +290,21 @@ def liftover_bed(bed_path, positions, output_path):
 
 def run_liftover(args):
     """Run liftover from parsed paradism.py arguments."""
-    positions = parse_positions_file(args.positions)
-    if not positions:
-        print("Error: no gene positions parsed from file", file=sys.stderr)
-        sys.exit(1)
+    intervals = parse_positions_file(args.positions)
+    oriented = load_oriented_contigs(args.ref, intervals)
+    chrom_lengths = check_genome(args.genome, intervals, oriented) if args.genome else {}
 
-    print(f"Loaded {len(positions)} gene positions:")
-    for gene, (chrom, start, end, strand) in sorted(positions.items()):
+    print(f"Loaded {len(intervals)} contig intervals:")
+    for contig, (chrom, start, end, strand) in intervals.items():
         strand_str = "+" if strand == 1 else "-"
-        print(f"  {gene}: {chrom}:{start}-{end} ({strand_str})")
+        print(f"  {contig}: {chrom}:{start}-{end} ({strand_str})")
+    if args.genome:
+        print(f"Contig sequences match {args.genome}")
 
     if args.vcf:
-        liftover_vcf(args.vcf, positions, args.output)
+        liftover_vcf(args.vcf, intervals, oriented, chrom_lengths, args.output)
     elif args.bed:
-        liftover_bed(args.bed, positions, args.output)
+        liftover_bed(args.bed, intervals, oriented, args.output)
 
 
 if __name__ == "__main__":

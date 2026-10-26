@@ -112,10 +112,10 @@ Examples:
   python paradism.py --read1 reads.fq --reference ref.fa
 
   # Liftover VCF to chromosomal coordinates
-  python paradism.py liftover --vcf variants.vcf --positions positions.txt -o lifted.vcf
+  python paradism.py liftover --vcf variants.vcf --ref ref.fa --positions positions.txt -o lifted.vcf
 
   # Liftover BED to chromosomal coordinates
-  python paradism.py liftover --bed benchmark/references/pkd1_exons.bed --positions positions.txt -o lifted.bed
+  python paradism.py liftover --bed benchmark/references/pkd1_exons.bed --ref benchmark/references/pkd1_panel.fa --positions benchmark/references/pkd1_panel_positions.txt -o lifted.bed
         """,
     )
 
@@ -126,7 +126,9 @@ Examples:
         help="Convert VCF/BED from gene-local to chromosomal coordinates",
         formatter_class=CustomHelpFormatter,
     )
-    liftover_parser.add_argument("--positions", required=True, help="Gene positions file with chromosomal source intervals")
+    liftover_parser.add_argument("--positions", required=True, help="Exact chromosomal interval of each reference contig")
+    liftover_parser.add_argument("--ref", required=True, help="ParaDISM reference FASTA whose contigs the input refers to")
+    liftover_parser.add_argument("--genome", help="Genome FASTA to check contig sequences against")
     liftover_parser.add_argument("--output", "-o", required=True, help="Output file path")
     liftover_group = liftover_parser.add_mutually_exclusive_group(required=True)
     liftover_group.add_argument("--vcf", help="Input VCF file to liftover")
