@@ -1,5 +1,7 @@
 # ParaDISM: Paralog Disambiguating Mapper
 
+ParaDISM has been published in BMC Bioinformatics: [link to published paper](https://doi.org/10.1186/s12859-026-06701-y)
+
 ParaDISM is a read-mapping pipeline with optional refinement for highly
 homologous genomic regions. It aligns short reads to a multi-sequence
 reference, uses gene-informative positions in the multiple-sequence alignment
