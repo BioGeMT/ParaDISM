@@ -1,4 +1,4 @@
-# ParaDISM: Paralog Disambiguating Mapper
+# ParaDISM
 
 ParaDISM has been published in BMC Bioinformatics: [link to published paper](https://doi.org/10.1186/s12859-026-06701-y)
 
