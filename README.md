@@ -14,32 +14,6 @@ conda env create -f environment.yml
 conda activate paradism
 ```
 
-## Quick Demo
-
-Run the included synthetic demo. It does not require downloads or private data:
-
-```bash
-bash demo/run_demo.sh
-```
-
-The demo uses committed synthetic reads from a PKD1/pseudogene reference:
-
-- `demo/ref.fa`
-- `demo/pkd1_sim_R1.fq`
-- `demo/pkd1_sim_R2.fq`
-
-and writes checked outputs to `demo/output/`. The deterministic result contains
-9 correctly assigned pairs, 11 unassigned pairs, and no incorrect assignments;
-the demo prints and validates these counts and writes
-`demo_assignment_summary.tsv`. The demo permits up to three iterations and
-converges when no variants are found as iteration 2 begins.
-
-To regenerate the tiny demo reads from `demo/ref.fa`, run:
-
-```bash
-bash demo/generate_demo_reads.sh
-```
-
 ## Usage
 
 ### Interactive Mode
@@ -176,6 +150,7 @@ left-aligned again with `bcftools norm`.
 
 `liftover` does not convert between genome assemblies. For that, use a chain
 file with a tool such as transanno, CrossMap or Picard `LiftoverVcf`.
+
 
 ## Reproducible Benchmarks
 
